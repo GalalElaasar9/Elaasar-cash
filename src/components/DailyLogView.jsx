@@ -391,7 +391,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
                 )}
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400 block mt-0.5">
-                {isToday ? 'سجل العمليات الجارية لليوم الحاضر' : `سجل المحفوظات والتحويلات ليوم ${selectedDate}`}
+                {isToday ? 'سجل المبيعات والعمليات الجارية لليوم الحاضر' : `سجل مبيعات وعمليات يوم ${selectedDate}`}
               </span>
             </div>
           </div>
@@ -1035,7 +1035,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
         <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center justify-between sm:justify-start gap-2.5">
             <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
-              سجل المعاملات التفصيلي
+              سجل المبيعات والعمليات التفصيلي
             </h3>
             <span className="px-2.5 py-0.5 text-xs font-bold font-mono rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shrink-0">
               {filteredDayTransactions.length} عملية

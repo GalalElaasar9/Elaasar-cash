@@ -1054,7 +1054,7 @@ export function CashProvider({ children }) {
       syncTransactionToCloud(shopId, saleTx);
     }
 
-    showToast(`تم تسجيل بيع (${qtyToDeduct}) قطعة [لون: ${colorName}] بقيمة ${formatCurrency(totalSaleAmount)} وتوثيقها بسجل اليوم`);
+    showToast(`تم تسجيل بيع (${qtyToDeduct}) قطعة [لون: ${colorName}] بقيمة ${formatCurrency(totalSaleAmount)} وتوثيقها في المبيعات`);
 
     // Check low stock alert (< 5)
     const alertThreshold = prod.minStockAlert !== undefined ? prod.minStockAlert : 5;

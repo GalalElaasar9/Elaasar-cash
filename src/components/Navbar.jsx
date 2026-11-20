@@ -39,8 +39,8 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
     { id: 'clients', label: 'العملاء', shortLabel: 'العملاء', icon: Wallet },
     { 
       id: 'daily', 
-      label: 'سجل اليوم', 
-      shortLabel: 'اليوم',
+      label: 'المبيعات', 
+      shortLabel: 'المبيعات',
       icon: Calendar, 
       badge: todayTransactions.length > 0 ? todayTransactions.length : null 
     },

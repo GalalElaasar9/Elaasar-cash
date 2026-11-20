@@ -74,7 +74,7 @@ export default function StatCards({ onSelectDailyTab }) {
         <div className="mt-2 sm:mt-3 flex flex-col sm:flex-row sm:items-center justify-between text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 gap-0.5">
           <span className="truncate">مخصومة من المحافظ</span>
           <span className="font-bold text-rose-600 dark:text-rose-400 shrink-0">
-            سجل اليوم ←
+            المبيعات ←
           </span>
         </div>
         <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 sm:h-2 rounded-full mt-2 sm:mt-2.5 overflow-hidden p-0.5">
