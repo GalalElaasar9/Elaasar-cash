@@ -83,6 +83,34 @@ export default function ClientCard({ client }) {
     }
   });
 
+  // Client classification: 'مدين' (default) | 'دائن'
+  const [clientType, setClientType] = useState(() => {
+    if (client.clientType) return client.clientType;
+    try {
+      return localStorage.getItem(`elaasar_client_type_${client.id}`) || 'مدين';
+    } catch {
+      return 'مدين';
+    }
+  });
+
+  // Keep clientType in sync if updated from ClientAccountsView or backend
+  useEffect(() => {
+    if (client.clientType && client.clientType !== clientType) {
+      setClientType(client.clientType);
+    }
+  }, [client.clientType]);
+
+  const handleSetClientType = (type) => {
+    setClientType(type);
+    updateClient(client.id, { clientType: type });
+    try {
+      localStorage.setItem(`elaasar_client_type_${client.id}`, type);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast(`تم تحديد العميل (${client.name}) كـ ${type === 'مدين' ? 'مدين (عليه آجل)' : 'دائن (له رصيد)'}`);
+  };
+
   // Toggle between deduct and add while updating the multiplier factor (0.995 <-> 1.005)
   const handleToggleMode = () => {
     const nextMode = commissionMode === 'add' ? 'deduct' : 'add';
@@ -318,6 +346,34 @@ export default function ClientCard({ client }) {
                 <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
                   {wallets.length} {wallets.length === 1 ? 'رقم مسجل' : 'أرقام مسجلة'}
                 </span>
+
+                {/* 2 Buttons for Client Classification: مدين / دائن */}
+                <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-xl text-xs font-bold shrink-0 border border-slate-300/60 dark:border-slate-700 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => handleSetClientType('مدين')}
+                    className={`btn-interactive px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                      clientType === 'مدين'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                    title="تحديد العميل كـ مدين (عليه مبالغ آجلة)"
+                  >
+                    مدين
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetClientType('دائن')}
+                    className={`btn-interactive px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                      clientType === 'دائن'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                    title="تحديد العميل كـ دائن (له رصيد مستحق)"
+                  >
+                    دائن
+                  </button>
+                </div>
               </div>
               {client.notes && (
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">

@@ -45,6 +45,8 @@ export default function ClientAccountsView() {
 
   // Selected time range for recharges: 'today' | 'month' | 'all'
   const [timeRange, setTimeRange] = useState('today');
+  // Selected account type tab: 'مدين' (default) | 'دائن'
+  const [accountTypeTab, setAccountTypeTab] = useState('مدين');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterActiveOnly, setFilterActiveOnly] = useState(false);
   const [selectedClientForStatement, setSelectedClientForStatement] = useState(null);
@@ -103,33 +105,57 @@ export default function ClientAccountsView() {
         : clientAllRecharges;
 
       // 3. Commission settings (persisted per client or fallback to localStorage)
+      let clientType = client.clientType;
+      if (!clientType) {
+        try {
+          clientType = localStorage.getItem(`elaasar_client_type_${client.id}`) || 'مدين';
+        } catch {
+          clientType = 'مدين';
+        }
+      }
+
       let commissionMode = client.commissionMode;
       if (!commissionMode) {
         try {
-          commissionMode = localStorage.getItem(`elaasar_client_commission_mode_${client.id}`) || 'add';
+          commissionMode = localStorage.getItem(`elaasar_client_commission_mode_${client.id}`) || 'deduct';
         } catch {
-          commissionMode = 'add';
+          commissionMode = 'deduct';
         }
       }
 
       let commissionPercent = client.commissionPercent;
-      if (commissionPercent === undefined || commissionPercent === null) {
+      if (commissionPercent === undefined || commissionPercent === null || commissionPercent === '') {
         try {
           const saved = localStorage.getItem(`elaasar_client_commission_${client.id}`);
-          commissionPercent = saved !== null ? Number(saved) : 1;
+          commissionPercent = (saved !== null && saved !== '') ? saved : '0.995';
         } catch {
-          commissionPercent = 1;
+          commissionPercent = '0.995';
         }
       }
 
-      const commissionNum = Math.max(0, Number(commissionPercent) || 0);
-      // قيمة العمولة = المبلغ قبل العمولة مضروب في نسبة العمولة
-      const commissionAmount = (baseAmount * commissionNum) / 100;
+      const factorNum = Number(commissionPercent);
+      const isValidFactor = !isNaN(factorNum) && factorNum > 0;
 
-      // المبلغ بعد خصم أو إضافة العمولة (الآجل المستحق)
-      const finalAmount = commissionMode === 'add'
-        ? baseAmount + commissionAmount
-        : Math.max(0, baseAmount - commissionAmount);
+      // Calculation: finalAmount = baseAmount * factor (ex: 5000 * 0.995 = 4975)
+      let finalAmount = baseAmount;
+      let commissionAmount = 0;
+      let effectiveMode = commissionMode;
+
+      if (isValidFactor && baseAmount > 0) {
+        if (factorNum >= 0.5) {
+          finalAmount = baseAmount * factorNum;
+          effectiveMode = factorNum < 1 ? 'deduct' : 'add';
+          commissionAmount = Math.abs(baseAmount - finalAmount);
+        } else {
+          if (commissionMode === 'deduct') {
+            finalAmount = baseAmount * (1 - factorNum);
+            commissionAmount = baseAmount * factorNum;
+          } else {
+            finalAmount = baseAmount * (1 + factorNum);
+            commissionAmount = baseAmount * factorNum;
+          }
+        }
+      }
 
       // Relevant transactions for statement modal
       const clientTxList = transactions.filter(t => {
@@ -146,13 +172,15 @@ export default function ClientAccountsView() {
 
       return {
         client,
+        clientType,
         wallets: walletsBreakdown,
         todayRecharges: clientTodayRecharges,
         monthRecharges: clientMonthRecharges,
         allRecharges: clientAllRecharges,
         baseAmount,
         commissionMode,
-        commissionPercent: commissionNum,
+        effectiveMode,
+        commissionPercent,
         commissionAmount,
         finalAmount,
         transactionsCount: clientTxList.length,
@@ -161,15 +189,37 @@ export default function ClientAccountsView() {
     });
   }, [clients, transactions, timeRange, todayKey, currentMonthKey]);
 
-  // Filter clients based on search query & active debt filter
+  // Pre-filtered client groups for counts and live stats
+  const debtorClients = useMemo(() => {
+    return clientAccountsData.filter(i => (i.clientType || 'مدين') === 'مدين');
+  }, [clientAccountsData]);
+
+  const creditorClients = useMemo(() => {
+    return clientAccountsData.filter(i => i.clientType === 'دائن');
+  }, [clientAccountsData]);
+
+  const debtorTotalFinal = useMemo(() => {
+    return debtorClients.reduce((sum, i) => sum + i.finalAmount, 0);
+  }, [debtorClients]);
+
+  const creditorTotalFinal = useMemo(() => {
+    return creditorClients.reduce((sum, i) => sum + i.finalAmount, 0);
+  }, [creditorClients]);
+
+  // Filter clients based on accountTypeTab ('مدين' | 'دائن'), search query & active debt filter
   const filteredAccounts = useMemo(() => {
     return clientAccountsData.filter(item => {
-      // Filter active only (> 0)
+      // 1. Account type tab: 'مدين' or 'دائن'
+      if (item.clientType !== accountTypeTab) {
+        return false;
+      }
+
+      // 2. Filter active only (> 0)
       if (filterActiveOnly && item.baseAmount <= 0) {
         return false;
       }
 
-      // Search query
+      // 3. Search query
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
       const matchName = item.client.name?.toLowerCase().includes(q);
@@ -180,14 +230,14 @@ export default function ClientAccountsView() {
 
       return matchName || matchNotes || matchPhone;
     });
-  }, [clientAccountsData, searchQuery, filterActiveOnly]);
+  }, [clientAccountsData, accountTypeTab, searchQuery, filterActiveOnly]);
 
   // Global Totals across filtered clients
   const summaryTotals = useMemo(() => {
     return filteredAccounts.reduce(
       (acc, item) => {
         acc.totalBase += item.baseAmount;
-        acc.totalCommission += item.commissionMode === 'add' ? item.commissionAmount : -item.commissionAmount;
+        acc.totalCommission += (item.effectiveMode || item.commissionMode) === 'add' ? item.commissionAmount : -item.commissionAmount;
         acc.totalFinal += item.finalAmount;
         if (item.baseAmount > 0) acc.activeClientsCount += 1;
         acc.totalWalletsCount += item.wallets.length;
@@ -203,24 +253,37 @@ export default function ClientAccountsView() {
     );
   }, [filteredAccounts]);
 
-  // Quick action: Change Commission Mode
-  const handleToggleCommissionMode = (client, currentMode) => {
+  // Quick action: Change Commission Mode & smart toggle factor (0.995 <-> 1.005)
+  const handleToggleCommissionMode = (client, currentMode, currentPercent) => {
     const nextMode = currentMode === 'add' ? 'deduct' : 'add';
-    updateClient(client.id, { commissionMode: nextMode });
+    const currentNum = Number(currentPercent);
+    let nextPercent = currentPercent;
+
+    if (!isNaN(currentNum) && currentNum > 0) {
+      if (nextMode === 'add' && currentNum < 1 && currentNum > 0.8) {
+        const diff = 1 - currentNum;
+        nextPercent = (1 + diff).toFixed(4).replace(/\.?0+$/, '');
+      } else if (nextMode === 'deduct' && currentNum > 1 && currentNum < 1.2) {
+        const diff = currentNum - 1;
+        nextPercent = (1 - diff).toFixed(4).replace(/\.?0+$/, '');
+      }
+    }
+
+    updateClient(client.id, { commissionMode: nextMode, commissionPercent: nextPercent });
     try {
       localStorage.setItem(`elaasar_client_commission_mode_${client.id}`, nextMode);
+      localStorage.setItem(`elaasar_client_commission_${client.id}`, String(nextPercent));
     } catch (e) {
       console.error(e);
     }
     showToast(`تم تغيير طريقة العمولة للعميل (${client.name}) إلى ${nextMode === 'add' ? 'إضافة (+)' : 'خصم (-)'}`);
   };
 
-  // Quick action: Change Commission Percent
+  // Quick action: Change Commission Multiplier Factor
   const handleChangeCommissionPercent = (client, newPercent) => {
-    const num = Math.max(0, Number(newPercent) || 0);
-    updateClient(client.id, { commissionPercent: num });
+    updateClient(client.id, { commissionPercent: newPercent });
     try {
-      localStorage.setItem(`elaasar_client_commission_${client.id}`, String(num));
+      localStorage.setItem(`elaasar_client_commission_${client.id}`, String(newPercent));
     } catch (e) {
       console.error(e);
     }
@@ -242,7 +305,8 @@ export default function ClientAccountsView() {
 
   // Quick action: Copy WhatsApp Statement message
   const handleCopyWhatsAppMessage = (item) => {
-    const modeText = item.commissionMode === 'add' ? 'إضافة' : 'خصم';
+    const isAdd = (item.effectiveMode || item.commissionMode) === 'add';
+    const modeText = isAdd ? 'إضافة' : 'خصم';
     const periodLabel = timeRange === 'today' ? 'اليوم' : timeRange === 'month' ? 'هذا الشهر' : 'الإجمالي';
 
     const text = `السلام عليكم ورحمة الله،
@@ -251,7 +315,7 @@ export default function ClientAccountsView() {
 عدد الخطوط المشحونة: ${item.wallets.filter(w => w.amount > 0).length || item.wallets.length}
 -----------------------------
 المبلغ قبل العمولة: ${formatNumber(item.baseAmount)} ج.م
-نسبة العمولة: ${item.commissionPercent}% (${modeText} ${formatNumber(item.commissionAmount)} ج.م)
+معامل الحساب: × ${item.commissionPercent} (${modeText} ${formatNumber(item.commissionAmount)} ج.م)
 -----------------------------
 المطلوب سداده بعد العمولة: ${formatNumber(item.finalAmount)} ج.م
 -----------------------------
@@ -277,23 +341,26 @@ export default function ClientAccountsView() {
       'عدد الخطوط',
       'أرقام الهواتف',
       'إجمالي الشحن (قبل العمولة)',
-      'طريقة العمولة',
-      'نسبة العمولة %',
-      'قيمة العمولة',
+      'نوع الحساب',
+      'معامل الضرب',
+      'فرق العمولة',
       'المبلغ الآجل المستحق (بعد العمولة)'
     ];
 
-    const rows = filteredAccounts.map((item, idx) => [
-      idx + 1,
-      `"${item.client.name.replace(/"/g, '""')}"`,
-      item.wallets.length,
-      `"${item.wallets.map(w => w.phoneNumber).join(' - ')}"`,
-      item.baseAmount,
-      item.commissionMode === 'add' ? 'إضافة (+)' : 'خصم (-)',
-      `${item.commissionPercent}%`,
-      item.commissionMode === 'add' ? item.commissionAmount : -item.commissionAmount,
-      item.finalAmount
-    ]);
+    const rows = filteredAccounts.map((item, idx) => {
+      const isAdd = (item.effectiveMode || item.commissionMode) === 'add';
+      return [
+        idx + 1,
+        `"${item.client.name.replace(/"/g, '""')}"`,
+        item.wallets.length,
+        `"${item.wallets.map(w => w.phoneNumber).join(' - ')}"`,
+        item.baseAmount,
+        isAdd ? 'إضافة (+)' : 'خصم (-)',
+        item.commissionPercent,
+        isAdd ? item.commissionAmount : -item.commissionAmount,
+        item.finalAmount
+      ];
+    });
 
     rows.push([]);
     rows.push([`كشف حسابات العملاء والآجل - فترة: ${periodLabel}`, '', '', '', '', '', '', '', '']);
@@ -641,46 +708,45 @@ export default function ClientAccountsView() {
                         {formatCurrency(baseAmount)}
                       </td>
 
-                      {/* Commission Settings (نسبة ونوع العمولة) */}
+                      {/* Commission Settings (معامل ونوع العمولة) */}
                       <td className="py-3.5 px-4">
                         <div className="flex flex-wrap items-center gap-1.5">
                           {/* Mode Toggle Button: إضافة (+) أو خصم (-) */}
                           <button
                             type="button"
-                            onClick={() => handleToggleCommissionMode(client, commissionMode)}
+                            onClick={() => handleToggleCommissionMode(client, item.effectiveMode || commissionMode, commissionPercent)}
                             className={`btn-interactive px-2 py-1 rounded-lg text-xs font-black transition-all shadow-xs ${
-                              commissionMode === 'add'
+                              (item.effectiveMode || commissionMode) === 'add'
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                                 : 'bg-rose-600 hover:bg-rose-700 text-white'
                             }`}
                             title="اضغط للتبديل بين إضافة أو خصم العمولة"
                           >
-                            {commissionMode === 'add' ? 'إضافة (+)' : 'خصم (-)'}
+                            {(item.effectiveMode || commissionMode) === 'add' ? 'إضافة (+)' : 'خصم (-)'}
                           </button>
 
-                          {/* Percentage Input */}
-                          <div className="flex items-center gap-1">
+                          {/* Multiplier Input without % symbol */}
+                          <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-0.5 shadow-2xs">
+                            <span className="text-xs font-bold text-slate-400 select-none">×</span>
                             <input
                               type="number"
-                              step="0.1"
-                              min="0"
-                              max="100"
+                              step="any"
                               value={commissionPercent}
                               onChange={(e) => handleChangeCommissionPercent(client, e.target.value)}
-                              className="w-12 px-1.5 py-0.5 text-xs font-black text-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                              title="نسبة العمولة المئوية"
+                              placeholder="0.995"
+                              className="w-20 text-sm font-black font-mono text-center bg-transparent border-none p-0 text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              title="أدخل معامل الحساب (مثال: 0.995 أو 1.005)"
                             />
-                            <span className="text-xs font-black text-slate-400">%</span>
                           </div>
 
                           {/* Calculated Commission Value */}
                           {commissionAmount > 0 && (
-                            <span className={`text-[11px] font-black font-mono ${
-                              commissionMode === 'add'
+                            <span className={`text-[11px] font-black font-mono mr-0.5 ${
+                              (item.effectiveMode || commissionMode) === 'add'
                                 ? 'text-emerald-700 dark:text-emerald-400'
                                 : 'text-rose-700 dark:text-rose-400'
                             }`} dir="ltr">
-                              ({commissionMode === 'add' ? '+' : '-'}{formatCurrency(commissionAmount)})
+                              ({(item.effectiveMode || commissionMode) === 'add' ? '+' : '-'}{formatCurrency(commissionAmount)})
                             </span>
                           )}
                         </div>
@@ -692,7 +758,7 @@ export default function ClientAccountsView() {
                           {formatCurrency(finalAmount)}
                         </div>
                         <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                          {commissionMode === 'add' ? 'إجمالي بعد إضافة العمولة' : 'صافي بعد خصم العمولة'}
+                          {(item.effectiveMode || commissionMode) === 'add' ? 'إجمالي بعد إضافة العمولة' : 'صافي بعد خصم العمولة'}
                         </span>
                       </td>
 

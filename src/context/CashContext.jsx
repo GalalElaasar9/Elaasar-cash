@@ -338,11 +338,12 @@ export function CashProvider({ children }) {
   };
 
   // Client Management
-  const addClient = ({ name, notes = '', initialPhoneNumber, initialWalletLabel = 'المحفظة الأساسية', initialLimit = 200000, wallets = [] }) => {
+  const addClient = ({ name, notes = '', clientType = 'مدين', initialPhoneNumber, initialWalletLabel = 'المحفظة الأساسية', initialLimit = 200000, wallets = [] }) => {
     const newClient = {
       id: `client-${Date.now()}`,
       name: name.trim(),
       notes: notes.trim(),
+      clientType: clientType || 'مدين',
       createdAt: new Date().toISOString(),
       wallets: []
     };
