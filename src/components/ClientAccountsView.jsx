@@ -286,7 +286,10 @@ export default function ClientAccountsView() {
         acc.totalBase += item.baseAmount;
         acc.totalCommission += (item.effectiveMode || item.commissionMode) === 'add' ? item.commissionAmount : -item.commissionAmount;
         acc.totalFinal += item.finalAmount;
-        if (item.baseAmount > 0) acc.activeClientsCount += 1;
+        acc.totalPaid += item.paidAmount;
+        acc.totalRemaining += item.remainingDebt;
+        acc.totalCredit += item.creditAmount;
+        if (item.baseAmount > 0 || item.paidAmount > 0) acc.activeClientsCount += 1;
         acc.totalWalletsCount += item.wallets.length;
         return acc;
       },
@@ -294,11 +297,40 @@ export default function ClientAccountsView() {
         totalBase: 0,
         totalCommission: 0,
         totalFinal: 0,
+        totalPaid: 0,
+        totalRemaining: 0,
+        totalCredit: 0,
         activeClientsCount: 0,
         totalWalletsCount: 0
       }
     );
   }, [filteredAccounts]);
+
+  // Quick action: Open payment modal for a client
+  const handleOpenPayment = (item) => {
+    setModalData({
+      client: item.client,
+      currentDebt: item.remainingDebt > 0 ? item.remainingDebt : item.finalAmount,
+      currentPaid: item.paidAmount,
+      clientType: item.effectiveClientType || item.clientType
+    });
+    setActiveModal('clientPayment');
+  };
+
+  // Delete payment with confirmation
+  const handleDeletePayment = async (tx) => {
+    const confirmed = await askConfirm({
+      title: 'حذف حركة السداد',
+      message: `هل أنت متأكد من رغبتك في حذف حركة السداد بقيمة ${formatCurrency(tx.amount)}؟`,
+      details: 'سيتم إعادة المبلغ إلى رصيد حساب العميل وكأنه لم يُسدد.',
+      type: 'warning',
+      confirmText: 'نعم، احذف حركة السداد',
+      cancelText: 'إلغاء'
+    });
+    if (confirmed) {
+      deleteTransaction(tx.id);
+    }
+  };
 
   // Quick action: Change Commission Mode & smart toggle factor (0.995 <-> 1.005)
   const handleToggleCommissionMode = (client, currentMode, currentPercent) => {
@@ -367,15 +399,29 @@ export default function ClientAccountsView() {
     const modeText = isAdd ? 'إضافة' : 'خصم';
     const periodLabel = timeRange === 'today' ? 'اليوم' : timeRange === 'month' ? 'هذا الشهر' : 'الإجمالي';
 
+    let balanceLine = '';
+    if (item.paidAmount > 0) {
+      if (item.creditAmount > 0) {
+        balanceLine = `المبالغ المسددة: ${formatNumber(item.paidAmount)} ج.م\nالرصيد الدائن المستحق لحضرتكم: ${formatNumber(item.creditAmount)} ج.م`;
+      } else if (item.isSettled) {
+        balanceLine = `المبالغ المسددة: ${formatNumber(item.paidAmount)} ج.م\nالحساب خالص تماماً (0 ج.م)`;
+      } else {
+        balanceLine = `المبالغ المسددة: ${formatNumber(item.paidAmount)} ج.م\nالمتبقي المطلوب سداده: ${formatNumber(item.remainingDebt)} ج.م`;
+      }
+    } else {
+      balanceLine = `المطلوب سداده بعد العمولة: ${formatNumber(item.finalAmount)} ج.م`;
+    }
+
     const text = `السلام عليكم ورحمة الله،
-كشف حساب الآجل (${periodLabel}) - محلات الأعصر:
+كشف حساب (${periodLabel}) - محلات الأعصر:
 العميل: ${item.client.name}
-عدد الخطوط المشحونة: ${item.wallets.filter(w => w.amount > 0).length || item.wallets.length}
+عدد الخطوط: ${item.wallets.filter(w => w.amount > 0).length || item.wallets.length}
 -----------------------------
 المبلغ قبل العمولة: ${formatNumber(item.baseAmount)} ج.م
 معامل الحساب: × ${item.commissionPercent} (${modeText} ${formatNumber(item.commissionAmount)} ج.م)
+إجمالي المستحق بعد العمولة: ${formatNumber(item.finalAmount)} ج.م
 -----------------------------
-المطلوب سداده بعد العمولة: ${formatNumber(item.finalAmount)} ج.م
+${balanceLine}
 -----------------------------
 شاكرين لحضرتك، نسعد بخدمتك دائماً.`;
 
