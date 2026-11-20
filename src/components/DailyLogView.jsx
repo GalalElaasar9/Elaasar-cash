@@ -120,6 +120,23 @@ export default function DailyLogView({ onNavigateToInbound }) {
     );
   }, [dayTransactions, searchDaily]);
 
+  // Pagination for transactions table (10 operations per page as requested)
+  const ITEMS_PER_PAGE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset page when search or selected date changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchDaily, selectedDate]);
+
+  const totalPages = Math.ceil(filteredDayTransactions.length / ITEMS_PER_PAGE) || 1;
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedTransactions = useMemo(() => {
+    const start = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+    return filteredDayTransactions.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredDayTransactions, safeCurrentPage]);
+
   // Metrics for the selected day
   const dayTransferTxs = dayTransactions.filter(t => t.type === 'transfer_out');
   const dayRechargeTxs = dayTransactions.filter(t => t.type === 'recharge' || t.type === 'limit_reset');
@@ -1077,7 +1094,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredDayTransactions.map((tx) => (
+                  {paginatedTransactions.map((tx) => (
                     <tr 
                       key={tx.id} 
                       className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group"
@@ -1261,7 +1278,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
 
             {/* Mobile Cards View */}
             <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredDayTransactions.map((tx) => (
+              {paginatedTransactions.map((tx) => (
                 <div key={tx.id} className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
@@ -1382,6 +1399,56 @@ export default function DailyLogView({ onNavigateToInbound }) {
                 </div>
               ))}
             </div>
+
+            {/* Pagination Bar (10 operations per page as requested) */}
+            {filteredDayTransactions.length > ITEMS_PER_PAGE && (
+              <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  عرض <span className="font-bold text-slate-800 dark:text-white font-mono">{(safeCurrentPage - 1) * ITEMS_PER_PAGE + 1}</span> - <span className="font-bold text-slate-800 dark:text-white font-mono">{Math.min(filteredDayTransactions.length, safeCurrentPage * ITEMS_PER_PAGE)}</span> من إجمالي <span className="font-bold text-slate-800 dark:text-white font-mono">{filteredDayTransactions.length}</span> عملية
+                </div>
+
+                <div className="flex items-center gap-1.5" dir="rtl">
+                  {/* Previous Button */}
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={safeCurrentPage === 1}
+                    className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    title="الصفحة السابقة"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                    <span>السابق</span>
+                  </button>
+
+                  {/* Page Numbers */}
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold font-mono transition-all ${
+                          safeCurrentPage === pageNum
+                            ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-sm shadow-red-600/30'
+                            : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Next Button */}
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={safeCurrentPage === totalPages}
+                    className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    title="الصفحة التالية"
+                  >
+                    <span>التالي</span>
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
 
           </div>
         )}
