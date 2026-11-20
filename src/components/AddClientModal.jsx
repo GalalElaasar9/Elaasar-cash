@@ -148,12 +148,12 @@ export default function AddClientModal() {
           />
         </div>
 
-        {/* Client classification: عادي أو دائن أو مدين */}
+        {/* Client classification: عادي أو مدين */}
         <div>
           <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
             تصنيف نوع العميل الأولي
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => setClientType('عادي')}
@@ -163,18 +163,7 @@ export default function AddClientModal() {
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
               }`}
             >
-              <span>عادي (خالص)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setClientType('دائن')}
-              className={`btn-interactive py-2.5 px-2 rounded-xl border text-xs font-black flex items-center justify-center gap-1 transition-all ${
-                clientType === 'دائن'
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
-              }`}
-            >
-              <span>دائن (له رصيد)</span>
+              <span>عادي (حساب خالص)</span>
             </button>
             <button
               type="button"
@@ -189,7 +178,7 @@ export default function AddClientModal() {
             </button>
           </div>
           <p className="text-[11px] text-slate-400 mt-1">
-            ملاحظة: يتحول العميل تلقائياً من "عادي" إلى "مدين" فور شحن أي رقم من أرقامه.
+            ملاحظة: يتحول العميل تلقائياً إلى «دائن» في حالة واحدة فقط: عندما يقوم بسداد مبلغ أكبر من الدين المستحق عليه.
           </p>
         </div>
 

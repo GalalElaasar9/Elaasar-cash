@@ -120,7 +120,9 @@ export default function ClientPaymentModal() {
         paymentMethod,
         isCreditorPayout: isCreditor,
         excessDebt: (isCreditor && isPayingMore) ? excess : 0,
+        excessCredit: (!isCreditor && isPayingMore) ? excess : 0,
         creditBefore: isCreditor ? currentBalance : 0,
+        debtBefore: !isCreditor ? currentBalance : 0,
         notes: notes.trim() || defaultNote,
         date: paymentDate,
         time: time
@@ -141,6 +143,8 @@ export default function ClientPaymentModal() {
             clientType: 'مدين',
             excessDebt: excessAmount,
             excessDebtDate: payoutISO,
+            excessCredit: 0,
+            excessCreditDate: null,
             commissionPercent: 1,
             commissionMode: 'none'
           });
@@ -149,6 +153,8 @@ export default function ClientPaymentModal() {
             localStorage.setItem(`elaasar_client_type_${client.id}`, 'مدين');
             localStorage.setItem(`elaasar_client_excess_debt_${client.id}`, String(excessAmount));
             localStorage.setItem(`elaasar_client_excess_debt_date_${client.id}`, payoutISO);
+            localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
             localStorage.setItem(`elaasar_client_commission_${client.id}`, '1');
             localStorage.setItem(`elaasar_client_commission_mode_${client.id}`, 'none');
           } catch (err) {
@@ -164,12 +170,16 @@ export default function ClientPaymentModal() {
           updateClient(client.id, {
             clientType: 'عادي',
             excessDebt: 0,
-            excessDebtDate: null
+            excessDebtDate: null,
+            excessCredit: 0,
+            excessCreditDate: null
           });
           try {
             localStorage.setItem(`elaasar_client_type_${client.id}`, 'عادي');
             localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
             localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
           } catch (e) {
             console.error(e);
           }
@@ -190,16 +200,24 @@ export default function ClientPaymentModal() {
       } else {
         // ========================================================
         // الحالة الثانية: العميل مدين (العميل يسدد للمحل دينه)
+        // يتحول إلى دائن في حالة واحدة: سدد مبلغ أكبر من الدين المستحق عليه
         // ========================================================
         if (isPayingMore) {
-          // سداد أكبر من الدين -> يتحول إلى دائن بالزيادة
+          // سداد أكبر من الدين -> يتحول إلى دائن بالمبلغ الزائد فقط!
+          const excessCreditAmount = excess;
+          const paymentISO = paymentDate.toISOString();
+
           updateClient(client.id, {
             clientType: 'دائن',
+            excessCredit: excessCreditAmount,
+            excessCreditDate: paymentISO,
             excessDebt: null,
             excessDebtDate: null
           });
           try {
             localStorage.setItem(`elaasar_client_type_${client.id}`, 'دائن');
+            localStorage.setItem(`elaasar_client_excess_credit_${client.id}`, String(excessCreditAmount));
+            localStorage.setItem(`elaasar_client_excess_credit_date_${client.id}`, paymentISO);
             localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
             localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
           } catch (err) {
@@ -207,7 +225,7 @@ export default function ClientPaymentModal() {
           }
           showToast(
             isVodafoneCash
-              ? `🎉 تم سداد ${formatCurrency(rawInputAmount)} فودافون كاش (الصافي بعد × 0.99: ${formatCurrency(effectiveAmount)}) في تمام ${time}! المبلغ أكبر من المستحق بمقدار ${formatCurrency(excess)}. تم تحويل العميل تلقائياً إلى "دائن" وله رصيد: ${formatCurrency(excess)}!`
+              ? `🎉 تم سداد ${formatCurrency(rawInputAmount)} فودافون كاش (الصافي بعد × 0.99: ${formatCurrency(effectiveAmount)}) في تمام ${time}! المبلغ أكبر من المستحق بمقدار ${formatCurrency(excess)}. تم تحويل العميل تلقائياً إلى "دائن" وله رصيد مستحق: ${formatCurrency(excess)}!`
               : `🎉 تم تسجيل سداد ${formatCurrency(effectiveAmount)} في تمام ${time}! المبلغ أكبر من المستحق بمقدار ${formatCurrency(excess)}. تم تحويل العميل تلقائياً إلى "دائن" وله رصيد مستحق: ${formatCurrency(excess)}!`,
             'success'
           );
@@ -215,12 +233,16 @@ export default function ClientPaymentModal() {
           updateClient(client.id, {
             clientType: 'عادي',
             excessDebt: 0,
-            excessDebtDate: null
+            excessDebtDate: null,
+            excessCredit: 0,
+            excessCreditDate: null
           });
           try {
             localStorage.setItem(`elaasar_client_type_${client.id}`, 'عادي');
             localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
             localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
           } catch (e) {
             console.error(e);
           }

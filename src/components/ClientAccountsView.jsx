@@ -238,7 +238,43 @@ export default function ClientAccountsView({ onNavigateToClients }) {
         }
       }
 
+      // Check if client has excess credit (المحول من مدين إلى دائن بسداد مبلغ أكبر من الدين المستحق)
+      let clientExcessCredit = client.excessCredit;
+      let clientExcessCreditDate = client.excessCreditDate;
+      if (clientExcessCredit === undefined || clientExcessCredit === null) {
+        try {
+          const saved = localStorage.getItem(`elaasar_client_excess_credit_${client.id}`);
+          if (saved !== null && saved !== '') {
+            clientExcessCredit = Number(saved);
+            clientExcessCreditDate = localStorage.getItem(`elaasar_client_excess_credit_date_${client.id}`);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Fallback: check recent overpayment transaction
+      if ((clientExcessCredit === undefined || clientExcessCredit === null) && clientType === 'دائن') {
+        const recentOverpayment = clientPayments
+          .filter(t => !t.isCreditorPayout)
+          .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+        if (recentOverpayment) {
+          if (recentOverpayment.excessCredit) {
+            clientExcessCredit = Number(recentOverpayment.excessCredit);
+            clientExcessCreditDate = recentOverpayment.date;
+          } else if (recentOverpayment.debtBefore) {
+            const pAmt = Number(recentOverpayment.amount) || 0;
+            const dBefore = Number(recentOverpayment.debtBefore) || 0;
+            if (pAmt > dBefore) {
+              clientExcessCredit = pAmt - dBefore;
+              clientExcessCreditDate = recentOverpayment.date;
+            }
+          }
+        }
+      }
+
       const hasExcessDebt = clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
+      const hasExcessCredit = clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0;
 
       let remainingDebt = 0;
       let creditAmount = 0;
@@ -268,7 +304,7 @@ export default function ClientAccountsView({ onNavigateToClients }) {
         remainingDebt = currentExcessDebt;
         creditAmount = 0;
         isSettled = currentExcessDebt === 0;
-        effectiveClientType = 'مدين';
+        effectiveClientType = isSettled ? 'عادي' : 'مدين';
         activeFinalAmount = initialDebt; // المبلغ الأساسي قبل السداد بدون عمولة أو خصم
         isExcessDebtOnly = true;
         effectiveBaseAmount = initialDebt;
@@ -276,11 +312,57 @@ export default function ClientAccountsView({ onNavigateToClients }) {
         effectiveFactorStr = '1'; // NO MULTIPLIER
         effectiveModeResult = 'none'; // NO DISCOUNT / COMMISSION
         effectivePaidAmount = postPayments;
+      } else if (hasExcessCredit) {
+        // العميل المحول من مدين إلى دائن: الرصيد الدائن هو المبلغ الزائد فقط
+        const cutoffTime = clientExcessCreditDate ? new Date(clientExcessCreditDate).getTime() : 0;
+        const postPayouts = clientPayments
+          .filter(t => t.isCreditorPayout && new Date(t.date).getTime() > cutoffTime)
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const postRecharges = clientTxList
+          .filter(t => new Date(t.date).getTime() > cutoffTime)
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const activeCredit = clientExcessCredit - postPayouts - postRecharges;
+        if (activeCredit > 0) {
+          creditAmount = activeCredit;
+          remainingDebt = 0;
+          isSettled = false;
+          effectiveClientType = 'دائن';
+          activeFinalAmount = clientExcessCredit;
+          effectiveBaseAmount = clientExcessCredit;
+          effectiveCommissionAmount = 0;
+          effectiveFactorStr = '1';
+          effectiveModeResult = 'none';
+          effectivePaidAmount = postPayouts;
+        } else if (activeCredit === 0) {
+          creditAmount = 0;
+          remainingDebt = 0;
+          isSettled = true;
+          effectiveClientType = 'عادي';
+          activeFinalAmount = clientExcessCredit;
+          effectiveBaseAmount = clientExcessCredit;
+          effectiveCommissionAmount = 0;
+          effectiveFactorStr = '1';
+          effectiveModeResult = 'none';
+          effectivePaidAmount = postPayouts;
+        } else {
+          creditAmount = 0;
+          remainingDebt = Math.abs(activeCredit);
+          isSettled = false;
+          effectiveClientType = 'مدين';
+          activeFinalAmount = Math.abs(activeCredit);
+          effectiveBaseAmount = Math.abs(activeCredit);
+          effectiveCommissionAmount = 0;
+          effectiveFactorStr = '1';
+          effectiveModeResult = 'none';
+          effectivePaidAmount = postPayouts;
+        }
       } else {
         const grossRequired = finalAmount;
         const netBalance = grossRequired - paidAmount;
         remainingDebt = netBalance > 0 ? netBalance : 0;
-        creditAmount = netBalance < 0 ? Math.abs(netBalance) : (clientType === 'دائن' ? finalAmount : 0);
+        creditAmount = netBalance < 0 ? Math.abs(netBalance) : 0;
         isSettled = netBalance === 0 && (grossRequired > 0 || paidAmount !== 0);
         effectiveClientType = creditAmount > 0 ? 'دائن' : (remainingDebt > 0 ? 'مدين' : (clientType || 'مدين'));
         activeFinalAmount = finalAmount;
@@ -459,17 +541,20 @@ export default function ClientAccountsView({ onNavigateToClients }) {
     }
   };
 
-  // Quick action: Switch Client Type between 'عادي' and 'مدين' and 'دائن' immediately
+  // Quick action: Switch Client Type between 'عادي' and 'مدين' (دائن لا يتم يدوياً بل تلقائياً عند السداد بأكثر من المستحق)
   const handleSetClientType = (client, type) => {
-    updateClient(client.id, { clientType: type, excessDebt: null, excessDebtDate: null });
+    if (type === 'دائن') return; // لا يمكن تحويل العميل لدائن يدوياً
+    updateClient(client.id, { clientType: type, excessDebt: null, excessDebtDate: null, excessCredit: null, excessCreditDate: null });
     try {
       localStorage.setItem(`elaasar_client_type_${client.id}`, type);
       localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
       localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+      localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
+      localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
     } catch (e) {
       console.error(e);
     }
-    const label = type === 'عادي' ? 'الحسابات العادية الخالصة' : type === 'مدين' ? 'كشف المدينين' : 'كشف الدائنين';
+    const label = type === 'عادي' ? 'الحسابات العادية الخالصة' : 'كشف المدينين';
     showToast(`تم نقل العميل (${client.name}) إلى ${label}`);
   };
 
@@ -994,45 +1079,40 @@ ${balanceLine}
                                 {client.name}
                               </span>
 
-                              {/* 3 Buttons to change classification: عادي / دائن / مدين */}
-                              <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSetClientType(client, 'عادي')}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
-                                    (item.effectiveClientType || item.clientType) === 'عادي'
-                                      ? 'bg-blue-600 text-white shadow-2xs'
-                                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
-                                  }`}
-                                  title="تحديد كـ عادي (حساب خالص)"
-                                >
-                                  عادي
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSetClientType(client, 'دائن')}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
-                                    (item.effectiveClientType || item.clientType) === 'دائن'
-                                      ? 'bg-emerald-600 text-white shadow-2xs'
-                                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
-                                  }`}
-                                  title="تحديد كـ دائن"
-                                >
-                                  دائن
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSetClientType(client, 'مدين')}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
-                                    (item.effectiveClientType || item.clientType) === 'مدين'
-                                      ? 'bg-rose-600 text-white shadow-2xs'
-                                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
-                                  }`}
-                                  title="تحديد كـ مدين"
-                                >
-                                  مدين
-                                </button>
-                              </div>
+                              {/* 2 Buttons to change classification: عادي / مدين، أو شارة دائن إذا كان دائناً */}
+                              {(item.effectiveClientType || item.clientType) === 'دائن' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-600 text-white shadow-2xs flex items-center gap-1" title="عميل دائن: له رصيد مستحق ناتج عن سداد مبلغ أكبر من الدين المستحق">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                  <span>دائن (له رصيد)</span>
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetClientType(client, 'عادي')}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
+                                      (item.effectiveClientType || item.clientType) === 'عادي'
+                                        ? 'bg-blue-600 text-white shadow-2xs'
+                                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                                    }`}
+                                    title="تحديد كـ عادي (حساب خالص)"
+                                  >
+                                    عادي
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetClientType(client, 'مدين')}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
+                                      (item.effectiveClientType || item.clientType) === 'مدين'
+                                        ? 'bg-rose-600 text-white shadow-2xs'
+                                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                                    }`}
+                                    title="تحديد كـ مدين"
+                                  >
+                                    مدين
+                                  </button>
+                                </div>
+                              )}
                             </div>
 
                             <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
