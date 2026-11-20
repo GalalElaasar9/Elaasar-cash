@@ -1231,10 +1231,6 @@ export default function DailyLogView({ onNavigateToInbound }) {
                           </div>
                         )}
                       </td>
-                            {tx.notes || '—'}
-                          </span>
-                        </div>
-                      </td>
 
                       {/* Actions */}
                       <td className="py-3.5 px-4 whitespace-nowrap text-center">

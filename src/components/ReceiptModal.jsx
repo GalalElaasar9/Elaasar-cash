@@ -6,7 +6,7 @@ import {
   formatPhone, 
   formatDateTimeArabic 
 } from '../utils/formatters';
-import { Receipt, X, Printer, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Receipt, X, Printer, CheckCircle2, ShieldCheck, ShoppingBag, Smartphone } from 'lucide-react';
 
 export default function ReceiptModal() {
   const { activeModal, setActiveModal, modalData } = useCash();
@@ -31,6 +31,8 @@ export default function ReceiptModal() {
 
   if (activeModal !== 'receipt' || !tx) return null;
 
+  const isSale = tx.type === 'product_sale';
+
   return (
     <dialog
       ref={dialogRef}
@@ -38,11 +40,11 @@ export default function ReceiptModal() {
       aria-labelledby="receipt-title"
       className="fixed inset-0 m-auto z-50 w-full max-w-sm bg-white rounded-3xl p-0 border border-slate-200 shadow-2xl backdrop:bg-slate-950/60 overflow-hidden text-slate-900"
     >
-      <div className="p-4 bg-red-600 text-white flex items-center justify-between no-print">
+      <div className={`p-4 ${isSale ? 'bg-gradient-to-r from-purple-600 to-indigo-700' : 'bg-red-600'} text-white flex items-center justify-between no-print`}>
         <div className="flex items-center gap-2">
-          <Receipt className="w-5 h-5" />
+          {isSale ? <ShoppingBag className="w-5 h-5" /> : <Receipt className="w-5 h-5" />}
           <h2 id="receipt-title" className="text-sm font-bold">
-            إيصال تحويل فودافون كاش
+            {isSale ? 'فاتورة بيع جهاز / إكسسوار' : 'إيصال تحويل فودافون كاش'}
           </h2>
         </div>
         <button
@@ -61,19 +63,21 @@ export default function ReceiptModal() {
         <div className="text-center space-y-1 border-b border-dashed border-slate-300 pb-4 flex flex-col items-center">
           <ElaasarLogo size="md" variant="vertical" showSubtitle={false} />
           <p className="text-xs text-slate-500 font-mono mt-1">
-            إيصال عملية تحويل نقدي إلكتروني
+            {isSale ? 'فاتورة مبيعات الأجهزة والمخزون' : 'إيصال عملية تحويل نقدي إلكتروني'}
           </p>
         </div>
 
         {/* Amount Badge */}
         <div className="text-center py-2 bg-slate-50 rounded-2xl border border-slate-100">
-          <span className="text-xs text-slate-400 block font-medium">المبلغ المحول</span>
-          <div className="text-2xl font-black text-red-600 tracking-tight">
+          <span className="text-xs text-slate-400 block font-medium">
+            {isSale ? 'إجمالي قيمة المبيعات' : 'المبلغ المحول'}
+          </span>
+          <div className={`text-2xl font-black ${isSale ? 'text-purple-600' : 'text-red-600'} tracking-tight`}>
             {formatCurrency(tx.amount)}
           </div>
           <span className="text-[11px] text-emerald-600 font-bold flex items-center justify-center gap-1 mt-0.5">
             <CheckCircle2 className="w-3 h-3" />
-            تم التحويل والخصم بنجاح
+            {isSale ? 'تمت عملية البيع والصرف من المخزون بنجاح' : 'تم التحويل والخصم بنجاح'}
           </span>
         </div>
 
@@ -81,7 +85,7 @@ export default function ReceiptModal() {
         <div className="space-y-2.5 text-xs">
           
           <div className="flex justify-between items-center py-1 border-b border-slate-100">
-            <span className="text-slate-400">رقم المعاملة (المرجع):</span>
+            <span className="text-slate-400">رقم الفاتورة (المرجع):</span>
             <span className="font-mono font-bold text-slate-800">{tx.transactionCode}</span>
           </div>
 
@@ -91,30 +95,55 @@ export default function ReceiptModal() {
           </div>
 
           <div className="flex justify-between items-center py-1 border-b border-slate-100">
-            <span className="text-slate-400">اسم العميل الراسل:</span>
-            <span className="font-bold text-slate-900">{tx.customerName}</span>
+            <span className="text-slate-400">{isSale ? 'اسم المشتري / العميل:' : 'اسم العميل الراسل:'}</span>
+            <span className="font-bold text-slate-900">{tx.customerName || (isSale ? 'عميل نقدي' : '—')}</span>
           </div>
 
-          <div className="flex justify-between items-center py-1 border-b border-slate-100">
-            <span className="text-slate-400">من رقم محفظة:</span>
-            <span className="font-mono font-bold text-slate-800" dir="ltr">{formatPhone(tx.walletPhone)}</span>
-          </div>
+          {isSale ? (
+            <>
+              <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                <span className="text-slate-400">الجهاز / الصنف المباع:</span>
+                <span className="font-bold text-purple-700">{tx.productName}</span>
+              </div>
 
-          <div className="flex justify-between items-center py-1 border-b border-slate-100">
-            <span className="text-slate-400">إلى رقم المستلم:</span>
-            <span className="font-mono font-black text-slate-900 text-sm" dir="ltr">{formatPhone(tx.recipientPhone) || '—'}</span>
-          </div>
+              {tx.variantColor && (
+                <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                  <span className="text-slate-400">اللون / الطراز:</span>
+                  <span className="font-bold text-slate-800">{tx.variantColor}</span>
+                </div>
+              )}
 
-          <div className="flex justify-between items-center py-1 border-b border-slate-100">
-            <span className="text-slate-400">الليميت المتبقي بعد العملية:</span>
-            <span className="font-bold text-emerald-600">{formatCurrency(tx.limitAfter)}</span>
-          </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                <span className="text-slate-400">الكمية وسعر القطعة:</span>
+                <span className="font-bold text-slate-800 font-mono">
+                  {tx.quantity || 1} قطعة × {formatCurrency(tx.unitPrice)}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                <span className="text-slate-400">من رقم محفظة:</span>
+                <span className="font-mono font-bold text-slate-800" dir="ltr">{formatPhone(tx.walletPhone)}</span>
+              </div>
 
-          {tx.fee > 0 && (
-            <div className="flex justify-between items-center py-1 border-b border-slate-100">
-              <span className="text-slate-400">رسوم / عمولة الخدمة:</span>
-              <span className="font-bold text-slate-700">{formatCurrency(tx.fee)}</span>
-            </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                <span className="text-slate-400">إلى رقم المستلم:</span>
+                <span className="font-mono font-black text-slate-900 text-sm" dir="ltr">{formatPhone(tx.recipientPhone) || '—'}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                <span className="text-slate-400">الليميت المتبقي بعد العملية:</span>
+                <span className="font-bold text-emerald-600">{formatCurrency(tx.limitAfter)}</span>
+              </div>
+
+              {tx.fee > 0 && (
+                <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                  <span className="text-slate-400">رسوم / عمولة الخدمة:</span>
+                  <span className="font-bold text-slate-700">{formatCurrency(tx.fee)}</span>
+                </div>
+              )}
+            </>
           )}
 
           {tx.notes && (
