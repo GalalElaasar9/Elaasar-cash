@@ -145,7 +145,7 @@ function MainApp() {
         {/* Tab 3: Daily Log (سجل اليوم بكل تفاصيله) */}
         {activeTab === 'daily' && (
           <div className="animate-view-fade">
-            <DailyLogView />
+            <DailyLogView onNavigateToInbound={() => setActiveTab('inbound')} />
           </div>
         )}
 

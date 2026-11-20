@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useCash } from '../context/CashContext';
 import { 
   formatCurrency, 
   formatPhone, 
   formatTimeArabic, 
   formatDateArabic,
+  formatDateTimeArabic,
   getTodayString 
 } from '../utils/formatters';
 import { 
@@ -18,18 +19,32 @@ import {
   ArrowLeft,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Send, 
   Clock, 
   DollarSign, 
   Percent, 
   Copy, 
   Check,
+  CheckCircle2,
   TrendingDown,
   PhoneCall,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ArrowDownToLine,
+  ExternalLink,
+  Moon,
+  Sparkles,
+  AlertCircle,
+  FileText
 } from 'lucide-react';
 
-export default function DailyLogView() {
+const STORAGE_KEY_ITEMS = 'elaasar_cash_inbound_items_v2';
+const STORAGE_KEY_CONFIG = 'elaasar_cash_inbound_config_v2';
+const STORAGE_KEY_SHIFT = 'elaasar_cash_inbound_shift_session_v2';
+const STORAGE_KEY_ARCHIVE = 'elaasar_cash_inbound_days_archive_v2';
+
+export default function DailyLogView({ onNavigateToInbound }) {
   const { 
     transactions, 
     selectedDate, 
@@ -43,6 +58,23 @@ export default function DailyLogView() {
 
   const [searchDaily, setSearchDaily] = useState('');
   const [copiedId, setCopiedId] = useState(null);
+
+  // Inbound Shift Section States
+  const [inboundRefreshKey, setInboundRefreshKey] = useState(0);
+  const [isInboundSectionOpen, setIsInboundSectionOpen] = useState(true);
+  const [expandedShiftIds, setExpandedShiftIds] = useState({});
+  const [inboundItemSearch, setInboundItemSearch] = useState({});
+
+  // Auto-refresh inbound data when changes occur in InboundCalculatorView
+  useEffect(() => {
+    const handleStorageChange = () => setInboundRefreshKey(k => k + 1);
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleStorageChange);
+    };
+  }, []);
 
   const todayStr = getTodayString();
 
@@ -178,6 +210,133 @@ export default function DailyLogView() {
     a.click();
     URL.revokeObjectURL(url);
     showToast('تم تصدير ملف إكسل لليوم بنجاح');
+  };
+
+  // Closed/Ended shifts matching the selected date (by businessDate or closedAt date)
+  const dayInboundShifts = useMemo(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_ARCHIVE);
+      if (!saved) return [];
+      const all = JSON.parse(saved);
+      if (!Array.isArray(all)) return [];
+      return all.filter(s => {
+        if (!s) return false;
+        if (s.businessDate === selectedDate) return true;
+        if (s.closedAt && typeof s.closedAt === 'string' && s.closedAt.startsWith(selectedDate)) return true;
+        return false;
+      });
+    } catch {
+      return [];
+    }
+  }, [selectedDate, inboundRefreshKey]);
+
+  // Check if there is an active ongoing shift session matching selectedDate
+  const activeInboundShift = useMemo(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SHIFT);
+      if (!saved) return null;
+      const shift = JSON.parse(saved);
+      if (shift && shift.isActive && shift.businessDate === selectedDate) {
+        const itemsSaved = localStorage.getItem(STORAGE_KEY_ITEMS);
+        const items = itemsSaved ? JSON.parse(itemsSaved) : [];
+        const configSaved = localStorage.getItem(STORAGE_KEY_CONFIG);
+        const config = configSaved ? JSON.parse(configSaved) : {};
+
+        const total = items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+        const rate = Number(config.commissionRate) || 0;
+        let commVal = 0;
+        if (config.commissionType === 'percentage') {
+          commVal = (total * rate) / 100;
+        } else if (config.commissionType === 'perThousand') {
+          commVal = (total / 1000) * rate;
+        } else {
+          commVal = rate;
+        }
+        const net = config.commissionMode === 'add' ? total + commVal : total - commVal;
+        return {
+          ...shift,
+          items,
+          totalAmount: total,
+          commissionRate: rate,
+          commissionType: config.commissionType || 'percentage',
+          commissionMode: config.commissionMode || 'deduct',
+          commissionValue: commVal,
+          amountAfterCommission: net,
+          targetAmount: config.targetAmount || 0,
+          difference: config.targetAmount ? config.targetAmount - net : 0,
+          itemsCount: items.length
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [selectedDate, inboundRefreshKey]);
+
+  // Combined totals across all closed shifts on this date if multiple
+  const inboundDaySummary = useMemo(() => {
+    if (dayInboundShifts.length <= 1) return null;
+    const totalAmount = dayInboundShifts.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
+    const totalCommission = dayInboundShifts.reduce((sum, s) => sum + (Number(s.commissionValue) || 0), 0);
+    const totalNet = dayInboundShifts.reduce((sum, s) => sum + (Number(s.amountAfterCommission) || 0), 0);
+    const totalItemsCount = dayInboundShifts.reduce((sum, s) => sum + (Number(s.itemsCount) || (s.items ? s.items.length : 0)), 0);
+    return {
+      totalAmount,
+      totalCommission,
+      totalNet,
+      totalItemsCount,
+      shiftsCount: dayInboundShifts.length
+    };
+  }, [dayInboundShifts]);
+
+  // Helper to toggle accordion for shift items
+  const toggleShiftItems = (shiftId) => {
+    setExpandedShiftIds(prev => ({
+      ...prev,
+      [shiftId]: prev[shiftId] === undefined ? false : !prev[shiftId]
+    }));
+  };
+
+  // Helper to export closed inbound shift report to CSV (UTF-8 BOM for Arabic in Excel)
+  const handleExportInboundShift = (shift) => {
+    if (!shift || !shift.items || shift.items.length === 0) {
+      showToast('لا توجد بنود لتصديرها في هذه الوردية', 'info');
+      return;
+    }
+
+    const headers = ['م', 'المبلغ الوارد (ج.م)', 'البيان والملاحظة', 'التوقيت'];
+    const rows = shift.items.map((item, idx) => [
+      idx + 1,
+      item.amount,
+      `"${(item.label || 'وارد بدون بيان').replace(/"/g, '""')}"`,
+      `"${item.date ? formatDateTimeArabic(item.date) : ''}"`
+    ]);
+
+    rows.push([]);
+    rows.push([`تقرير وردية الوارد له ليوم: ${shift.businessDateLabel || selectedDate}`, '', '', '']);
+    rows.push([`فترة الوردية: من ${shift.startedAtTimeStr || '—'} إلى ${shift.endedAtTimeStr || '—'}`, '', '', '']);
+    rows.push(['إجمالي المبالغ المسجلة (قبل العمولة)', shift.totalAmount, '', '']);
+    rows.push([
+      `العمولة (${shift.commissionRate}${shift.commissionType === 'percentage' ? '%' : shift.commissionType === 'perThousand' ? ' لكل 1000' : ' ج.م'})`,
+      shift.commissionMode === 'deduct' ? -shift.commissionValue : shift.commissionValue,
+      shift.commissionMode === 'deduct' ? 'مخصومة من المبلغ' : 'مضافة للمبلغ',
+      ''
+    ]);
+    rows.push(['الصافي النهائي بعد العمولة (المطلوب)', shift.amountAfterCommission, '', '']);
+    if (shift.targetAmount) {
+      rows.push(['المستهدف المطلوب', shift.targetAmount, '', '']);
+      rows.push(['الفرق', shift.difference, '', '']);
+    }
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `تقرير-الوارد-له-${selectedDate}-${shift.id || 'shift'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('تم تصدير تقرير وردية الوارد له بنجاح');
   };
 
   const isToday = selectedDate === todayStr;
@@ -373,6 +532,434 @@ export default function DailyLogView() {
             {topWallet ? `حول: ${formatCurrency(topWallet.amount)}` : 'لا توجد بيانات'}
           </span>
         </div>
+
+      </div>
+
+      {/* ========================================================= */}
+      {/* 2.5 تقرير وردية الوارد له لليوم (مرتبط بالتقويم وتاريخ اليوم) */}
+      {/* ========================================================= */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+        
+        {/* Section Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-blue-50/60 via-indigo-50/30 to-transparent dark:from-blue-950/25 dark:via-indigo-950/15 dark:to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/25 shrink-0">
+              <ArrowDownToLine className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  تقرير وردية الوارد (له) لليوم
+                </h3>
+                {dayInboundShifts.length > 0 ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 flex items-center gap-1 shadow-2xs">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>وردية مقفلة ومؤرشفة {dayInboundShifts.length > 1 ? `(${dayInboundShifts.length} ورديات)` : ''}</span>
+                  </span>
+                ) : activeInboundShift ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50 flex items-center gap-1 shadow-2xs">
+                    <Clock className="w-3.5 h-3.5 animate-pulse text-amber-600" />
+                    <span>وردية جارية (قيد التسجيل)</span>
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                    لا توجد وردية مقفلة
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                كشف وتفاصيل المبالغ المحسوبة والعمولة عند إغلاق اليوم ({formatDateArabic(selectedDate)})
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {onNavigateToInbound && (
+              <button
+                onClick={onNavigateToInbound}
+                className="btn-interactive flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-200 dark:border-blue-800 shadow-2xs transition-colors"
+                title="الانتقال إلى حاسبة الوارد له"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>حاسبة الوارد له</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => setIsInboundSectionOpen(!isInboundSectionOpen)}
+              className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors"
+              title={isInboundSectionOpen ? 'طي سكشن الوارد له' : 'فتح سكشن الوارد له'}
+            >
+              {isInboundSectionOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Section Body (Visible when open) */}
+        {isInboundSectionOpen && (
+          <div className="p-4 sm:p-5 space-y-5">
+
+            {/* Active Ongoing Shift Notice (if shift is open right now) */}
+            {activeInboundShift && (
+              <div className="p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/90 dark:border-amber-900/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5 border border-amber-300/40">
+                    <Clock className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                      <span>وردية اليوم مفتوحة حالياً وقيد التسجيل</span>
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
+                        بدأت {activeInboundShift.startedAtTimeStr || 'اليوم'}
+                      </span>
+                    </h4>
+                    <p className="text-xs text-amber-700 dark:text-amber-300/90 mt-0.5">
+                      تم تسجيل <strong className="font-mono">{activeInboundShift.itemsCount}</strong> بند بإجمالي{' '}
+                      <strong className="font-mono text-emerald-600 dark:text-emerald-400">{formatCurrency(activeInboundShift.totalAmount)}</strong>{' '}
+                      (صافي مقدر: <strong className="font-mono">{formatCurrency(activeInboundShift.amountAfterCommission)}</strong>).{' '}
+                      عند انتهاء اليوم والضغط على "إنهاء اليوم وتصفير الكشف"، سيتم تثبيته كوردية رسمية هنا.
+                    </p>
+                  </div>
+                </div>
+
+                {onNavigateToInbound && (
+                  <button
+                    onClick={onNavigateToInbound}
+                    className="btn-interactive self-start md:self-auto shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors"
+                  >
+                    <span>إدارة الوردية / إنهاء اليوم</span>
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Aggregated Daily Summary if multiple shifts ended on this day */}
+            {inboundDaySummary && (
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <span>إجمالي كل ورديات اليوم ({inboundDaySummary.shiftsCount} ورديات مغلقة ومؤرشفة)</span>
+                  </span>
+                  <span className="text-xs font-mono font-bold text-slate-500">
+                    {inboundDaySummary.totalItemsCount} بند إجمالي
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                    <span className="text-[11px] text-slate-400 block mb-0.5">إجمالي الوارد لكافة الورديات</span>
+                    <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
+                      {formatCurrency(inboundDaySummary.totalAmount)}
+                    </span>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                    <span className="text-[11px] text-slate-400 block mb-0.5">إجمالي العمولات المحسوبة</span>
+                    <span className="text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
+                      {formatCurrency(inboundDaySummary.totalCommission)}
+                    </span>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                    <span className="text-[11px] text-slate-400 block mb-0.5">إجمالي الصافي النهائي</span>
+                    <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                      {formatCurrency(inboundDaySummary.totalNet)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* List of Closed Shifts for This Day */}
+            {dayInboundShifts.length > 0 ? (
+              <div className="space-y-4">
+                {dayInboundShifts.map((shift, shiftIndex) => {
+                  const isItemsExpanded = expandedShiftIds[shift.id] !== false; // Default expanded
+                  const shiftSearch = inboundItemSearch[shift.id] || '';
+                  
+                  // Filter items if searching
+                  const shiftItems = shift.items || [];
+                  const filteredItems = shiftSearch.trim()
+                    ? shiftItems.filter(it => 
+                        (it.label && it.label.toLowerCase().includes(shiftSearch.toLowerCase().trim())) ||
+                        String(it.amount).includes(shiftSearch.trim())
+                      )
+                    : shiftItems;
+
+                  return (
+                    <div 
+                      key={shift.id || shiftIndex} 
+                      className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 overflow-hidden space-y-4 p-4 sm:p-5 transition-all"
+                    >
+                      
+                      {/* Shift Top Bar: Info, Badges, Export & Print */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50">
+                            {dayInboundShifts.length > 1 ? `وردية #${shiftIndex + 1}` : 'الوردية الرسمية المعتمدة'}
+                          </span>
+
+                          {/* Time Span Badge */}
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-2xs font-mono">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <span>من {shift.startedAtTimeStr || '—'}</span>
+                            <span className="text-slate-400">إلى</span>
+                            <span>{shift.endedAtTimeStr || '—'}</span>
+                          </span>
+
+                          {/* Past Midnight End Badge */}
+                          {shift.isPastMidnightEnd && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-purple-100 text-purple-900 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-900/50">
+                              <Moon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                              <span>أغلقت بعد منتصف الليل ({shift.endedAtTimeStr}) ومحسوبة لليوم</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Shift Actions */}
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          <button
+                            onClick={() => handleExportInboundShift(shift)}
+                            className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-2xs"
+                            title="تصدير كشف الوردية كملف إكسل"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>تصدير إكسل</span>
+                          </button>
+
+                          <button
+                            onClick={() => window.print()}
+                            className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-2xs"
+                            title="طباعة تقرير الوردية"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-slate-500" />
+                            <span>طباعة</span>
+                          </button>
+
+                          <button
+                            onClick={() => toggleShiftItems(shift.id)}
+                            className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-200 dark:border-blue-800/80 shadow-2xs"
+                            title={isItemsExpanded ? 'إخفاء جدول البنود' : 'عرض جدول البنود'}
+                          >
+                            <span>البنود ({shiftItems.length})</span>
+                            {isItemsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* KPI Summary Cards Grid for this Shift */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-3.5">
+                        
+                        {/* 1. Total Inbound Amount */}
+                        <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                          <span className="text-[11px] sm:text-xs text-slate-400 font-bold block mb-1">
+                            إجمالي الوارد (له)
+                          </span>
+                          <div className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                            {formatCurrency(shift.totalAmount)}
+                          </div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
+                            المجموع قبل العمولة ({shift.itemsCount || shiftItems.length} بند)
+                          </span>
+                        </div>
+
+                        {/* 2. Commission Calculated */}
+                        <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                          <span className="text-[11px] sm:text-xs text-slate-400 font-bold block mb-1">
+                            العمولة المحسوبة
+                          </span>
+                          <div className={`text-lg sm:text-2xl font-black font-mono ${
+                            shift.commissionMode === 'add' 
+                              ? 'text-emerald-600 dark:text-emerald-400' 
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}>
+                            {shift.commissionMode === 'add' ? '+ ' : '- '}
+                            {formatCurrency(shift.commissionValue)}
+                          </div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block font-mono">
+                            {shift.commissionRate}
+                            {shift.commissionType === 'percentage' 
+                              ? '%' 
+                              : shift.commissionType === 'perThousand' 
+                              ? ' لكل 1000' 
+                              : ' ج.م'} ({shift.commissionMode === 'add' ? 'إضافة' : 'خصم'})
+                          </span>
+                        </div>
+
+                        {/* 3. Net Amount After Commission */}
+                        <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-emerald-200/90 dark:border-emerald-900/60 shadow-2xs bg-gradient-to-br from-emerald-50/20 to-transparent dark:from-emerald-950/10">
+                          <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-emerald-400 font-bold block mb-1">
+                            الصافي المطلوب (بعد العمولة)
+                          </span>
+                          <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                            {formatCurrency(shift.amountAfterCommission)}
+                          </div>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
+                            المبلغ النهائي المستحق عند التصفية
+                          </span>
+                        </div>
+
+                        {/* 4. Target & Difference or Shift Timing */}
+                        {shift.targetAmount && Number(shift.targetAmount) > 0 ? (
+                          <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                            <span className="text-[11px] sm:text-xs text-slate-400 font-bold block mb-1">
+                              المستهدف والفرق
+                            </span>
+                            <div className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-200 font-mono">
+                              {formatCurrency(shift.targetAmount)}
+                            </div>
+                            <span className={`text-[11px] font-bold mt-1 block font-mono ${
+                              shift.difference > 0 
+                                ? 'text-amber-600 dark:text-amber-400' 
+                                : shift.difference < 0 
+                                ? 'text-blue-600 dark:text-blue-400' 
+                                : 'text-emerald-600 dark:text-emerald-400'
+                            }`}>
+                              {shift.difference > 0 
+                                ? `متبقي عجز: ${formatCurrency(shift.difference)}` 
+                                : shift.difference < 0 
+                                ? `زيادة: ${formatCurrency(Math.abs(shift.difference))}` 
+                                : 'مطابق تماماً'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                            <span className="text-[11px] sm:text-xs text-slate-400 font-bold block mb-1">
+                              حالة وإغلاق الوردية
+                            </span>
+                            <div className="text-base sm:text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
+                              {shift.endedAtTimeStr || 'مقفلة'}
+                            </div>
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
+                              تم الأرشفة والتصفير بنجاح
+                            </span>
+                          </div>
+                        )}
+
+                      </div>
+
+                      {/* Collapsible Table of Inbound Items */}
+                      {isItemsExpanded && (
+                        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xs">
+                          
+                          {/* Inner Table Header with Search */}
+                          <div className="p-3 sm:p-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/70 dark:bg-slate-800/40">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-slate-400" />
+                              <h5 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-200">
+                                بيان البنود والمبالغ الواردة ({filteredItems.length} من {shiftItems.length})
+                              </h5>
+                            </div>
+
+                            {shiftItems.length > 5 && (
+                              <div className="relative w-full sm:w-64">
+                                <Search className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                  type="text"
+                                  placeholder="بحث في بنود الوردية..."
+                                  value={shiftSearch}
+                                  onChange={(e) => setInboundItemSearch(prev => ({ ...prev, [shift.id]: e.target.value }))}
+                                  className="w-full pl-3 pr-8 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                                {shiftSearch && (
+                                  <button
+                                    onClick={() => setInboundItemSearch(prev => ({ ...prev, [shift.id]: '' }))}
+                                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-slate-600"
+                                  >
+                                    مسح
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Items Table */}
+                          {filteredItems.length === 0 ? (
+                            <div className="py-8 text-center text-xs text-slate-400">
+                              {shiftSearch ? 'لا توجد بنود تطابق نص البحث' : 'لا توجد بنود مسجلة في هذه الوردية'}
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-right text-xs">
+                                <thead>
+                                  <tr className="bg-slate-50/50 dark:bg-slate-800/20 text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                                    <th className="py-2.5 px-3 w-12 text-center font-bold">#</th>
+                                    <th className="py-2.5 px-3 font-bold">البيان / ملاحظة العملية</th>
+                                    <th className="py-2.5 px-3 font-bold">المبلغ الوارد (ج.م)</th>
+                                    <th className="py-2.5 px-3 font-bold">توقيت التسجيل</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                                  {filteredItems.map((item, itemIdx) => (
+                                    <tr 
+                                      key={item.id || itemIdx}
+                                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                                    >
+                                      <td className="py-2.5 px-3 text-center text-slate-400 font-mono">
+                                        {itemIdx + 1}
+                                      </td>
+                                      <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">
+                                        {item.label ? (
+                                          <span>{item.label}</span>
+                                        ) : (
+                                          <span className="text-slate-400 font-normal italic">وارد بدون بيان</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-3 font-black text-slate-900 dark:text-white font-mono text-sm">
+                                        {formatCurrency(item.amount)}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400 font-mono">
+                                        {item.date ? formatTimeArabic(item.date) : '—'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold border-t border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
+                                    <td colSpan={2} className="py-2.5 px-3 text-left">
+                                      المجموع الإجمالي لبنود الوردية:
+                                    </td>
+                                    <td className="py-2.5 px-3 font-black font-mono text-sm">
+                                      {formatCurrency(shift.totalAmount)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-emerald-600 dark:text-emerald-400 font-mono">
+                                      الصافي: {formatCurrency(shift.amountAfterCommission)}
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          )}
+
+                        </div>
+                      )}
+
+                    </div>
+                  );
+                })}
+              </div>
+            ) : !activeInboundShift ? (
+              <div className="py-10 text-center px-4 bg-slate-50/60 dark:bg-slate-800/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                <ArrowDownToLine className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2.5" />
+                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  لا توجد وردية وارد له مقفلة مسجلة لهذا اليوم ({formatDateArabic(selectedDate)})
+                </h4>
+                <p className="text-xs text-slate-400 max-w-md mx-auto mb-3">
+                  يتم حفظ وتثبيت التقرير تلقائياً فور الضغط على "إنهاء اليوم وتصفير الكشف" في صفحة الوارد له، ويكون مرتبطاً باليوم المختار في التقويم.
+                </p>
+                {onNavigateToInbound && (
+                  <button
+                    onClick={onNavigateToInbound}
+                    className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>فتح حاسبة الوارد له</span>
+                  </button>
+                )}
+              </div>
+            ) : null}
+
+          </div>
+        )}
 
       </div>
 
