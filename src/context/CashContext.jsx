@@ -662,8 +662,7 @@ export function CashProvider({ children }) {
     return newTx;
   };
 
-  // Recharge / Add balance to wallet
-  // Rules: Max 120,000 EGP per day, total balance cannot exceed 200,000 EGP
+  // Recharge / Add balance to wallet (Open receiving, no daily limit)
   const addRecharge = ({ walletId, amount, notes = '', date = null }) => {
     const { client, wallet, isShopWallet } = findWalletAndClient(walletId);
     if (!wallet) {
@@ -678,16 +677,6 @@ export function CashProvider({ children }) {
     }
 
     const stats = calculateWalletStats(wallet, transactions);
-
-    if (isShopWallet) {
-      if (numAmount > stats.remainingDailyRecharge) {
-        showToast(
-          `عفواً، الحد الأقصى لإضافة الرصيد هو 120,000 ج.م في اليوم الواحد! المتبقي اليوم: ${formatCurrency(stats.remainingDailyRecharge)}`,
-          'error'
-        );
-        return null;
-      }
-    }
 
     const dateObj = date ? new Date(date) : new Date();
     const dateOnly = dateObj.toISOString().split('T')[0];
@@ -719,18 +708,42 @@ export function CashProvider({ children }) {
 
     triggerConfetti();
 
-    const walletCap = wallet.totalLimit || 200000;
-    if (limitAfter > walletCap) {
-      const overAmount = limitAfter - walletCap;
-      showToast(
-        `تم شحن الرصيد بنجاح بقيمة ${formatCurrency(numAmount)} - ⚠️ تنبيه: إجمالي الرصيد تجاوز الليميت المسموح (${formatCurrency(limitAfter)}، زيادة ${formatCurrency(overAmount)})`,
-        'warning'
-      );
+    if (!isShopWallet) {
+      // Client Wallet Rules Check (60k daily, 200k monthly)
+      const newDailyTotal = stats.todayRecharges + numAmount;
+      const newMonthTotal = stats.totalRecharges + numAmount;
+      const isOverDaily = newDailyTotal > 60000;
+      const isOverMonth = newMonthTotal > (wallet.totalLimit || 200000);
+
+      if (isOverDaily || isOverMonth) {
+        const warnings = [];
+        if (isOverDaily) warnings.push(`تجاوز الحد اليومي (${formatCurrency(newDailyTotal)} من 60 ألف)`);
+        if (isOverMonth) warnings.push(`تجاوز الليميت الشهري (${formatCurrency(newMonthTotal)} من 200 ألف)`);
+        showToast(
+          `تم شحن ${formatCurrency(numAmount)} للعميل بنجاح - ⚠️ تنبيه: ${warnings.join(' و ')}`,
+          'warning'
+        );
+      } else {
+        showToast(
+          `تم شحن الرصيد بنجاح بقيمة ${formatCurrency(numAmount)} للعميل (${client?.name || ''})`,
+          'success'
+        );
+      }
     } else {
-      showToast(
-        `تم شحن الرصيد بنجاح بقيمة ${formatCurrency(numAmount)} - الرصيد الجديد: ${formatCurrency(limitAfter)}`,
-        'success'
-      );
+      // Shop Wallet Toast
+      const walletCap = wallet.totalLimit || 200000;
+      if (limitAfter > walletCap) {
+        const overAmount = limitAfter - walletCap;
+        showToast(
+          `تم شحن الرصيد بنجاح بقيمة ${formatCurrency(numAmount)} - ⚠️ تنبيه: إجمالي الرصيد تجاوز الليميت (${formatCurrency(limitAfter)}، زيادة ${formatCurrency(overAmount)})`,
+          'warning'
+        );
+      } else {
+        showToast(
+          `تم شحن الرصيد بنجاح بقيمة ${formatCurrency(numAmount)} - الرصيد الجديد: ${formatCurrency(limitAfter)}`,
+          'success'
+        );
+      }
     }
 
     return newTx;

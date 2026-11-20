@@ -66,8 +66,8 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
 
   return (
     <>
-      {/* Top Sticky Header with 10px Top & Bottom Padding */}
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors duration-200 shadow-sm py-[10px]">
+      {/* Top Fixed Header with 10px Top & Bottom Padding */}
+      <header className="fixed top-0 inset-x-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors duration-200 shadow-sm py-[10px]">
         <div className="max-w-[1550px] mx-auto px-2 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between min-h-12 sm:min-h-14 gap-1.5 sm:gap-6">
             
@@ -246,6 +246,9 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
 
         </div>
       </header>
+
+      {/* Spacer to prevent page content from hiding under fixed navbar */}
+      <div className="h-[68px] sm:h-[76px] shrink-0" aria-hidden="true" />
 
       {/* Modern Fixed Bottom Navigation Bar for Mobile */}
       <nav className="fixed bottom-0 inset-x-0 z-40 lg:hidden w-full max-w-full overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/80 dark:border-slate-800/80 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.3)] pb-[env(safe-area-inset-bottom)]">

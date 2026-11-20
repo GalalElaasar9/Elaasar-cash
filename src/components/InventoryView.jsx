@@ -377,13 +377,13 @@ export default function InventoryView() {
       )}
       
       {/* Top Segmented Tab Switcher: Devices & Accessories vs Shop Phone Lines */}
-      <div className="flex items-center justify-between flex-wrap gap-3 bg-white dark:bg-slate-900 p-2 sm:p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="flex items-center gap-1.5 sm:gap-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-700/80 w-full sm:w-auto">
+      <div className="flex items-center justify-center my-1">
+        <div className="flex items-center justify-center gap-1.5 sm:gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs">
           <button
             onClick={() => setInventorySection('devices')}
-            className={`btn-interactive flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-all ${
+            className={`btn-interactive flex items-center justify-center gap-2 px-5 py-2 text-xs sm:text-sm font-black rounded-xl transition-all ${
               inventorySection === 'devices'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -396,9 +396,9 @@ export default function InventoryView() {
 
           <button
             onClick={() => setInventorySection('shop_wallets')}
-            className={`btn-interactive flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-all ${
+            className={`btn-interactive flex items-center justify-center gap-2 px-5 py-2 text-xs sm:text-sm font-black rounded-xl transition-all ${
               inventorySection === 'shop_wallets'
-                ? 'bg-red-600 text-white shadow-sm shadow-red-600/25'
+                ? 'bg-red-600 text-white shadow-xs shadow-red-600/25'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -411,37 +411,6 @@ export default function InventoryView() {
             </span>
           </button>
         </div>
-
-        {inventorySection === 'shop_wallets' && (
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <button
-              onClick={() => {
-                setModalData({
-                  clientId: 'shop',
-                  clientName: 'أرقام وخطوط المحل',
-                  isShopWallet: true
-                });
-                setActiveModal('transfer');
-              }}
-              className="btn-interactive flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-sm shadow-red-600/25"
-              title="تحويل كاش من خطوط المحل"
-            >
-              <Send className="w-4 h-4 rotate-180" />
-              <span>تحويل كاش من خطوط المحل</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setModalData({ isShopWallet: true });
-                setActiveModal('addWallet');
-              }}
-              className="btn-interactive flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة رقم جديد للمحل</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {inventorySection === 'devices' && (
@@ -1772,7 +1741,7 @@ export default function InventoryView() {
                       <button
                         onClick={() => handleShopRecharge(wallet)}
                         className="btn-interactive shrink-0 h-9 sm:h-10 px-2.5 sm:px-3 flex items-center justify-center gap-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 shadow-xs"
-                        title={`إضافة وشحن رصيد للخط (حتى 120,000 ج.م/يوم - متاح اليوم: ${formatCurrency(stats.remainingDailyRecharge)})`}
+                        title="إضافة وشحن رصيد للخط (شحن واستقبال مفتوح)"
                       >
                         <ArrowDownToLine className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         <span className="inline">شحن</span>

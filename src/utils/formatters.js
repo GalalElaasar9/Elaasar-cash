@@ -216,7 +216,7 @@ export function formatDateTimeArabic(dateStr) {
 
 export const DEFAULT_WALLET_LIMIT = 200000;
 export const DAILY_TRANSFER_OUT_LIMIT = 60000;
-export const DAILY_RECHARGE_LIMIT = 120000;
+export const DAILY_RECHARGE_LIMIT = Infinity;
 export const MAX_WALLET_BALANCE_CAP = 200000;
 
 /**
@@ -267,16 +267,16 @@ export function calculateWalletStats(wallet, transactions = [], targetMonth = nu
   const remainingDailyTransfer = Math.max(0, DAILY_TRANSFER_OUT_LIMIT - todayTransfersOut);
   const isDailyTransferExhausted = remainingDailyTransfer <= 0;
 
-  // 2. Daily Recharge / Deposit tracking (Max 120,000 EGP / day)
+  // 2. Daily Recharge / Deposit tracking (Open receiving, no daily limit)
   const todayRecharges = todayTx
     .filter(t => t.type === 'recharge' || t.type === 'limit_reset')
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  const remainingDailyRecharge = Math.max(0, DAILY_RECHARGE_LIMIT - todayRecharges);
+  const remainingDailyRecharge = Infinity;
   // Room in wallet to reach totalLimit (0 if already at or above cap)
   const roomInWallet = Math.max(0, totalLimit - remainingLimit);
-  // Shop lines can accept recharge up to remainingDailyRecharge (and can exceed totalLimit with a warning)
-  const maxAllowedDeposit = remainingDailyRecharge;
-  const isDailyRechargeExhausted = remainingDailyRecharge <= 0;
+  // Lines can accept recharge freely
+  const maxAllowedDeposit = Infinity;
+  const isDailyRechargeExhausted = false;
 
   // Status flags:
   // 1) RED / LOCKED: Limit is 0 or less (Exhausted / Ended - Wallet is locked!)
@@ -310,13 +310,24 @@ export function calculateWalletStats(wallet, transactions = [], targetMonth = nu
     remainingDailyTransfer, // 60,000 - todayTransfersOut
     isDailyTransferExhausted,
 
-    // Daily recharge stats
+    // Daily recharge stats (Open receiving)
     todayRecharges,
-    dailyRechargeLimit: DAILY_RECHARGE_LIMIT, // 120,000
-    remainingDailyRecharge, // 120,000 - todayRecharges
-    maxAllowedDeposit, // min(remainingDailyRecharge, 200,000 - remainingLimit)
-    isDailyRechargeExhausted,
+    dailyRechargeLimit: null,
+    remainingDailyRecharge: Infinity,
+    maxAllowedDeposit: Infinity,
+    isDailyRechargeExhausted: false,
     maxWalletBalanceCap: MAX_WALLET_BALANCE_CAP, // 200,000
+
+    // Client-specific recharge limits tracking (60k daily, 200k monthly)
+    clientDailyLimit: 60000,
+    remainingClientDaily: Math.max(0, 60000 - todayRecharges),
+    isClientDailyOver: todayRecharges > 60000,
+    clientDailyOverAmount: todayRecharges > 60000 ? todayRecharges - 60000 : 0,
+
+    clientMonthlyLimit: totalLimit || 200000,
+    remainingClientMonthly: Math.max(0, (totalLimit || 200000) - totalRecharges),
+    isClientMonthlyOver: totalRecharges > (totalLimit || 200000),
+    clientMonthlyOverAmount: totalRecharges > (totalLimit || 200000) ? totalRecharges - (totalLimit || 200000) : 0,
 
     nextResetDateShort: resetInfo.nextResetDateShort, // e.g. "1/12"
     nextResetDateFull: resetInfo.nextResetDateFull,
