@@ -1,0 +1,473 @@
+{
+  "version": 1,
+  "lastUpdated": "2026-11-20T13:17:18.143Z",
+  "shopInfo": {
+    "name": "الأعصر لخدمات المحمول",
+    "syncId": "elaasar_main"
+  },
+  "user": {
+    "displayName": "الأعصر كاش",
+    "email": "elaasar.cash@gmail.com"
+  },
+  "clients": [
+    {
+      "id": "client-1",
+      "name": "الحاج إبراهيم الأعصر",
+      "notes": "عميل مميز - تاجر تجزئة وجملة",
+      "createdAt": "2026-11-05T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-1-2",
+          "phoneNumber": "01011223344",
+          "label": "محفظة فرع المحطة",
+          "totalLimit": 60000,
+          "createdAt": "2026-11-10T08:30:00.000Z"
+        },
+        {
+          "id": "wallet-1-3",
+          "phoneNumber": "01055667788",
+          "label": "محفظة كبار العملاء (ليميت مخصص)",
+          "totalLimit": 60000,
+          "createdAt": "2026-11-15T08:30:00.000Z"
+        },
+        {
+          "id": "wallet-1-1",
+          "phoneNumber": "01098765432",
+          "label": "محفظة المبيعات المركزية",
+          "totalLimit": 60000,
+          "createdAt": "2026-11-05T08:30:00.000Z"
+        },
+        {
+          "id": "wallet-1795180618122",
+          "phoneNumber": "01099909123",
+          "label": "محفظة جديدة",
+          "totalLimit": 200000,
+          "createdAt": "2026-11-20T13:16:58.122Z"
+        }
+      ]
+    },
+    {
+      "id": "client-2",
+      "name": "شركة الأمل للتوزيع والتجارة",
+      "notes": "حساب توريدات يومية",
+      "createdAt": "2026-10-31T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-2-1",
+          "phoneNumber": "01023456789",
+          "label": "محفظة إدارة الحسابات",
+          "totalLimit": 60000,
+          "createdAt": "2026-10-31T08:30:00.000Z"
+        },
+        {
+          "id": "wallet-2-2",
+          "phoneNumber": "01034567890",
+          "label": "محفظة المشتريات الخارجية",
+          "totalLimit": 45000,
+          "createdAt": "2026-11-08T08:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "client-3",
+      "name": "أحمد محمود الصاوي",
+      "notes": "مكتب خدمات شحن ودفع إلكتروني",
+      "createdAt": "2026-11-12T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-3-1",
+          "phoneNumber": "01099887766",
+          "label": "محفظة التحويلات الفورية",
+          "totalLimit": 60000,
+          "createdAt": "2026-11-12T08:30:00.000Z"
+        }
+      ]
+    }
+  ],
+  "transactions": [
+    {
+      "id": "tx-1795180638139",
+      "walletId": "wallet-1795180618122",
+      "walletPhone": "01099909123",
+      "walletLabel": "محفظة جديدة",
+      "customerId": "client-1",
+      "customerName": "الحاج إبراهيم الأعصر",
+      "type": "transfer_out",
+      "amount": 60000,
+      "limitAfter": 140000,
+      "recipientPhone": "01088996655",
+      "transactionCode": "VF-230620",
+      "fee": 0,
+      "notes": "",
+      "date": "2026-11-20T13:17:00.000Z",
+      "dateOnly": "2026-11-20"
+    },
+    {
+      "id": "tx-1795176870237",
+      "walletId": "wallet-1-1",
+      "walletPhone": "01098765432",
+      "walletLabel": "محفظة المبيعات المركزية",
+      "customerId": "client-1",
+      "customerName": "الحاج إبراهيم الأعصر",
+      "type": "transfer_out",
+      "amount": 39500,
+      "limitAfter": 0,
+      "recipientPhone": "01032323232",
+      "transactionCode": "VF-293542",
+      "fee": 0,
+      "notes": "",
+      "date": "2026-11-20T12:13:00.000Z",
+      "dateOnly": "2026-11-20"
+    },
+    {
+      "id": "tx-101",
+      "walletId": "wallet-1-1",
+      "walletPhone": "01098765432",
+      "walletLabel": "محفظة المبيعات المركزية",
+      "customerId": "client-1",
+      "customerName": "الحاج إبراهيم الأعصر",
+      "type": "transfer_out",
+      "amount": 3500,
+      "recipientPhone": "01012344321",
+      "transactionCode": "VF-982341",
+      "fee": 10,
+      "notes": "تحويل دفعة بضاعة لمورد الأغذية",
+      "date": "2026-11-20T07:15:00.000Z",
+      "dateOnly": "2026-11-20"
+    },
+    {
+      "id": "tx-102",
+      "walletId": "wallet-1-1",
+      "walletPhone": "01098765432",
+      "walletLabel": "محفظة المبيعات المركزية",
+      "customerId": "client-1",
+      "customerName": "الحاج إبراهيم الأعصر",
+      "type": "transfer_out",
+      "amount": 8000,
+      "recipientPhone": "01088776655",
+      "transactionCode": "VF-982389",
+      "fee": 20,
+      "notes": "سداد فاتورة توريدات أجهزة",
+      "date": "2026-11-20T09:40:00.000Z",
+      "dateOnly": "2026-11-20"
+    },
+    {
+      "id": "tx-103",
+      "walletId": "wallet-1-2",
+      "walletPhone": "01011223344",
+      "walletLabel": "محفظة فرع المحطة",
+      "customerId": "client-1",
+      "customerName": "الحاج إبراهيم الأعصر",
+      "type": "transfer_out",
+      "amount": 1500,
+      "recipientPhone": "01066554433",
+      "transactionCode": "VF-982410",
+      "fee": 10,
+      "notes": "حوالة سريعة للفرع",
+      "date": "2026-11-20T11:20:00.000Z",
+      "dateOnly": "2026-11-20"
+    },
+    {
+      "id": "tx-104",
+      "walletId": "wallet-2-1",
+      "walletPhone": "01023456789",
+      "walletLabel": "محفظة إدارة الحسابات",
+      "customerId": "client-2",
+      "customerName": "شركة الأمل للتوزيع والتجارة",
+      "type": "transfer_out",
+      "amount": 12000,
+      "recipientPhone": "01044332211",
+      "transactionCode": "VF-982512",
+      "fee": 30,
+      "notes": "دفعة مستحقات شحن",
+      "date": "2026-11-20T12:55:00.000Z",
+      "dateOnly": "2026-11-20"
+    },
+    {
+      "id": "tx-105",
+      "walletId": "wallet-3-1",
+      "walletPhone": "01099887766",
+      "walletLabel": "محفظة التحويلات الفورية",
+      "customerId": "client-3",
+      "customerName": "أحمد محمود الصاوي",
+      "type": "transfer_out",
+      "amount": 5000,
+      "recipientPhone": "01022114455",
+      "transactionCode": "VF-982633",
+      "fee": 15,
+      "notes": "تحويل لتاجر جملة",
+      "date": "2026-11-20T14:10:00.000Z",
+      "dateOnly": "2026-11-20"
+    },
+    {
+      "id": "tx-106",
+      "walletId": "wallet-1-1",
+      "walletPhone": "01098765432",
+      "walletLabel": "محفظة المبيعات المركزية",
+      "customerId": "client-1",
+      "customerName": "الحاج إبراهيم الأعصر",
+      "type": "transfer_out",
+      "amount": 9000,
+      "recipientPhone": "01077665544",
+      "transactionCode": "VF-981105",
+      "fee": 20,
+      "notes": "تحويل بنكي / كاش لمورد",
+      "date": "2026-11-19T08:30:00.000Z",
+      "dateOnly": "2026-11-19"
+    },
+    {
+      "id": "tx-107",
+      "walletId": "wallet-2-2",
+      "walletPhone": "01034567890",
+      "walletLabel": "محفظة المشتريات الخارجية",
+      "customerId": "client-2",
+      "customerName": "شركة الأمل للتوزيع والتجارة",
+      "type": "transfer_out",
+      "amount": 4500,
+      "recipientPhone": "01033221199",
+      "transactionCode": "VF-981240",
+      "fee": 10,
+      "notes": "مشتريات مستلزمات مكتبية",
+      "date": "2026-11-19T13:20:00.000Z",
+      "dateOnly": "2026-11-19"
+    }
+  ],
+  "inventory": [
+    {
+      "id": "prod-1",
+      "category": "phones",
+      "name": "Samsung Galaxy A55 5G",
+      "brand": "سامسونج (Samsung)",
+      "storage": "256GB / 8GB RAM",
+      "costPrice": 16500,
+      "salePrice": 18200,
+      "minStockAlert": 5,
+      "notes": "ضمان محلي سنة معتمد من الوكيل - شاحن مجاني",
+      "createdAt": "2026-11-15T08:30:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1580910051074-3eb694886505?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&auto=format&fit=crop&q=80"
+      ],
+      "variants": [
+        {
+          "color": "أزرق ثلجي",
+          "hex": "#38bdf8",
+          "quantity": 3
+        },
+        {
+          "color": "أسود كحلي",
+          "hex": "#0f172a",
+          "quantity": 4
+        },
+        {
+          "color": "أصفر ليموني",
+          "hex": "#facc15",
+          "quantity": 3
+        }
+      ],
+      "totalQuantity": 10
+    },
+    {
+      "id": "prod-2",
+      "category": "phones",
+      "name": "Apple iPhone 15",
+      "brand": "آبل (Apple)",
+      "storage": "128GB",
+      "costPrice": 35000,
+      "salePrice": 37400,
+      "minStockAlert": 5,
+      "notes": "نسخة دولية أصلية جديدة متبرشمة بضمان آبل",
+      "createdAt": "2026-11-16T08:30:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=600&auto=format&fit=crop&q=80"
+      ],
+      "variants": [
+        {
+          "color": "أزرق سماوي",
+          "hex": "#60a5fa",
+          "quantity": 2
+        },
+        {
+          "color": "أسود فحمي",
+          "hex": "#18181b",
+          "quantity": 1
+        },
+        {
+          "color": "وردي هادئ",
+          "hex": "#f472b6",
+          "quantity": 1
+        }
+      ],
+      "totalQuantity": 4
+    },
+    {
+      "id": "prod-3",
+      "category": "phones",
+      "name": "Xiaomi Redmi Note 13 4G",
+      "brand": "شاومي (Xiaomi)",
+      "storage": "128GB / 6GB RAM",
+      "costPrice": 7400,
+      "salePrice": 8200,
+      "minStockAlert": 5,
+      "notes": "الأكثر مبيعاً - شاشة AMOLED 120Hz",
+      "createdAt": "2026-11-12T08:30:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1565849904461-04a58ad377e0?w=600&auto=format&fit=crop&q=80"
+      ],
+      "variants": [
+        {
+          "color": "أسود كلاسيك",
+          "hex": "#1e293b",
+          "quantity": 5
+        },
+        {
+          "color": "أزرق ثلجي",
+          "hex": "#0284c7",
+          "quantity": 4
+        },
+        {
+          "color": "أخضر نعناعي",
+          "hex": "#10b981",
+          "quantity": 3
+        }
+      ],
+      "totalQuantity": 12
+    },
+    {
+      "id": "prod-4",
+      "category": "phones",
+      "name": "Realme C67 4G",
+      "brand": "ريلمي (Realme)",
+      "storage": "256GB / 8GB RAM",
+      "costPrice": 7100,
+      "salePrice": 7900,
+      "minStockAlert": 5,
+      "notes": "كاميرا 108 ميجابكسل وشحن سريع 33W",
+      "createdAt": "2026-11-17T08:30:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1585060544812-6b45742d762f?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1574944985070-8f3ebc6b79d2?w=600&auto=format&fit=crop&q=80"
+      ],
+      "variants": [
+        {
+          "color": "أخضر واحة",
+          "hex": "#15803d",
+          "quantity": 1
+        },
+        {
+          "color": "أسود صخري",
+          "hex": "#1e293b",
+          "quantity": 1
+        }
+      ],
+      "totalQuantity": 2
+    },
+    {
+      "id": "prod-5",
+      "category": "accessories",
+      "name": "شاحن سامسونج سريع 25W Type-C أصلي",
+      "brand": "سامسونج (Samsung)",
+      "storage": "Super Fast Charging",
+      "costPrice": 380,
+      "salePrice": 550,
+      "minStockAlert": 5,
+      "notes": "رأس شاحن أصلي معتمد يدعم شحن فائق السرعة",
+      "createdAt": "2026-11-08T08:30:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1609592424109-dd9892f1b177?w=600&auto=format&fit=crop&q=80"
+      ],
+      "variants": [
+        {
+          "color": "أبيض ناصع",
+          "hex": "#ffffff",
+          "quantity": 8
+        },
+        {
+          "color": "أسود ملكي",
+          "hex": "#0f172a",
+          "quantity": 7
+        }
+      ],
+      "totalQuantity": 15
+    },
+    {
+      "id": "prod-6",
+      "category": "accessories",
+      "name": "سماعة Anker Soundcore R50i TWS الأصلية",
+      "brand": "أنكر (Anker)",
+      "storage": "بلوتوث 5.3",
+      "costPrice": 750,
+      "salePrice": 990,
+      "minStockAlert": 5,
+      "notes": "صوت بيز قوي وبطارية 30 ساعة مع العلبة",
+      "createdAt": "2026-11-10T08:30:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?w=600&auto=format&fit=crop&q=80"
+      ],
+      "variants": [
+        {
+          "color": "أسود مطفي",
+          "hex": "#18181b",
+          "quantity": 2
+        },
+        {
+          "color": "أبيض عاجي",
+          "hex": "#f8fafc",
+          "quantity": 1
+        },
+        {
+          "color": "كحلي داكن",
+          "hex": "#1e3a8a",
+          "quantity": 1
+        }
+      ],
+      "totalQuantity": 4
+    },
+    {
+      "id": "prod-8",
+      "category": "accessories",
+      "name": "اسكرينات حماية سيراميك / زجاج 11D لجميع الهواتف",
+      "brand": "عام (Universal)",
+      "storage": "صلابة 9H ضد الكسر",
+      "costPrice": 20,
+      "salePrice": 50,
+      "minStockAlert": 10,
+      "notes": "مجموعة شاملة لكافة أجهزة آيفون وسامسونج وشاومي",
+      "createdAt": "2026-11-06T08:30:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80"
+      ],
+      "variants": [
+        {
+          "color": "شفاف عالي النقاء",
+          "hex": "#e2e8f0",
+          "quantity": 29
+        },
+        {
+          "color": "خصوصية (ضد التجسس)",
+          "hex": "#334155",
+          "quantity": 18
+        }
+      ],
+      "totalQuantity": 47
+    }
+  ],
+  "inboundLedger": [
+    {
+      "id": "inbound-1",
+      "amount": 5000,
+      "date": "2026-11-20T02:36:26.918Z"
+    },
+    {
+      "id": "inbound-2",
+      "amount": 10000,
+      "date": "2026-11-20T02:36:26.918Z"
+    }
+  ]
+}

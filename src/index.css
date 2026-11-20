@@ -1,0 +1,334 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: rgb(226 232 240 / 0.8);
+  }
+  
+  html, body, #root {
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+  }
+
+  body {
+    font-family: 'Cairo', 'Tajawal', system-ui, -apple-system, sans-serif;
+    direction: rtl;
+    text-align: right;
+    font-feature-settings: "lnum" 1;
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+
+  /* Modern Dialog styling adhering to modern-web-guidance */
+  dialog:modal {
+    overscroll-behavior: contain;
+  }
+
+  dialog::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    animation: backdropFade 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Desktop Modal Scale-In Animation */
+  dialog[open] {
+    animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Mobile Bottom Sheet (Transforms all popups/modals into native bottom sheets on mobile) */
+  @media (max-width: 639px) {
+    dialog[open] {
+      position: fixed !important;
+      inset-block-start: auto !important;
+      inset-block-end: 0px !important;
+      inset-inline-start: 0px !important;
+      inset-inline-end: 0px !important;
+      top: auto !important;
+      bottom: 0px !important;
+      left: 0px !important;
+      right: 0px !important;
+      margin: 0 !important;
+      margin-top: auto !important;
+      margin-bottom: 0 !important;
+      width: 100% !important;
+      max-width: 100vw !important;
+      max-height: 90dvh !important;
+      max-height: 90vh !important;
+      border-bottom-left-radius: 0 !important;
+      border-bottom-right-radius: 0 !important;
+      border-top-left-radius: 1.75rem !important;
+      border-top-right-radius: 1.75rem !important;
+      border-left: 0 !important;
+      border-right: 0 !important;
+      border-bottom: 0 !important;
+      box-shadow: 0 -12px 40px -5px rgba(0, 0, 0, 0.35) !important;
+      animation: bottomSheetSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    }
+
+    /* Subtle native drag handle indicator at top of bottom sheet */
+    dialog[open]::before {
+      content: '';
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 38px;
+      height: 4.5px;
+      border-radius: 9999px;
+      background: rgba(148, 163, 184, 0.5);
+      z-index: 60;
+      pointer-events: none;
+    }
+
+    /* Scrollable form/body inside bottom sheet with iOS touch momentum */
+    dialog[open] form,
+    dialog[open] .modal-scroll-area,
+    dialog[open] > div.overflow-y-auto,
+    dialog[open] form.overflow-y-auto,
+    dialog[open] > div:nth-child(2) {
+      max-height: calc(90dvh - 85px) !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      padding-bottom: max(1.5rem, env(safe-area-inset-bottom)) !important;
+    }
+  }
+}
+
+@keyframes bottomSheetSlideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes backdropFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Page / Tab View Glide-In Transition */
+@keyframes viewFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-view-fade {
+  animation: viewFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Popover & Floating Dropdown Scale-In */
+@keyframes popoverScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-popover {
+  animation: popoverScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Springy Toast Notification Bounce */
+@keyframes toastBounceIn {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.92);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-toast {
+  animation: toastBounceIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Subtle Pulse Glow for Live Indicators */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(225, 29, 72, 0);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+/* Accordion Smooth Collapse & Expand */
+.accordion-wrapper {
+  display: grid;
+  transition: grid-template-rows 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  will-change: grid-template-rows, opacity;
+}
+
+.accordion-wrapper.collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.accordion-wrapper.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.accordion-wrapper.expanded .accordion-inner {
+  overflow: visible;
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Global Theme & Element Transitions */
+body, header, nav, main, footer, dialog, .card-hover {
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), 
+              border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), 
+              color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Input, select, and textarea smooth focus transitions */
+input, select, textarea {
+  transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
+              background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Table rows smooth hover transition */
+tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+/* Smooth transitions on interactive buttons & pills */
+.btn-interactive {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.btn-interactive:hover {
+  transform: translateY(-2px);
+}
+
+.btn-interactive:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+.card-hover {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, box-shadow;
+}
+
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px -6px rgba(0, 0, 0, 0.08), 0 8px 14px -8px rgba(0, 0, 0, 0.04);
+}
+
+.dark .card-hover:hover {
+  box-shadow: 0 14px 30px -6px rgba(0, 0, 0, 0.45), 0 8px 14px -8px rgba(0, 0, 0, 0.3);
+}
+
+/* Accessibility: Respect user reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Print styles for receipts and daily reports */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
