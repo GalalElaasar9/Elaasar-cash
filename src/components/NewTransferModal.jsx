@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useCash } from '../context/CashContext';
 import { 
   formatCurrency, 
@@ -22,12 +22,15 @@ import {
   Hash, 
   ArrowDownRight,
   Lock,
-  Calendar
+  Calendar,
+  Store,
+  Smartphone
 } from 'lucide-react';
 
 export default function NewTransferModal() {
   const { 
     clients, 
+    shopWallets = [],
     transactions, 
     activeModal, 
     setActiveModal, 
@@ -40,6 +43,7 @@ export default function NewTransferModal() {
   const dialogRef = useRef(null);
 
   // Form states
+  const [sourceType, setSourceType] = useState('client'); // 'shop' | 'client'
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedWalletId, setSelectedWalletId] = useState('');
   const [amount, setAmount] = useState('');
@@ -50,22 +54,35 @@ export default function NewTransferModal() {
   const [customDate, setCustomDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto-generate transaction code on modal open
+  // Auto-generate transaction code on modal open and handle source line isolation
   useEffect(() => {
     if (activeModal === 'transfer') {
       const randomCode = `VF-${Math.floor(100000 + Math.random() * 900000)}`;
       setTransactionCode(randomCode);
 
-      // Pre-fill from modalData if opened from a specific wallet
-      if (modalData?.clientId) {
-        setSelectedClientId(modalData.clientId);
+      const isShop = Boolean(modalData?.isShopWallet || modalData?.clientId === 'shop');
+      if (isShop) {
+        setSourceType('shop');
+        setSelectedClientId('shop');
         if (modalData?.walletId) {
           setSelectedWalletId(modalData.walletId);
+        } else if (shopWallets.length > 0) {
+          setSelectedWalletId(shopWallets[0].id);
+        } else {
+          setSelectedWalletId('');
         }
-      } else if (clients.length > 0) {
-        setSelectedClientId(clients[0].id);
-        if (clients[0].wallets?.length > 0) {
-          setSelectedWalletId(clients[0].wallets[0].id);
+      } else {
+        setSourceType('client');
+        if (modalData?.clientId && modalData.clientId !== 'shop') {
+          setSelectedClientId(modalData.clientId);
+          if (modalData?.walletId) {
+            setSelectedWalletId(modalData.walletId);
+          }
+        } else if (clients.length > 0) {
+          setSelectedClientId(clients[0].id);
+          if (clients[0].wallets?.length > 0) {
+            setSelectedWalletId(clients[0].wallets[0].id);
+          }
         }
       }
 
@@ -76,11 +93,19 @@ export default function NewTransferModal() {
         .slice(0, 16);
       setCustomDate(localIso);
     }
-  }, [activeModal, modalData, clients]);
+  }, [activeModal, modalData, clients, shopWallets]);
 
-  // When selected client changes, auto-select first wallet if current is not in client
+  // When source type or selected client changes, auto-select first wallet if needed
   useEffect(() => {
-    if (selectedClientId) {
+    if (sourceType === 'shop') {
+      if (!shopWallets.some(w => w.id === selectedWalletId)) {
+        if (shopWallets.length > 0) {
+          setSelectedWalletId(shopWallets[0].id);
+        } else {
+          setSelectedWalletId('');
+        }
+      }
+    } else if (selectedClientId && selectedClientId !== 'shop') {
       const client = clients.find(c => c.id === selectedClientId);
       const wallets = client?.wallets || [];
       if (!wallets.some(w => w.id === selectedWalletId)) {
@@ -91,7 +116,7 @@ export default function NewTransferModal() {
         }
       }
     }
-  }, [selectedClientId, clients, selectedWalletId]);
+  }, [sourceType, selectedClientId, clients, shopWallets, selectedWalletId]);
 
   // Manage native <dialog>
   useEffect(() => {
@@ -124,9 +149,25 @@ export default function NewTransferModal() {
     setFee('');
   };
 
+  const isShopMode = sourceType === 'shop';
+
   // Find currently selected wallet and client
-  const currentClient = clients.find(c => c.id === selectedClientId);
-  const currentWallet = currentClient?.wallets?.find(w => w.id === selectedWalletId);
+  const currentWallet = useMemo(() => {
+    if (isShopMode) {
+      return (shopWallets || []).find(w => w.id === selectedWalletId);
+    } else {
+      const client = clients.find(c => c.id === selectedClientId);
+      return client?.wallets?.find(w => w.id === selectedWalletId);
+    }
+  }, [isShopMode, shopWallets, clients, selectedWalletId, selectedClientId]);
+
+  const currentClient = useMemo(() => {
+    if (isShopMode) {
+      return { id: 'shop', name: 'أرقام وخطوط المحل' };
+    }
+    return clients.find(c => c.id === selectedClientId);
+  }, [isShopMode, clients, selectedClientId]);
+
   const walletStats = currentWallet ? calculateWalletStats(currentWallet, transactions) : null;
 
   // Real-time limit math
@@ -147,7 +188,7 @@ export default function NewTransferModal() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedWalletId) {
-      showToast('يرجى اختيار رقم المحفظة المحول منها', 'error');
+      showToast(isShopMode ? 'يرجى اختيار خط المحل المحول منه' : 'يرجى اختيار رقم المحفظة المحول منها', 'error');
       return;
     }
 
@@ -217,14 +258,20 @@ export default function NewTransferModal() {
       <div className="p-5 sm:p-6 bg-gradient-to-r from-red-600 to-rose-700 text-white flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-2xl bg-white/15 backdrop-blur-md">
-            <Send className="w-5 h-5 rotate-180" />
+            {isShopMode ? (
+              <Store className="w-5 h-5" />
+            ) : (
+              <Send className="w-5 h-5 rotate-180" />
+            )}
           </div>
           <div>
             <h2 id="transfer-modal-title" className="text-lg sm:text-xl font-black">
-              تسجيل تحويل فودافون كاش جديد
+              {isShopMode ? 'تحويل كاش من خطوط المحل' : 'تسجيل تحويل فودافون كاش جديد'}
             </h2>
             <p className="text-xs text-red-100 mt-0.5">
-              يتم خصم المبلغ مباشرة وتحديث المتبقي من الليميت فوراً
+              {isShopMode
+                ? 'خصم فوري ومباشر من خط المحل المحدد ومراقبة حد اليوم والشهر'
+                : 'يتم خصم المبلغ مباشرة وتحديث المتبقي من الليميت فوراً'}
             </p>
           </div>
         </div>
@@ -241,53 +288,118 @@ export default function NewTransferModal() {
       {/* Form Content */}
       <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
         
-        {/* Step 1: Select Client & Wallet */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-          
-          {/* Customer select */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-red-600" />
-              <span>العميل</span>
-            </label>
-            <select
-              value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
-              className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-red-500/50"
-              required
+        {/* Source Type Toggle (Only if opened generally without pre-selection) */}
+        {!modalData?.isShopWallet && !modalData?.clientId && (
+          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setSourceType('shop')}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                isShopMode
+                  ? 'bg-red-600 text-white shadow-xs font-black'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
             >
-              {clients.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.wallets?.length || 0} أرقام)
-                </option>
-              ))}
-            </select>
+              <Store className="w-3.5 h-3.5" />
+              <span>خطوط المحل ({shopWallets.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSourceType('client')}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                !isShopMode
+                  ? 'bg-red-600 text-white shadow-xs font-black'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>خطوط العملاء ({clients.length})</span>
+            </button>
           </div>
+        )}
 
-          {/* Wallet Number select */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5 text-red-600" />
-              <span>الرقم المحول منه (المحفظة)</span>
-            </label>
-            <select
-              value={selectedWalletId}
-              onChange={(e) => setSelectedWalletId(e.target.value)}
-              className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-red-500/50"
-              required
-            >
-              {currentClient?.wallets?.map(w => {
-                const s = calculateWalletStats(w, transactions);
-                return (
-                  <option key={w.id} value={w.id}>
-                    {w.phoneNumber} - {w.label} {s.isExhausted ? `[⛔ منتهي 0 ج.م - يتجدد ${s.nextResetDateShort}]` : `(متبقي: ${formatCurrency(s.remainingLimit)})`}
+        {/* Step 1: Select Source Line */}
+        {isShopMode ? (
+          <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Store className="w-4 h-4 text-red-600" />
+                <span>اختر خط المحل المحول منه:</span>
+              </label>
+              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-900/50">
+                خطوط المحل فقط ({shopWallets.length} خط)
+              </span>
+            </div>
+
+            {shopWallets.length === 0 ? (
+              <div className="text-center py-4 text-xs font-bold text-amber-600 dark:text-amber-400">
+                لا توجد خطوط مسجلة للمحل حالياً. يمكنك إضافة خط جديد من تبويب المخزون &gt; أرقام وخطوط المحل.
+              </div>
+            ) : (
+              <select
+                value={selectedWalletId}
+                onChange={(e) => setSelectedWalletId(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                required
+              >
+                {shopWallets.map(w => {
+                  const s = calculateWalletStats(w, transactions);
+                  const carrier = getEgyptianCarrier(w.phoneNumber);
+                  return (
+                    <option key={w.id} value={w.id}>
+                      {w.phoneNumber} ({carrier?.name || 'شبكة'}) - {w.label || 'خط المحل'} {s.isLocked ? `[🔒 مقفول لتجاوز الليميت الشهري]` : s.isDailyTransferExhausted ? `[🔒 اكتمل حد اليوم 60 ألف]` : `(متاح للتحويل: ${formatCurrency(s.remainingLimit)})`}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            {/* Customer select */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-red-600" />
+                <span>العميل</span>
+              </label>
+              <select
+                value={selectedClientId}
+                onChange={(e) => setSelectedClientId(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                required
+              >
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.wallets?.length || 0} أرقام)
                   </option>
-                );
-              })}
-            </select>
-          </div>
+                ))}
+              </select>
+            </div>
 
-        </div>
+            {/* Wallet Number select */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-red-600" />
+                <span>الرقم المحول منه (المحفظة)</span>
+              </label>
+              <select
+                value={selectedWalletId}
+                onChange={(e) => setSelectedWalletId(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                required
+              >
+                {currentClient?.wallets?.map(w => {
+                  const s = calculateWalletStats(w, transactions);
+                  return (
+                    <option key={w.id} value={w.id}>
+                      {w.phoneNumber} - {w.label} (متبقي: {formatCurrency(s.remainingLimit)})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Live Calculation Banner - Deduct directly from limit & display remaining */}
         {walletStats && (

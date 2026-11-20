@@ -413,16 +413,34 @@ export default function InventoryView() {
         </div>
 
         {inventorySection === 'shop_wallets' && (
-          <button
-            onClick={() => {
-              setModalData({ isShopWallet: true });
-              setActiveModal('addWallet');
-            }}
-            className="btn-interactive w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-sm shadow-red-600/25"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة رقم جديد للمحل</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => {
+                setModalData({
+                  clientId: 'shop',
+                  clientName: 'أرقام وخطوط المحل',
+                  isShopWallet: true
+                });
+                setActiveModal('transfer');
+              }}
+              className="btn-interactive flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-sm shadow-red-600/25"
+              title="تحويل كاش من خطوط المحل"
+            >
+              <Send className="w-4 h-4 rotate-180" />
+              <span>تحويل كاش من خطوط المحل</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setModalData({ isShopWallet: true });
+                setActiveModal('addWallet');
+              }}
+              className="btn-interactive flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة رقم جديد للمحل</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -1382,16 +1400,34 @@ export default function InventoryView() {
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                setModalData({ isShopWallet: true });
-                setActiveModal('addWallet');
-              }}
-              className="btn-interactive flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-sm shadow-red-600/25 shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة رقم جديد للمحل</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setModalData({
+                    clientId: 'shop',
+                    clientName: 'أرقام وخطوط المحل',
+                    isShopWallet: true
+                  });
+                  setActiveModal('transfer');
+                }}
+                className="btn-interactive flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-sm shadow-red-600/25"
+                title="تسجيل تحويل كاش من أحد خطوط المحل"
+              >
+                <Send className="w-4 h-4 rotate-180" />
+                <span>تحويل كاش من خطوط المحل</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setModalData({ isShopWallet: true });
+                  setActiveModal('addWallet');
+                }}
+                className="btn-interactive flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة رقم جديد للمحل</span>
+              </button>
+            </div>
           </div>
 
           {/* 2. Top KPI Summary Cards */}
