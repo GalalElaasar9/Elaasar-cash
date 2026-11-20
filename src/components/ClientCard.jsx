@@ -421,7 +421,6 @@ export default function ClientCard({ client }) {
                                 ))
                               )}
                             </div>
-
                             {/* Popover Footer */}
                             {walletTxList.length > 0 && (
                               <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
@@ -434,7 +433,6 @@ export default function ClientCard({ client }) {
                           </div>
                         </>
                       )}
-
                     </div>
                   );
                 })}
@@ -443,7 +441,6 @@ export default function ClientCard({ client }) {
               {/* Wallets Pagination Bar (Displayed when client has > 3 wallets) */}
               {wallets.length > WALLETS_PER_PAGE && (
                 <div className="bg-slate-50/80 dark:bg-slate-800/40 rounded-xl p-2.5 sm:p-3 border border-slate-200/80 dark:border-slate-700/70 flex flex-col sm:flex-row items-center justify-between gap-2.5 mt-2">
-                  
                   {/* Range Info */}
                   <div className="text-xs font-bold text-slate-500 dark:text-slate-400 text-center sm:text-right">
                     <span>عرض الأرقام من </span>
