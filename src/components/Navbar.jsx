@@ -17,7 +17,8 @@ import {
   Smartphone,
   Package,
   AlertTriangle,
-  Trash2
+  Trash2,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearchQuery }) {
@@ -36,6 +37,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
 
   const navItems = [
     { id: 'clients', label: 'العملاء', shortLabel: 'العملاء', icon: Wallet },
+    { id: 'accounts', label: 'حسابات العملاء', shortLabel: 'الحسابات', icon: FileSpreadsheet, isEmerald: true },
     { 
       id: 'daily', 
       label: 'سجل اليوم', 
@@ -96,7 +98,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
                   >
                     <Icon className={`w-4 h-4 shrink-0 ${
                       isActive 
-                        ? (item.isBlue ? 'text-blue-600 dark:text-blue-400' : item.isRose ? 'text-rose-600 dark:text-rose-400' : 'text-red-600 dark:text-red-400')
+                        ? (item.isEmerald ? 'text-emerald-600 dark:text-emerald-400' : item.isBlue ? 'text-blue-600 dark:text-blue-400' : item.isRose ? 'text-rose-600 dark:text-rose-400' : 'text-red-600 dark:text-red-400')
                         : 'text-slate-400 dark:text-slate-500'
                     }`} />
                     <span className="leading-none whitespace-nowrap">{item.label}</span>
@@ -252,7 +254,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
 
       {/* Modern Fixed Bottom Navigation Bar for Mobile */}
       <nav className="fixed bottom-0 inset-x-0 z-40 lg:hidden w-full max-w-full overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/80 dark:border-slate-800/80 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.3)] pb-[env(safe-area-inset-bottom)]">
-        <div className="grid grid-cols-7 h-14 w-full max-w-full px-0.5">
+        <div className="grid grid-flow-col auto-cols-fr h-14 w-full max-w-full px-0.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -264,7 +266,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
                 onClick={() => setActiveTab(item.id)}
                 className={`flex flex-col items-center justify-center py-1 px-0.5 min-w-0 max-w-full overflow-hidden relative transition-all duration-150 active:scale-95 ${
                   isActive 
-                    ? (item.isBlue ? 'text-blue-600 dark:text-blue-400 font-black' : item.isRose ? 'text-rose-600 dark:text-rose-400 font-black' : 'text-red-600 dark:text-red-500 font-black')
+                    ? (item.isEmerald ? 'text-emerald-600 dark:text-emerald-400 font-black' : item.isBlue ? 'text-blue-600 dark:text-blue-400 font-black' : item.isRose ? 'text-rose-600 dark:text-rose-400 font-black' : 'text-red-600 dark:text-red-500 font-black')
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
@@ -285,7 +287,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
 
                 {isActive && (
                   <span className={`w-1 h-1 rounded-full mt-0.5 shrink-0 ${
-                    item.isBlue ? 'bg-blue-600 dark:bg-blue-400' : item.isRose ? 'bg-rose-600 dark:bg-rose-400' : 'bg-red-600 dark:bg-red-500'
+                    item.isEmerald ? 'bg-emerald-600 dark:bg-emerald-400' : item.isBlue ? 'bg-blue-600 dark:bg-blue-400' : item.isRose ? 'bg-rose-600 dark:bg-rose-400' : 'bg-red-600 dark:bg-red-500'
                   }`} />
                 )}
               </button>

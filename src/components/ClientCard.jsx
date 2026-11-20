@@ -28,12 +28,15 @@ import {
   Calendar,
   CheckCircle2,
   X,
-  ArrowDownToLine
+  ArrowDownToLine,
+  Percent,
+  Calculator
 } from 'lucide-react';
 
 export default function ClientCard({ client }) {
   const {
     transactions,
+    updateClient,
     setActiveModal,
     setModalData,
     deleteClient,
@@ -46,6 +49,163 @@ export default function ClientCard({ client }) {
   const [copiedPhone, setCopiedPhone] = useState(null);
   const [activeHistoryWalletId, setActiveHistoryWalletId] = useState(null);
   const [walletPage, setWalletPage] = useState(1);
+
+  // Selected time range for client total recharges: 'today' | 'month' | 'all'
+  const [timeRange, setTimeRange] = useState(() => {
+    try {
+      return localStorage.getItem(`elaasar_client_timerange_${client.id}`) || 'today';
+    } catch {
+      return 'today';
+    }
+  });
+
+  // Commission mode for this client: 'add' (إضافة) | 'deduct' (خصم)
+  const [commissionMode, setCommissionMode] = useState(() => {
+    if (client.commissionMode) return client.commissionMode;
+    try {
+      return localStorage.getItem(`elaasar_client_commission_mode_${client.id}`) || 'deduct';
+    } catch {
+      return 'deduct';
+    }
+  });
+
+  // Commission multiplier factor for this client (e.g. 0.995 for discount or 1.005 for markup)
+  const [commissionPercent, setCommissionPercent] = useState(() => {
+    if (client.commissionPercent !== undefined && client.commissionPercent !== null && client.commissionPercent !== '') {
+      return String(client.commissionPercent);
+    }
+    try {
+      const saved = localStorage.getItem(`elaasar_client_commission_${client.id}`);
+      if (saved !== null && saved !== '') return saved;
+      return '0.995';
+    } catch {
+      return '0.995';
+    }
+  });
+
+  // Toggle between deduct and add while updating the multiplier factor (0.995 <-> 1.005)
+  const handleToggleMode = () => {
+    const nextMode = commissionMode === 'add' ? 'deduct' : 'add';
+    setCommissionMode(nextMode);
+
+    const currentNum = Number(commissionPercent);
+    if (!isNaN(currentNum) && currentNum > 0) {
+      if (nextMode === 'add' && currentNum < 1 && currentNum > 0.8) {
+        const diff = 1 - currentNum;
+        const newFactor = (1 + diff).toFixed(4).replace(/\.?0+$/, '');
+        setCommissionPercent(newFactor);
+      } else if (nextMode === 'deduct' && currentNum > 1 && currentNum < 1.2) {
+        const diff = currentNum - 1;
+        const newFactor = (1 - diff).toFixed(4).replace(/\.?0+$/, '');
+        setCommissionPercent(newFactor);
+      }
+    }
+  };
+
+  // Keep state in sync if client object is updated from ClientAccountsView
+  useEffect(() => {
+    if (client.commissionMode && client.commissionMode !== commissionMode) {
+      setCommissionMode(client.commissionMode);
+    }
+  }, [client.commissionMode]);
+
+  useEffect(() => {
+    if (client.commissionPercent !== undefined && String(client.commissionPercent) !== commissionPercent) {
+      setCommissionPercent(String(client.commissionPercent));
+    }
+  }, [client.commissionPercent]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`elaasar_client_timerange_${client.id}`, timeRange);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [client.id, timeRange]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`elaasar_client_commission_mode_${client.id}`, commissionMode);
+      if (client.commissionMode !== commissionMode) {
+        updateClient(client.id, { commissionMode });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [client.id, commissionMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`elaasar_client_commission_${client.id}`, commissionPercent);
+      const num = Number(commissionPercent) || 0;
+      if (client.commissionPercent !== num) {
+        updateClient(client.id, { commissionPercent: num });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [client.id, commissionPercent]);
+
+  // Client wallets
+  const wallets = client.wallets || [];
+  const WALLETS_PER_PAGE = 3;
+  const totalWalletPages = Math.ceil(wallets.length / WALLETS_PER_PAGE) || 1;
+  const validWalletPage = Math.min(Math.max(1, walletPage), totalWalletPages);
+
+  const paginatedWallets = useMemo(() => {
+    const startIndex = (validWalletPage - 1) * WALLETS_PER_PAGE;
+    return wallets.slice(startIndex, startIndex + WALLETS_PER_PAGE);
+  }, [wallets, validWalletPage]);
+
+  // Calculations for total amounts entered into client lines (recharges)
+  const clientWalletIds = useMemo(() => new Set(wallets.map(w => w.id)), [wallets]);
+
+  const clientStats = useMemo(() => {
+    let today = 0;
+    let month = 0;
+
+    wallets.forEach(w => {
+      const s = calculateWalletStats(w, transactions);
+      today += (s.todayRecharges || 0);
+      month += (s.totalRecharges || 0);
+    });
+
+    const all = transactions
+      .filter(t => clientWalletIds.has(t.walletId) && (t.type === 'recharge' || t.type === 'limit_reset'))
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    return { today, month, all };
+  }, [wallets, transactions, clientWalletIds]);
+
+  const baseAmount = useMemo(() => {
+    if (timeRange === 'today') return clientStats.today;
+    if (timeRange === 'month') return clientStats.month;
+    return clientStats.all;
+  }, [timeRange, clientStats]);
+
+  const factorNum = Number(commissionPercent);
+  const isValidFactor = !isNaN(factorNum) && factorNum > 0;
+
+  // الحساب المالي: المبلغ بعد العمولة = المبلغ قبل العمولة مضروب في المعامل مباشرة (ex: 5000 * 0.995 = 4975)
+  let finalAmount = baseAmount;
+  let commissionAmount = 0;
+  let effectiveMode = commissionMode;
+
+  if (isValidFactor && baseAmount > 0) {
+    if (factorNum >= 0.5) {
+      finalAmount = baseAmount * factorNum;
+      effectiveMode = factorNum < 1 ? 'deduct' : 'add';
+      commissionAmount = Math.abs(baseAmount - finalAmount);
+    } else {
+      if (commissionMode === 'deduct') {
+        finalAmount = baseAmount * (1 - factorNum);
+        commissionAmount = baseAmount * factorNum;
+      } else {
+        finalAmount = baseAmount * (1 + factorNum);
+        commissionAmount = baseAmount * factorNum;
+      }
+    }
+  }
 
   // Close history popover when clicking outside or pressing Escape
   useEffect(() => {
@@ -67,17 +227,6 @@ export default function ClientCard({ client }) {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [activeHistoryWalletId]);
-
-  // Client wallets
-  const wallets = client.wallets || [];
-  const WALLETS_PER_PAGE = 3;
-  const totalWalletPages = Math.ceil(wallets.length / WALLETS_PER_PAGE) || 1;
-  const validWalletPage = Math.min(Math.max(1, walletPage), totalWalletPages);
-
-  const paginatedWallets = useMemo(() => {
-    const startIndex = (validWalletPage - 1) * WALLETS_PER_PAGE;
-    return wallets.slice(startIndex, startIndex + WALLETS_PER_PAGE);
-  }, [wallets, validWalletPage]);
 
   const handleCopyPhone = (phone, e) => {
     e.stopPropagation();
@@ -153,56 +302,182 @@ export default function ClientCard({ client }) {
     <div className="card-hover bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative mb-6 transition-all duration-300">
 
       {/* Client Header */}
-      <div className="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/90 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4 rounded-t-2xl">
+      <div className="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/90 dark:border-slate-800 rounded-t-2xl space-y-3.5">
 
-        {/* Client Identity */}
-        <div className="flex items-start sm:items-center gap-3 min-w-0">
-          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-800 dark:from-red-600 dark:to-rose-700 text-white font-bold text-base sm:text-lg flex items-center justify-center shadow-sm shrink-0">
-            {client.name.charAt(0)}
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
-                {client.name}
-              </h3>
-              <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
-                {wallets.length} {wallets.length === 1 ? 'رقم مسجل' : 'أرقام مسجلة'}
-              </span>
+        {/* Row 1: Client Identity & Action Buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-800 dark:from-red-600 dark:to-rose-700 text-white font-bold text-base sm:text-lg flex items-center justify-center shadow-sm shrink-0">
+              {client.name.charAt(0)}
             </div>
-            {client.notes && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {client.notes}
-              </p>
-            )}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
+                  {client.name}
+                </h3>
+                <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
+                  {wallets.length} {wallets.length === 1 ? 'رقم مسجل' : 'أرقام مسجلة'}
+                </span>
+              </div>
+              {client.notes && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {client.notes}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Action buttons on client */}
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              onClick={handleAddWallet}
+              className="btn-interactive flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/60 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 shadow-xs"
+              title="إضافة رقم محمول إضافي لهذا العميل"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>إضافة رقم</span>
+            </button>
+
+            <button
+              onClick={handleDeleteClient}
+              className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+              title="حذف العميل بالكامل"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title={isExpanded ? 'طي الأرقام' : 'عرض الأرقام'}
+            >
+              <ChevronDown className={`w-4 h-4 transition-transform duration-300 ease-out ${isExpanded ? 'rotate-180' : ''}`} />
+            </button>
           </div>
         </div>
 
-        {/* Action buttons on client */}
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <button
-            onClick={handleAddWallet}
-            className="btn-interactive flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/60 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 shadow-xs"
-            title="إضافة رقم محمول إضافي لهذا العميل"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>إضافة رقم</span>
-          </button>
+        {/* Row 2: Financial Summary & Commission Calculation Bar (تجميعة المبالغ والعمولة) */}
+        <div className="pt-3 border-t border-slate-200/80 dark:border-slate-700/60 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          
+          {/* Time Range Filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0">
+              <Calculator className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>المبالغ المدخلة للأرقام:</span>
+            </div>
 
-          <button
-            onClick={handleDeleteClient}
-            className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-            title="حذف العميل بالكامل"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+            <div className="flex items-center gap-0.5 bg-slate-200/70 dark:bg-slate-700/60 p-0.5 rounded-xl text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setTimeRange('today')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  timeRange === 'today'
+                    ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-xs font-black'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="تجميع مبالغ شحن اليوم لكافة أرقام العميل"
+              >
+                اليوم ({formatCurrency(clientStats.today)})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeRange('month')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  timeRange === 'month'
+                    ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-xs font-black'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="تجميع مبالغ شحن هذا الشهر لكافة أرقام العميل"
+              >
+                هذا الشهر ({formatCurrency(clientStats.month)})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeRange('all')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  timeRange === 'all'
+                    ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-xs font-black'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="إجمالي كافة الشحنات السابقة لكافة أرقام العميل"
+              >
+                الكل
+              </button>
+            </div>
+          </div>
 
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-            title={isExpanded ? 'طي الأرقام' : 'عرض الأرقام'}
-          >
-            <ChevronDown className={`w-4 h-4 transition-transform duration-300 ease-out ${isExpanded ? 'rotate-180' : ''}`} />
-          </button>
+          {/* Financial Calculation Widgets (قبل العمولة - نسبة العمولة - بعد العمولة) */}
+          <div className="flex flex-wrap items-center gap-2">
+            
+            {/* 1. قبل إضافة العمولة */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shadow-xs">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">قبل العمولة:</span>
+              <span className="font-mono text-sm sm:text-base font-black text-slate-900 dark:text-white" dir="ltr">
+                {formatCurrency(baseAmount)}
+              </span>
+            </div>
+
+            {/* 2. معامل ونوع العمولة (خصم / إضافة) */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border shadow-xs transition-colors ${
+              effectiveMode === 'add'
+                ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60'
+                : 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60'
+            }`}>
+              {/* زر التبديل بين إضافة وخصم */}
+              <button
+                type="button"
+                onClick={handleToggleMode}
+                className={`btn-interactive px-2 py-1 rounded-lg text-xs font-black transition-all shadow-xs ${
+                  effectiveMode === 'add'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-rose-600 hover:bg-rose-700 text-white'
+                }`}
+                title="اضغط للتبديل بين إضافة أو خصم العمولة"
+              >
+                {effectiveMode === 'add' ? 'إضافة (+)' : 'خصم (-)'}
+              </button>
+
+              <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-0.5 shadow-2xs">
+                <span className="text-xs font-bold text-slate-400 select-none">×</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={commissionPercent}
+                  onChange={(e) => setCommissionPercent(e.target.value)}
+                  placeholder="0.995"
+                  className="w-20 sm:w-24 text-sm font-black font-mono text-center bg-transparent border-none p-0 text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  title="أدخل معامل الحساب (مثال: 0.995 أو 1.005)"
+                />
+              </div>
+
+              {/* قيمة فرق العمولة المحسوبة */}
+              {commissionAmount > 0 && (
+                <span className={`text-[11px] font-black font-mono mr-0.5 ${
+                  effectiveMode === 'add'
+                    ? 'text-emerald-700 dark:text-emerald-400'
+                    : 'text-rose-700 dark:text-rose-400'
+                }`} dir="ltr">
+                  ({effectiveMode === 'add' ? '+' : '-'}{formatCurrency(commissionAmount)})
+                </span>
+              )}
+            </div>
+
+            {/* 3. المبلغ بعد العمولة (سواء إضافة أو خصم) */}
+            <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-white shadow-sm ring-2 transition-all ${
+              effectiveMode === 'add'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-700 shadow-emerald-600/25 ring-emerald-500/20'
+                : 'bg-gradient-to-r from-rose-600 to-red-700 shadow-rose-600/25 ring-rose-500/20'
+            }`}>
+              <span className="text-[11px] font-bold text-white/95">
+                {effectiveMode === 'add' ? 'بعد إضافة العمولة:' : 'بعد خصم العمولة:'}
+              </span>
+              <span className="font-mono text-sm sm:text-base font-black tracking-tight" dir="ltr">
+                {formatCurrency(finalAmount)}
+              </span>
+            </div>
+
+          </div>
+
         </div>
 
       </div>
@@ -232,35 +507,50 @@ export default function ClientCard({ client }) {
                   const isHistoryOpen = activeHistoryWalletId === wallet.id;
                   const walletTxList = transactions.filter(t => t.walletId === wallet.id);
                   const carrier = getEgyptianCarrier(wallet.phoneNumber);
+                  const stats = calculateWalletStats(wallet, transactions);
 
                   return (
                     <div
                       key={wallet.id}
-                      className="relative bg-slate-50/80 dark:bg-slate-800/50 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-700/70 hover:border-red-300 dark:hover:border-red-900/60 transition-all duration-200 group flex flex-col justify-between"
+                      className="relative bg-slate-50/80 dark:bg-slate-800/50 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-700/70 hover:border-emerald-300 dark:hover:border-emerald-900/60 transition-all duration-200 group flex flex-col justify-between"
                     >
-                      {/* Top Row: Label & Carrier Badge */}
-                      <div className="flex items-center justify-between gap-2 mb-2.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Smartphone className="w-4 h-4 text-red-500 shrink-0" />
+                      {/* Top Row: Label & Carrier Badge & Warnings */}
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Smartphone className="w-4 h-4 text-emerald-600 shrink-0" />
                           <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
                             {wallet.label || 'محفظة العميل'}
                           </span>
                         </div>
-                        {carrier && (
-                          <span className="px-2.5 py-0.5 text-[10px] sm:text-[11px] font-bold rounded-lg bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/40 shrink-0">
-                            {carrier.name}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {carrier && (
+                            <span className="px-2 py-0.5 text-[10px] sm:text-[11px] font-bold rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/40">
+                              {carrier.name}
+                            </span>
+                          )}
+                          {stats.isClientMonthlyOver && (
+                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                              <AlertCircle className="w-2.5 h-2.5" />
+                              تجاوز ليميت الشهر (+{formatCurrency(stats.clientMonthlyOverAmount)})
+                            </span>
+                          )}
+                          {stats.isClientDailyOver && (
+                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                              <AlertCircle className="w-2.5 h-2.5" />
+                              تجاوز حد اليوم (+{formatCurrency(stats.clientDailyOverAmount)})
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Phone Number Display Box */}
-                      <div className="bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-slate-200/80 dark:border-slate-750 flex items-center justify-between gap-2 mb-3.5">
+                      <div className="bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-slate-200/80 dark:border-slate-750 flex items-center justify-between gap-2 mb-2.5">
                         <span className="text-base sm:text-xl font-black font-mono tracking-wider text-slate-900 dark:text-white" dir="ltr">
                           {formatPhone(wallet.phoneNumber)}
                         </span>
                         <button
                           onClick={(e) => handleCopyPhone(wallet.phoneNumber, e)}
-                          className="btn-interactive flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors"
+                          className="btn-interactive flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors"
                           title="نسخ الرقم"
                         >
                           {copiedPhone === wallet.phoneNumber ? (
@@ -277,23 +567,63 @@ export default function ClientCard({ client }) {
                         </button>
                       </div>
 
-                      {/* Action buttons for this wallet - Direct Transfer is always active without limit lock */}
+                      {/* Daily Recharge Tracker (Rule 1: 60,000 EGP / day with warning) */}
+                      <div className="flex items-center justify-between text-[11px] bg-slate-100/90 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 mb-2">
+                        <span className="text-slate-500 dark:text-slate-400">
+                          شحن اليوم: <strong className={stats.isClientDailyOver ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>{formatCurrency(stats.todayRecharges)}</strong> / 60,000 ج.م
+                        </span>
+                        <span className={`font-bold font-mono ${stats.isClientDailyOver ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {stats.isClientDailyOver ? `تجاوز (+${formatCurrency(stats.clientDailyOverAmount)})` : `متبقي: ${formatCurrency(stats.remainingClientDaily)}`}
+                        </span>
+                      </div>
+
+                      {/* Monthly Recharge Tracker (Rule 2: 200,000 EGP / month with warning) */}
+                      <div className="space-y-1 mb-3 bg-white dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-750">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                          <span>
+                            شحن الشهر: <strong className={stats.isClientMonthlyOver ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>{formatCurrency(stats.totalRecharges)}</strong>
+                          </span>
+                          <span>
+                            الليميت الشهري: <strong className="text-slate-800 dark:text-slate-200">{formatCurrency(stats.clientMonthlyLimit)}</strong>
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              stats.isClientMonthlyOver ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${Math.min(100, (stats.totalRecharges / stats.clientMonthlyLimit) * 100)}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400">
+                            نسبة الشحن: {((stats.totalRecharges / stats.clientMonthlyLimit) * 100).toFixed(0)}%
+                          </span>
+                          <span className={`font-bold ${stats.isClientMonthlyOver ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {stats.isClientMonthlyOver
+                              ? `تجاوز بمقدار ${formatCurrency(stats.clientMonthlyOverAmount)}`
+                              : `متبقي للشحن: ${formatCurrency(stats.remainingClientMonthly)}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action buttons for this wallet - Recharge balance only as requested */}
                       <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
-                        {/* Direct Transfer Button */}
+                        {/* Direct Recharge Button (الخط يتشحن له رصيد فقط) */}
                         <button
-                          onClick={() => handleQuickTransfer(wallet)}
-                          className="btn-interactive flex-1 min-w-0 h-9 sm:h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-bold text-xs shadow-sm shadow-red-600/25 whitespace-nowrap"
-                          title="تحويل كاش لهذا الرقم"
+                          onClick={() => handleRechargeWallet(wallet)}
+                          className="btn-interactive flex-1 min-w-0 h-9 sm:h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs shadow-sm shadow-emerald-600/25 whitespace-nowrap"
+                          title="شحن وإضافة رصيد لهذا الخط (حد يومي 60,000 ج.م وشهري 200,000 ج.م)"
                         >
-                          <Send className="w-3.5 h-3.5 rotate-180 shrink-0" />
-                          <span className="truncate">تحويل كاش</span>
+                          <ArrowDownToLine className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">شحن رصيد</span>
                         </button>
 
                         {/* Edit Phone / Label */}
                         <button
                           onClick={() => handleEditWallet(wallet)}
                           className="btn-interactive shrink-0 h-9 sm:h-10 px-2 sm:px-2.5 flex items-center justify-center gap-1 rounded-xl bg-white dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200/90 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
-                          title="تعديل اسم أو رقم المحفظة"
+                          title="تعديل اسم أو ليميت المحفظة"
                         >
                           <Edit2 className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
                           <span className="hidden xl:inline">تعديل</span>
@@ -309,7 +639,7 @@ export default function ClientCard({ client }) {
                             ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900'
                             : 'bg-white dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200/90 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
                             }`}
-                          title="عرض العمليات الخاصة بهذا الرقم"
+                          title="عرض شحنات وعمليات هذا الرقم"
                         >
                           <History className="w-3.5 h-3.5" />
                           <span className="font-mono font-bold text-[11px]">({walletTxList.length})</span>

@@ -10,6 +10,7 @@ import InboundCalculatorView from './components/InboundCalculatorView';
 import InventoryView from './components/InventoryView';
 import ReportsView from './components/ReportsView';
 import TrashView from './components/TrashView';
+import ClientAccountsView from './components/ClientAccountsView';
 import Toast from './components/Toast';
 
 // Modals
@@ -63,7 +64,7 @@ function MainApp() {
       <main className="max-w-[1550px] mx-auto px-2.5 sm:px-6 lg:px-8 py-3.5 sm:py-8 pb-28 sm:pb-32 lg:pb-8 relative">
         
         {/* KPI Stat Cards (Only on clients, daily, matrix tabs) */}
-        {activeTab !== 'inventory' && activeTab !== 'inbound' && activeTab !== 'trash' && (
+        {activeTab !== 'inventory' && activeTab !== 'inbound' && activeTab !== 'trash' && activeTab !== 'accounts' && (
           <StatCards onSelectDailyTab={() => setActiveTab('daily')} />
         )}
 
@@ -133,7 +134,14 @@ function MainApp() {
           </section>
         )}
 
-        {/* Tab 2: Daily Log (سجل اليوم بكل تفاصيله) */}
+        {/* Tab 2: Client Accounts & Receivables (حسابات العملاء والآجل) */}
+        {activeTab === 'accounts' && (
+          <div className="animate-view-fade">
+            <ClientAccountsView />
+          </div>
+        )}
+
+        {/* Tab 3: Daily Log (سجل اليوم بكل تفاصيله) */}
         {activeTab === 'daily' && (
           <div className="animate-view-fade">
             <DailyLogView />
