@@ -6,7 +6,9 @@ import {
   calculateWalletStats,
   formatTimeArabic,
   formatDateArabic,
-  getEgyptianCarrier
+  getEgyptianCarrier,
+  getTodayString,
+  getCurrentMonthKey
 } from '../utils/formatters';
 import {
   Phone,
@@ -288,8 +290,8 @@ export default function ClientCard({ client }) {
   }, [transactions, client.id]);
 
   const paidAmount = useMemo(() => {
-    const todayKey = new Date().toISOString().split('T')[0];
-    const currentMonthKey = todayKey.slice(0, 7);
+    const todayKey = getTodayString();
+    const currentMonthKey = getCurrentMonthKey();
     const calcNet = (tx) => tx.isCreditorPayout ? -Number(tx.amount) : Number(tx.amount);
 
     if (timeRange === 'today') {

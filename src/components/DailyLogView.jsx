@@ -6,7 +6,8 @@ import {
   formatTimeArabic, 
   formatDateArabic,
   formatDateTimeArabic,
-  getTodayString 
+  getTodayString,
+  getLocalDateString
 } from '../utils/formatters';
 import { 
   Calendar as CalendarIcon, 
@@ -449,7 +450,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
                 selectedDate === (() => {
                   const d = new Date();
                   d.setDate(d.getDate() - 1);
-                  return d.toISOString().split('T')[0];
+                  return getLocalDateString(d);
                 })()
                   ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -463,7 +464,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
                 selectedDate === (() => {
                   const d = new Date();
                   d.setDate(d.getDate() - 2);
-                  return d.toISOString().split('T')[0];
+                  return getLocalDateString(d);
                 })()
                   ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'

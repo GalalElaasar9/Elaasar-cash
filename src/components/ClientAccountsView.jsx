@@ -7,7 +7,9 @@ import {
   formatTimeArabic,
   formatDateArabic,
   getEgyptianCarrier,
-  calculateWalletStats
+  calculateWalletStats,
+  getTodayString,
+  getCurrentMonthKey
 } from '../utils/formatters';
 import {
   Users,
@@ -59,8 +61,8 @@ export default function ClientAccountsView() {
   const [selectedClientForStatement, setSelectedClientForStatement] = useState(null);
   const [copiedClientId, setCopiedClientId] = useState(null);
 
-  const todayKey = new Date().toISOString().split('T')[0];
-  const currentMonthKey = todayKey.slice(0, 7);
+  const todayKey = getTodayString();
+  const currentMonthKey = getCurrentMonthKey();
 
   // Compute live accounting metrics for every client
   const clientAccountsData = useMemo(() => {

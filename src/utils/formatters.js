@@ -121,6 +121,16 @@ export function formatPhone(phone) {
   return clean || phone;
 }
 
+export function getLocalDateString(dateInput = new Date()) {
+  if (!dateInput) return getTodayString();
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return getTodayString();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function getTodayString() {
   const d = new Date();
   const year = d.getFullYear();
@@ -232,12 +242,13 @@ export const MAX_WALLET_BALANCE_CAP = 200000;
 export function calculateWalletStats(wallet, transactions = [], targetMonth = null) {
   const totalLimit = Number(wallet.totalLimit) || DEFAULT_WALLET_LIMIT;
   const activeMonth = targetMonth || getCurrentMonthKey(); // e.g. "2026-11"
-  const todayKey = new Date().toISOString().split('T')[0];
+  const todayKey = getTodayString(); // Local Egyptian date (resets immediately after 12:00 AM midnight)
   
   // Filter all transactions for this wallet in the active monthly cycle
   const walletTx = transactions.filter(t => {
     if (t.walletId !== wallet.id) return false;
-    const txMonth = (t.dateOnly || t.date || '').slice(0, 7);
+    const txDateStr = t.date ? getLocalDateString(t.date) : (t.dateOnly || '');
+    const txMonth = txDateStr.slice(0, 7);
     return txMonth === activeMonth;
   });
   
@@ -257,8 +268,11 @@ export function calculateWalletStats(wallet, transactions = [], targetMonth = nu
 
   const percentUsed = totalLimit > 0 ? Math.min(100, Math.max(0, ((totalTransfersOut - totalRecharges) / totalLimit) * 100)) : 0;
   
-  // Today's specific transactions for daily transfer & recharge tracking
-  const todayTx = walletTx.filter(t => (t.dateOnly || t.date || '').startsWith(todayKey));
+  // Today's specific transactions for daily transfer & recharge tracking (Strict local calendar day)
+  const todayTx = walletTx.filter(t => {
+    const txDateStr = t.date ? getLocalDateString(t.date) : (t.dateOnly || '');
+    return txDateStr === todayKey;
+  });
 
   // 1. Daily Transfer OUT tracking (Max 60,000 EGP / day)
   const todayTransfersOut = todayTx

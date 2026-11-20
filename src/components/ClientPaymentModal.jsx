@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCash } from '../context/CashContext';
-import { formatCurrency, formatTimeArabic, formatDateArabic } from '../utils/formatters';
+import { formatCurrency, formatTimeArabic, formatDateArabic, getTodayString } from '../utils/formatters';
 import {
   Wallet,
   X,
@@ -35,7 +35,7 @@ export default function ClientPaymentModal() {
   const isCreditor = Boolean(modalData?.isCreditor || clientType === 'دائن');
 
   // Current date and time helpers
-  const getTodayISO = () => new Date().toISOString().split('T')[0];
+  const getTodayISO = () => getTodayString();
   const getCurrentTimeStr = () => {
     const d = new Date();
     const h = String(d.getHours()).padStart(2, '0');

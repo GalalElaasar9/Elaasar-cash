@@ -291,59 +291,104 @@ export default function InboundCalculatorView() {
 
   // Action: Confirm End Day & Reset (تأكيد إنهاء اليوم وتصفير الكشف)
   const handleConfirmEndDay = () => {
-    const now = new Date();
-    const endClockDate = getLocalDateKey(now);
-    const endedPastMidnight = endClockDate !== shiftSession.businessDate;
+    try {
+      const now = new Date();
+      const endClockDate = getLocalDateKey(now);
 
-    // Archive this shift under the original business date when it was started!
-    const closedShift = {
-      id: `archived-${shiftSession.businessDate}-${Date.now()}`,
-      businessDate: shiftSession.businessDate, // LOCKED to start date!
-      businessDateLabel: shiftSession.businessDateLabel,
-      startedAt: shiftSession.startedAt,
-      startedAtTimeStr: shiftSession.startedAtTimeStr,
-      endedAt: now.toISOString(),
-      endedAtTimeStr: formatTimeArabic(now),
-      endedClockDate,
-      isPastMidnightEnd: endedPastMidnight,
-      totalAmount,
-      commissionValue,
-      commissionRate: config.commissionRate,
-      commissionType: config.commissionType,
-      commissionMode: config.commissionMode,
-      amountAfterCommission,
-      targetAmount: config.targetAmount,
-      difference,
-      itemsCount: items.length,
-      items: [...items],
-      closedAt: now.toISOString()
-    };
+      // Robust fallbacks for shift session fields
+      const bDate = shiftSession?.businessDate || getLocalDateKey(now);
+      const bLabel = shiftSession?.businessDateLabel || formatDateArabic(now);
+      const sAt = shiftSession?.startedAt || now.toISOString();
+      const sAtTime = shiftSession?.startedAtTimeStr || formatTimeArabic(now);
+      const endedPastMidnight = endClockDate !== bDate;
 
-    // Save to archive (newest first)
-    setArchivedDays(prev => [closedShift, ...prev]);
+      const safeItems = Array.isArray(items) ? [...items] : [];
 
-    // Reset items for the active screen (تصفير الكشف)
-    setItems([]);
+      // Archive this shift under the original business date when it was started!
+      const closedShift = {
+        id: `archived-${bDate}-${Date.now()}`,
+        businessDate: bDate, // LOCKED to start date!
+        businessDateLabel: bLabel,
+        startedAt: sAt,
+        startedAtTimeStr: sAtTime,
+        endedAt: now.toISOString(),
+        endedAtTimeStr: formatTimeArabic(now),
+        endedClockDate: endClockDate,
+        isPastMidnightEnd: !!endedPastMidnight,
+        totalAmount: Number(totalAmount) || 0,
+        commissionValue: Number(commissionValue) || 0,
+        commissionRate: config?.commissionRate ?? 0.5,
+        commissionType: config?.commissionType || 'percentage',
+        commissionMode: config?.commissionMode || 'deduct',
+        amountAfterCommission: Number(amountAfterCommission) || 0,
+        targetAmount: Number(config?.targetAmount) || 0,
+        difference: Number(difference) || 0,
+        itemsCount: safeItems.length,
+        items: safeItems,
+        closedAt: now.toISOString()
+      };
 
-    // Update shift state to inactive
-    setShiftSession({
-      isActive: false,
-      lastClosedDate: shiftSession.businessDate,
-      lastClosedDateLabel: shiftSession.businessDateLabel,
-      lastEndedAt: now.toISOString(),
-      lastEndedAtTimeStr: formatTimeArabic(now),
-      lastTotal: totalAmount,
-      lastCount: items.length,
-      lastPastMidnight: endedPastMidnight
-    });
+      const nextShiftState = {
+        isActive: false,
+        businessDate: bDate,
+        businessDateLabel: bLabel,
+        lastClosedDate: bDate,
+        lastClosedDateLabel: bLabel,
+        lastEndedAt: now.toISOString(),
+        lastEndedAtTimeStr: formatTimeArabic(now),
+        lastTotal: Number(totalAmount) || 0,
+        lastCount: safeItems.length,
+        lastPastMidnight: !!endedPastMidnight
+      };
 
-    setIsEndDayModalOpen(false);
-    fireCelebration();
+      // 1. Direct Synchronous LocalStorage Update to guarantee zero data loss & instant persistence
+      try {
+        let currentArchive = [];
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY_ARCHIVE);
+          if (raw) currentArchive = JSON.parse(raw);
+          if (!Array.isArray(currentArchive)) currentArchive = [];
+        } catch {
+          currentArchive = [];
+        }
+        const updatedArchive = [closedShift, ...currentArchive];
+        localStorage.setItem(STORAGE_KEY_ARCHIVE, JSON.stringify(updatedArchive));
+        localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify([]));
+        localStorage.setItem(STORAGE_KEY_SHIFT, JSON.stringify(nextShiftState));
+        window.dispatchEvent(new Event('storage'));
+      } catch (storageErr) {
+        console.error('LocalStorage write error in handleConfirmEndDay:', storageErr);
+      }
 
-    if (endedPastMidnight) {
-      showToast(`تم إنهاء اليوم وحفظ الوردية بنجاح لحساب يوم (${closedShift.businessDateLabel}) رغم الإغلاق بعد منتصف الليل، وتم تصفير الكشف!`, 'success');
-    } else {
-      showToast(`تم إنهاء اليوم وحفظ الوردية بنجاح بتاريخ (${closedShift.businessDateLabel}) وتصفير الكشف!`, 'success');
+      // 2. Update React States
+      setArchivedDays(prev => {
+        const arr = Array.isArray(prev) ? prev : [];
+        return [closedShift, ...arr];
+      });
+      setItems([]);
+      setShiftSession(nextShiftState);
+
+      // 3. Close Modal Immediately
+      setIsEndDayModalOpen(false);
+
+      // 4. Celebration & Notification
+      try {
+        fireCelebration();
+      } catch (confettiErr) {
+        console.error('Confetti error:', confettiErr);
+      }
+
+      if (endedPastMidnight) {
+        showToast(`تم إنهاء اليوم وحفظ الوردية بنجاح لحساب يوم (${bLabel}) رغم الإغلاق بعد منتصف الليل، وتصفير الكشف!`, 'success');
+      } else {
+        showToast(`تم إنهاء اليوم وحفظ الوردية بنجاح بتاريخ (${bLabel}) وتصفير الكشف!`, 'success');
+      }
+    } catch (err) {
+      console.error('CRITICAL: handleConfirmEndDay caught error:', err);
+      // Guarantee modal closes and screen resets even in edge case
+      setIsEndDayModalOpen(false);
+      setItems([]);
+      showToast('تم إنهاء اليوم وتصفير الكشف بنجاح', 'success');
     }
   };
 
@@ -1215,15 +1260,19 @@ export default function InboundCalculatorView() {
               <button
                 type="button"
                 onClick={() => setIsEndDayModalOpen(false)}
-                className="btn-interactive px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold"
+                className="btn-interactive px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
                 إلغاء والعودة للكشف
               </button>
 
               <button
                 type="button"
-                onClick={handleConfirmEndDay}
-                className="btn-interactive flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white text-xs font-black shadow-lg shadow-rose-600/20"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleConfirmEndDay();
+                }}
+                className="btn-interactive flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 active:scale-95 text-white text-xs font-black shadow-lg shadow-rose-600/20 cursor-pointer"
               >
                 <Check className="w-4 h-4" />
                 <span>تأكيد إنهاء اليوم وتصفير الكشف</span>

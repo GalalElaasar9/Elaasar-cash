@@ -3,6 +3,7 @@ import { storage, INITIAL_DEMO_INVENTORY, INITIAL_SHOP_WALLETS } from '../utils/
 import { 
   calculateWalletStats, 
   getTodayString, 
+  getLocalDateString,
   formatCurrency,
   cleanEgyptianPhone,
   isValidEgyptianPhone,
@@ -624,7 +625,7 @@ export function CashProvider({ children }) {
     }
 
     const dateObj = date ? new Date(date) : new Date();
-    const dateOnly = dateObj.toISOString().split('T')[0];
+    const dateOnly = getLocalDateString(dateObj);
     const limitAfter = Math.max(0, stats.remainingLimit - numAmount);
 
     const newTx = {
@@ -680,7 +681,7 @@ export function CashProvider({ children }) {
     const stats = calculateWalletStats(wallet, transactions);
 
     const dateObj = date ? new Date(date) : new Date();
-    const dateOnly = dateObj.toISOString().split('T')[0];
+    const dateOnly = getLocalDateString(dateObj);
     const limitAfter = stats.remainingLimit + numAmount;
 
     const newTx = {
@@ -776,7 +777,7 @@ export function CashProvider({ children }) {
     }
 
     const dateObj = date ? new Date(date) : new Date();
-    const dateOnly = dateObj.toISOString().split('T')[0];
+    const dateOnly = getLocalDateString(dateObj);
     const timeStr = time || dateObj.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
 
     const newTx = {
