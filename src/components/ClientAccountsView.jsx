@@ -968,30 +968,77 @@ ${balanceLine}
                         </div>
                       </td>
 
-                      {/* Amount after commission (الآجل المستحق النهائي) */}
+                      {/* Amount after commission & Net balance (المطلوب والمسدد والصافي) */}
                       <td className={`py-3.5 px-4 whitespace-nowrap ${
                         accountTypeTab === 'مدين' ? 'bg-rose-50/40 dark:bg-rose-950/20' : 'bg-emerald-50/40 dark:bg-emerald-950/20'
                       }`}>
-                        <div className={`font-mono text-lg font-black ${
-                          accountTypeTab === 'مدين' ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
-                        }`} dir="ltr">
-                          {formatCurrency(finalAmount)}
-                        </div>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                          {accountTypeTab === 'مدين'
-                            ? ((item.effectiveMode || commissionMode) === 'add' ? 'مطلوب سداده بعد إضافة العمولة' : 'مطلوب سداده بعد خصم العمولة')
-                            : ((item.effectiveMode || commissionMode) === 'add' ? 'رصيد مستحق للعميل بعد الإضافة' : 'رصيد مستحق للعميل بعد الخصم')}
-                        </span>
+                        {accountTypeTab === 'مدين' ? (
+                          item.paidAmount > 0 ? (
+                            <div>
+                              {item.isSettled ? (
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-black text-sm">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                    <span>خالص بالكامل (0 ج.م)</span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                                    المطلوب: {formatCurrency(item.finalAmount)} • تم سداد: {formatCurrency(item.paidAmount)}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="font-mono text-lg font-black text-rose-700 dark:text-rose-300" dir="ltr">
+                                    {formatCurrency(item.remainingDebt)}
+                                  </div>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                                    المتبقي مطلوب • مسدد: {formatCurrency(item.paidAmount)} من {formatCurrency(item.finalAmount)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="font-mono text-lg font-black text-rose-700 dark:text-rose-300" dir="ltr">
+                                {formatCurrency(item.finalAmount)}
+                              </div>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                                مطلوب سداده بالكامل
+                              </span>
+                            </div>
+                          )
+                        ) : (
+                          /* Creditor Tab (دائن) */
+                          <div>
+                            <div className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-300" dir="ltr">
+                              {formatCurrency(item.creditAmount > 0 ? item.creditAmount : item.finalAmount)}
+                            </div>
+                            <span className="text-[10px] text-emerald-800 dark:text-emerald-300 font-bold block mt-0.5">
+                              {item.creditAmount > 0
+                                ? `له رصيد دائن (مسدد بزيادة +${formatCurrency(item.creditAmount)})`
+                                : 'رصيد دائن مستحق للعميل'}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Payment Button */}
+                          <button
+                            onClick={() => handleOpenPayment(item)}
+                            className="btn-interactive flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors"
+                            title="تسجيل سداد دفعة لحساب هذا العميل"
+                          >
+                            <Wallet className="w-3.5 h-3.5" />
+                            <span>سداد</span>
+                          </button>
+
                           {/* View Statement Details */}
                           <button
                             onClick={() => setSelectedClientForStatement(item)}
                             className="btn-interactive p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300"
-                            title="عرض كشف الحساب التفصيلي للشحنات"
+                            title="عرض كشف الحساب التفصيلي للشحنات والمدفوعات"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
