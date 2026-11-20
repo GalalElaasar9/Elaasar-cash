@@ -20,6 +20,14 @@ function getRecentDate(daysAgo = 0, hours = 10, minutes = 30) {
   return d.toISOString();
 }
 
+function getLocalDateOnly(dateObj = new Date()) {
+  const d = dateObj instanceof Date ? dateObj : new Date(dateObj);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export const INITIAL_DEMO_CLIENTS = [
   {
     id: 'client-1',
@@ -150,7 +158,7 @@ export const INITIAL_DEMO_TRANSACTIONS = [
     fee: 10,
     notes: 'تحويل دفعة بضاعة لمورد الأغذية',
     date: getRecentDate(0, 9, 15),
-    dateOnly: new Date().toISOString().split('T')[0]
+    dateOnly: getLocalDateOnly()
   },
   {
     id: 'tx-102',
@@ -166,7 +174,7 @@ export const INITIAL_DEMO_TRANSACTIONS = [
     fee: 20,
     notes: 'سداد فاتورة توريدات أجهزة',
     date: getRecentDate(0, 11, 40),
-    dateOnly: new Date().toISOString().split('T')[0]
+    dateOnly: getLocalDateOnly()
   },
   {
     id: 'tx-103',
@@ -182,7 +190,7 @@ export const INITIAL_DEMO_TRANSACTIONS = [
     fee: 10,
     notes: 'حوالة سريعة للفرع',
     date: getRecentDate(0, 13, 20),
-    dateOnly: new Date().toISOString().split('T')[0]
+    dateOnly: getLocalDateOnly()
   },
   {
     id: 'tx-104',
@@ -198,7 +206,7 @@ export const INITIAL_DEMO_TRANSACTIONS = [
     fee: 30,
     notes: 'دفعة مستحقات شحن',
     date: getRecentDate(0, 14, 55),
-    dateOnly: new Date().toISOString().split('T')[0]
+    dateOnly: getLocalDateOnly()
   },
   {
     id: 'tx-105',
@@ -214,7 +222,7 @@ export const INITIAL_DEMO_TRANSACTIONS = [
     fee: 15,
     notes: 'تحويل لتاجر جملة',
     date: getRecentDate(0, 16, 10),
-    dateOnly: new Date().toISOString().split('T')[0]
+    dateOnly: getLocalDateOnly()
   },
   // Yesterday's transactions
   {
@@ -234,7 +242,7 @@ export const INITIAL_DEMO_TRANSACTIONS = [
     dateOnly: (() => {
       const d = new Date();
       d.setDate(d.getDate() - 1);
-      return d.toISOString().split('T')[0];
+      return getLocalDateOnly(d);
     })()
   },
   {
@@ -254,7 +262,7 @@ export const INITIAL_DEMO_TRANSACTIONS = [
     dateOnly: (() => {
       const d = new Date();
       d.setDate(d.getDate() - 1);
-      return d.toISOString().split('T')[0];
+      return getLocalDateOnly(d);
     })()
   }
 ];
@@ -589,7 +597,7 @@ export const storage = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `elaasar-cash-inventory-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `elaasar-cash-inventory-backup-${getLocalDateOnly()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   },

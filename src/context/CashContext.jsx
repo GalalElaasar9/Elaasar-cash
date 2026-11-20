@@ -820,6 +820,29 @@ export function CashProvider({ children }) {
     if (currentUser && shopId) deleteTransactionFromCloud(shopId, txId);
     if (tx.type === 'client_payment') {
       showToast(`تم حذف حركة السداد بقيمة ${formatCurrency(tx.amount)}`, 'info');
+    } else if (tx.type === 'product_sale') {
+      if (tx.productId && tx.variantColor) {
+        setInventory(prev => {
+          const next = prev.map(p => {
+            if (p.id === tx.productId) {
+              const updatedVariants = (p.variants || []).map(v => {
+                if (v.color === tx.variantColor) {
+                  return { ...v, quantity: (Number(v.quantity) || 0) + (Number(tx.quantity) || 1) };
+                }
+                return v;
+              });
+              const newTotal = updatedVariants.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0);
+              return { ...p, variants: updatedVariants, totalQuantity: newTotal };
+            }
+            return p;
+          });
+          const updated = next.find(p => p.id === tx.productId);
+          if (updated) realtime.saveProduct(updated);
+          if (currentUser && shopId && updated) syncProductToCloud(shopId, updated);
+          return next;
+        });
+      }
+      showToast(`تم حذف حركة البيع وإعادة (${tx.quantity || 1}) قطعة إلى مخزون "${tx.productName || 'المنتج'}"`, 'info');
     } else {
       showToast(`تم حذف التحويل وإعادة ${formatCurrency(tx.amount)} إلى ليميت المحفظة`, 'info');
     }
@@ -962,8 +985,43 @@ export function CashProvider({ children }) {
     });
 
     triggerConfetti();
-    const effectivePrice = customSalePrice !== null ? customSalePrice : prod.salePrice;
-    showToast(`تم تسجيل بيع (${qtyToDeduct}) قطعة [لون: ${colorName}] بقيمة ${formatCurrency(effectivePrice * qtyToDeduct)}`);
+    const effectivePrice = customSalePrice !== null && !isNaN(Number(customSalePrice)) ? Number(customSalePrice) : Number(prod.salePrice);
+    const totalSaleAmount = effectivePrice * qtyToDeduct;
+
+    // Record product sale transaction in daily ledger immediately
+    const dateObj = new Date();
+    const dateOnly = getLocalDateString(dateObj);
+    const timeStr = dateObj.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const custName = (notes || '').trim() || 'عميل نقدي (مبيعات أجهزة)';
+
+    const saleTx = {
+      id: `tx-sale-${Date.now()}`,
+      type: 'product_sale',
+      productId: prod.id,
+      productName: prod.name,
+      brand: prod.brand || '',
+      category: prod.category || 'هواتف وأجهزة',
+      variantColor: colorName,
+      quantity: qtyToDeduct,
+      unitPrice: effectivePrice,
+      amount: totalSaleAmount,
+      customerName: custName,
+      transactionCode: `DEV-${Math.floor(100000 + Math.random() * 900000)}`,
+      notes: notes.trim()
+        ? `بيع (${qtyToDeduct}) ${prod.name} [لون: ${colorName}] - العميل/ملاحظات: ${notes.trim()}`
+        : `بيع (${qtyToDeduct}) ${prod.name} [لون: ${colorName}]`,
+      date: dateObj.toISOString(),
+      dateOnly,
+      time: timeStr
+    };
+
+    setTransactions(prev => [saleTx, ...prev]);
+    realtime.addTransaction(saleTx);
+    if (currentUser && shopId) {
+      syncTransactionToCloud(shopId, saleTx);
+    }
+
+    showToast(`تم تسجيل بيع (${qtyToDeduct}) قطعة [لون: ${colorName}] بقيمة ${formatCurrency(totalSaleAmount)} وتوثيقها بسجل اليوم`);
 
     // Check low stock alert (< 5)
     const alertThreshold = prod.minStockAlert !== undefined ? prod.minStockAlert : 5;

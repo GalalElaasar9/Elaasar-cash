@@ -5,7 +5,8 @@ import {
   formatNumber, 
   formatPhone, 
   calculateWalletStats, 
-  getEgyptianCarrier 
+  getEgyptianCarrier,
+  getTodayString 
 } from '../utils/formatters';
 import { 
   Package, 
@@ -359,7 +360,7 @@ export default function InventoryView() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `مخزون-محل-الهواتف-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `مخزون-محل-الهواتف-${getTodayString()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('تم تصدير ملف إكسل للمخزون بنجاح');

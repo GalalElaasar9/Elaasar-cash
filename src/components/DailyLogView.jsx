@@ -37,7 +37,9 @@ import {
   Moon,
   Sparkles,
   AlertCircle,
-  FileText
+  FileText,
+  ShoppingBag,
+  Smartphone
 } from 'lucide-react';
 
 const STORAGE_KEY_ITEMS = 'elaasar_cash_inbound_items_v2';
@@ -109,6 +111,8 @@ export default function DailyLogView({ onNavigateToInbound }) {
     const q = searchDaily.toLowerCase().trim();
     return dayTransactions.filter(t => 
       t.customerName?.toLowerCase().includes(q) ||
+      t.productName?.toLowerCase().includes(q) ||
+      t.variantColor?.toLowerCase().includes(q) ||
       t.walletPhone?.includes(q) ||
       t.recipientPhone?.includes(q) ||
       t.transactionCode?.toLowerCase().includes(q) ||
@@ -120,9 +124,11 @@ export default function DailyLogView({ onNavigateToInbound }) {
   const dayTransferTxs = dayTransactions.filter(t => t.type === 'transfer_out');
   const dayRechargeTxs = dayTransactions.filter(t => t.type === 'recharge' || t.type === 'limit_reset');
   const dayPaymentTxs = dayTransactions.filter(t => t.type === 'client_payment');
+  const daySalesTxs = dayTransactions.filter(t => t.type === 'product_sale');
   const dayTotalAmount = dayTransferTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const dayTotalRechargeAmount = dayRechargeTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const dayTotalPaymentAmount = dayPaymentTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const dayTotalSalesAmount = daySalesTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const dayTotalFees = dayTransactions.reduce((sum, t) => sum + (Number(t.fee) || 0), 0);
   const dayTxCount = dayTransactions.length;
   const dayAverage = dayTransferTxs.length > 0 ? Math.round(dayTotalAmount / dayTransferTxs.length) : 0;
@@ -158,10 +164,16 @@ export default function DailyLogView({ onNavigateToInbound }) {
   };
 
   const handleDelete = async (tx) => {
+    const isSale = tx.type === 'product_sale';
+    const isPayment = tx.type === 'client_payment';
     const confirmed = await askConfirm({
-      title: 'حذف عملية تحويل',
+      title: isSale ? 'حذف عملية بيع جهاز' : isPayment ? 'حذف حركة سداد' : 'حذف عملية تحويل',
       message: `هل أنت متأكد من حذف هذه العملية بقيمة ${formatCurrency(tx.amount)}؟`,
-      details: 'سيتم إلغاء قيد المعاملة فوراً وإعادة كامل المبلغ المخصوم إلى رصيد ليميت المحفظة.',
+      details: isSale 
+        ? `سيتم إلغاء قيد المعاملة فوراً وإعادة (${tx.quantity || 1}) قطعة إلى مخزون "${tx.productName || 'المنتج'}" بالمحل.`
+        : isPayment
+        ? 'سيتم إلغاء حركة السداد من السجل.'
+        : 'سيتم إلغاء قيد المعاملة فوراً وإعادة كامل المبلغ المخصوم إلى رصيد ليميت المحفظة.',
       type: 'warning',
       confirmText: 'نعم، احذف المعاملة',
       cancelText: 'تراجع'
@@ -180,27 +192,36 @@ export default function DailyLogView({ onNavigateToInbound }) {
 
     const headers = [
       'التوقيت',
-      'اسم العميل',
-      'رقم المحفظة (الراسل)',
-      'المبلغ المحول (ج.م)',
-      'الليميت المتبقي بعد التحويل',
-      'رقم المحول إليه (المستلم)',
+      'نوع المعاملة',
+      'اسم العميل / الصنف',
+      'رقم المحفظة / تفاصيل المنتج',
+      'المبلغ (ج.م)',
+      'الليميت المتبقي / الكمية',
+      'رقم المحول إليه / اللون',
       'كود العملية',
       'الرسوم',
       'الملاحظات'
     ];
 
-    const rows = dayTransactions.map(t => [
-      `"${formatTimeArabic(t.date)}"`,
-      `"${t.customerName || ''}"`,
-      `"'${t.walletPhone || ''}"`,
-      t.amount,
-      t.limitAfter !== undefined ? t.limitAfter : '',
-      `"'${t.recipientPhone || ''}"`,
-      `"${t.transactionCode || ''}"`,
-      t.fee || 0,
-      `"${(t.notes || '').replace(/"/g, '""')}"`
-    ]);
+    const rows = dayTransactions.map(t => {
+      let typeLabel = 'تحويل كاش (سحب)';
+      if (t.type === 'recharge') typeLabel = 'شحن وإيداع رصيد';
+      else if (t.type === 'client_payment') typeLabel = t.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من عميل';
+      else if (t.type === 'product_sale') typeLabel = 'مبيعات هواتف وأجهزة';
+
+      return [
+        `"${formatTimeArabic(t.date)}"`,
+        `"${typeLabel}"`,
+        `"${t.customerName || (t.type === 'product_sale' ? t.productName : '')}"`,
+        `"${t.type === 'product_sale' ? (t.productName || '') : `'${t.walletPhone || ''}`}"`,
+        t.amount,
+        t.type === 'product_sale' ? (t.quantity || 1) : (t.limitAfter !== undefined ? t.limitAfter : ''),
+        `"${t.type === 'product_sale' ? (t.variantColor || '') : `'${t.recipientPhone || ''}`}"`,
+        `"${t.transactionCode || ''}"`,
+        t.fee || 0,
+        `"${(t.notes || '').replace(/"/g, '""')}"`
+      ];
+    });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -479,7 +500,11 @@ export default function DailyLogView({ onNavigateToInbound }) {
       </div>
 
       {/* Daily KPI Statistics Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div className={`grid gap-3 sm:gap-4 ${
+        daySalesTxs.length > 0 
+          ? 'grid-cols-2 lg:grid-cols-5' 
+          : 'grid-cols-2 md:grid-cols-4'
+      }`}>
         
         {/* Total Transferred Today */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -501,12 +526,32 @@ export default function DailyLogView({ onNavigateToInbound }) {
           </span>
           <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
             {dayTxCount}{' '}
-            <span className="text-xs font-normal text-slate-400">تحويلة</span>
+            <span className="text-xs font-normal text-slate-400">عملية</span>
           </div>
           <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-            متوسط العملية: {formatCurrency(dayAverage)}
+            متوسط التحويل: {formatCurrency(dayAverage)}
           </span>
         </div>
+
+        {/* Device & Phone Sales (when present) */}
+        {daySalesTxs.length > 0 && (
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-purple-200/90 dark:border-purple-900/50 shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-purple-600 dark:text-purple-400 font-bold block">
+                مبيعات الأجهزة والهواتف
+              </span>
+              <span className="p-1 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
+                <ShoppingBag className="w-3.5 h-3.5" />
+              </span>
+            </div>
+            <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400">
+              {formatCurrency(dayTotalSalesAmount)}
+            </div>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
+              {daySalesTxs.length} عملية بيع من المخزون
+            </span>
+          </div>
+        )}
 
         {/* Fees Collected */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -1046,19 +1091,31 @@ export default function DailyLogView({ onNavigateToInbound }) {
 
                       {/* Sender Wallet & Client */}
                       <td className="py-3.5 px-4">
-                        <div>
-                          <span className="font-bold text-slate-900 dark:text-white block">
-                            {tx.customerName}
-                          </span>
-                          <span className="text-xs font-mono text-slate-500 dark:text-slate-400" dir="ltr">
-                            {formatPhone(tx.walletPhone)}
-                          </span>
-                          {tx.walletLabel && (
-                            <span className="text-[10px] text-slate-400 block">
-                              ({tx.walletLabel})
+                        {tx.type === 'product_sale' ? (
+                          <div>
+                            <span className="font-bold text-slate-900 dark:text-white block">
+                              {tx.customerName || 'عميل نقدي'}
                             </span>
-                          )}
-                        </div>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                              <Smartphone className="w-3 h-3 shrink-0" />
+                              {tx.productName}
+                            </span>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="font-bold text-slate-900 dark:text-white block">
+                              {tx.customerName}
+                            </span>
+                            <span className="text-xs font-mono text-slate-500 dark:text-slate-400" dir="ltr">
+                              {formatPhone(tx.walletPhone)}
+                            </span>
+                            {tx.walletLabel && (
+                              <span className="text-[10px] text-slate-400 block">
+                                ({tx.walletLabel})
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
 
                       {/* Transferred Amount */}
@@ -1073,6 +1130,10 @@ export default function DailyLogView({ onNavigateToInbound }) {
                           }`}>
                             {tx.isCreditorPayout ? '- ' : '+ '}{formatCurrency(tx.amount)} {tx.isCreditorPayout ? '(صرف لدائن)' : '(سداد)'}
                           </span>
+                        ) : tx.type === 'product_sale' ? (
+                          <span className="font-black text-emerald-600 dark:text-emerald-400 text-base font-mono">
+                            + {formatCurrency(tx.amount)}
+                          </span>
                         ) : (
                           <span className="font-black text-rose-600 dark:text-rose-400 text-base font-mono">
                             - {formatCurrency(tx.amount)}
@@ -1082,7 +1143,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
 
                       {/* Remaining Limit After Transfer */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {tx.type === 'client_payment' ? (
+                        {tx.type === 'client_payment' || tx.type === 'product_sale' ? (
                           <span className="text-xs text-slate-400 font-bold">—</span>
                         ) : (
                           <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-mono">
@@ -1105,6 +1166,18 @@ export default function DailyLogView({ onNavigateToInbound }) {
                           }`}>
                             {tx.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من العميل'} ({tx.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : tx.paymentMethod === 'instapay' ? 'إنستاباي' : tx.paymentMethod === 'bank' ? 'بنكي' : 'نقدي'})
                           </span>
+                        ) : tx.type === 'product_sale' ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-900/50">
+                              <ShoppingBag className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />
+                              بيع جهاز / هاتف
+                            </span>
+                            {tx.variantColor && (
+                              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                (لون: {tx.variantColor})
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold font-mono text-slate-800 dark:text-slate-200" dir="ltr">
@@ -1130,19 +1203,34 @@ export default function DailyLogView({ onNavigateToInbound }) {
                       {/* Transaction Code */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <span className="font-mono text-xs text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                          {tx.transactionCode || 'VF-AUTO'}
+                          {tx.transactionCode || (tx.type === 'product_sale' ? 'DEV-SALE' : 'VF-AUTO')}
                         </span>
                       </td>
 
                       {/* Fees & Notes */}
                       <td className="py-3.5 px-4 max-w-xs">
-                        <div className="text-xs">
-                          {tx.fee > 0 && (
-                            <span className="text-emerald-600 font-semibold block">
-                              عمولة: {formatCurrency(tx.fee)}
+                        {tx.type === 'product_sale' ? (
+                          <div className="text-xs">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 block">
+                              الكمية: {tx.quantity || 1} قطعة × {formatCurrency(tx.unitPrice)}
                             </span>
-                          )}
-                          <span className="text-slate-500 dark:text-slate-400 truncate block">
+                            <span className="text-slate-500 dark:text-slate-400 truncate block">
+                              {tx.notes || '—'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-xs">
+                            {tx.fee > 0 && (
+                              <span className="text-emerald-600 font-semibold block">
+                                عمولة: {formatCurrency(tx.fee)}
+                              </span>
+                            )}
+                            <span className="text-slate-500 dark:text-slate-400 truncate block">
+                              {tx.notes || '—'}
+                            </span>
+                          </div>
+                        )}
+                      </td>
                             {tx.notes || '—'}
                           </span>
                         </div>
@@ -1185,17 +1273,24 @@ export default function DailyLogView({ onNavigateToInbound }) {
                         {formatTimeArabic(tx.date)}
                       </span>
                       <h4 className="font-bold text-slate-900 dark:text-white text-base">
-                        {tx.customerName}
+                        {tx.customerName || (tx.type === 'product_sale' ? 'عميل نقدي' : '')}
                       </h4>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        <span className="text-slate-400">من:</span>
-                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300" dir="ltr">
-                          {formatPhone(tx.walletPhone)}
-                        </span>
-                        {tx.walletLabel && (
-                          <span className="text-[11px] text-slate-400">({tx.walletLabel})</span>
-                        )}
-                      </div>
+                      {tx.type === 'product_sale' ? (
+                        <div className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 font-medium mt-0.5">
+                          <Smartphone className="w-3.5 h-3.5" />
+                          <span>{tx.productName} (لون: {tx.variantColor || 'قياسي'})</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          <span className="text-slate-400">من:</span>
+                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300" dir="ltr">
+                            {formatPhone(tx.walletPhone)}
+                          </span>
+                          {tx.walletLabel && (
+                            <span className="text-[11px] text-slate-400">({tx.walletLabel})</span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-left">
@@ -1209,25 +1304,38 @@ export default function DailyLogView({ onNavigateToInbound }) {
                         }`}>
                           {tx.isCreditorPayout ? '- ' : '+ '}{formatCurrency(tx.amount)} {tx.isCreditorPayout ? '(صرف لدائن)' : '(سداد)'}
                         </div>
+                      ) : tx.type === 'product_sale' ? (
+                        <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                          + {formatCurrency(tx.amount)}
+                        </div>
                       ) : (
                         <div className="text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
                           - {formatCurrency(tx.amount)}
                         </div>
                       )}
-                      {tx.limitAfter !== undefined && (
+                      {tx.type === 'product_sale' ? (
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+                          {tx.quantity || 1} قطعة × {formatCurrency(tx.unitPrice)}
+                        </span>
+                      ) : tx.limitAfter !== undefined ? (
                         <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block font-mono">
                           المتبقي: {formatCurrency(tx.limitAfter)}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl">
                     <div>
                       <span className="text-slate-400 block text-[10px]">
-                        {tx.type === 'recharge' ? 'نوع العملية:' : tx.type === 'client_payment' ? 'طريقة السداد:' : 'المحول إليه:'}
+                        {tx.type === 'product_sale' ? 'نوع العملية:' : tx.type === 'recharge' ? 'نوع العملية:' : tx.type === 'client_payment' ? 'طريقة السداد:' : 'المحول إليه:'}
                       </span>
-                      {tx.type === 'recharge' ? (
+                      {tx.type === 'product_sale' ? (
+                        <span className="font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                          <ShoppingBag className="w-3.5 h-3.5" />
+                          بيع جهاز / إكسسوار
+                        </span>
+                      ) : tx.type === 'recharge' ? (
                         <span className="font-bold text-blue-600 dark:text-blue-400">
                           شحن وإيداع رصيد
                         </span>
