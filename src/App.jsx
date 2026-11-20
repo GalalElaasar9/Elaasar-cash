@@ -59,8 +59,8 @@ function MainApp() {
         setSearchQuery={setSearchQuery}
       />
 
-      {/* Main Content Container - 1600px Width with Mobile Bottom Bar Clearance */}
-      <main className="max-w-[1600px] mx-auto px-2.5 sm:px-6 lg:px-8 py-3.5 sm:py-8 pb-28 sm:pb-32 lg:pb-8 relative">
+      {/* Main Content Container - 1550px Width with Mobile Bottom Bar Clearance */}
+      <main className="max-w-[1550px] mx-auto px-2.5 sm:px-6 lg:px-8 py-3.5 sm:py-8 pb-28 sm:pb-32 lg:pb-8 relative">
         
         {/* KPI Stat Cards (Only on clients, daily, matrix tabs) */}
         {activeTab !== 'inventory' && activeTab !== 'inbound' && activeTab !== 'trash' && (

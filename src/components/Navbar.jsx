@@ -10,7 +10,7 @@ import {
   Cloud,
   Wallet, 
   Calendar, 
-  BarChart3, 
+  BarChart2, 
   Search, 
   Layers, 
   ArrowDownToLine, 
@@ -54,7 +54,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
     },
     { id: 'matrix', label: 'الليميت', shortLabel: 'الليميت', icon: Layers },
     { id: 'inbound', label: 'الوارد (له)', shortLabel: 'الوارد', icon: ArrowDownToLine, isBlue: true },
-    { id: 'reports', label: 'التقارير', shortLabel: 'التقارير', icon: BarChart3 },
+    { id: 'reports', label: 'التقارير', shortLabel: 'التقارير', icon: BarChart2 },
     { 
       id: 'trash', 
       label: 'المحذوفات', 
@@ -69,7 +69,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
     <>
       {/* Top Sticky Header */}
       <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors duration-200 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-2 sm:px-6 lg:px-8">
+        <div className="max-w-[1550px] mx-auto px-2 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-18 gap-1.5 sm:gap-6">
             
             {/* 1. Brand Logo - Professional Elaasar Mobile Services Branding */}
@@ -79,8 +79,8 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
               className="shrink-0"
             />
 
-            {/* 2. Desktop Navigation Tabs (Hidden on mobile, handled in bottom bar) */}
-            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/90 p-1 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 shadow-inner">
+            {/* 2. Desktop Navigation Tabs (Pill Container matching user design reference) */}
+            <nav className="hidden lg:flex items-center gap-1 bg-[#f1f5f9] dark:bg-slate-800/90 p-1.5 rounded-full border border-slate-200/90 dark:border-slate-700/80 shadow-xs">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -89,23 +89,25 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 relative ${
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 relative select-none ${
                       isActive
-                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-600/50'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700 font-black'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/40'
                     }`}
                   >
-                    <Icon className={`w-4 h-4 ${
+                    <Icon className={`w-4 h-4 shrink-0 ${
                       isActive 
                         ? (item.isBlue ? 'text-blue-600 dark:text-blue-400' : item.isRose ? 'text-rose-600 dark:text-rose-400' : 'text-red-600 dark:text-red-400')
-                        : 'text-slate-400 group-hover:text-slate-600'
+                        : 'text-slate-400 dark:text-slate-500'
                     }`} />
-                    <span>{item.label}</span>
+                    <span className="leading-none">{item.label}</span>
 
                     {item.badge && (
-                      <span className={`px-1.5 py-0.2 text-[10px] font-black rounded-full text-white shadow-sm ${
+                      <span className={`w-5 h-5 min-w-[20px] rounded-full text-white font-black text-[11px] flex items-center justify-center leading-none shadow-xs shrink-0 ${
                         item.isWarning 
-                          ? 'bg-amber-500 animate-pulse' 
+                          ? 'bg-amber-500' 
+                          : item.isRose
+                          ? 'bg-rose-600'
                           : 'bg-red-600'
                       }`}>
                         {item.badge}
