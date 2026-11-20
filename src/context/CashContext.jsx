@@ -339,15 +339,22 @@ export function CashProvider({ children }) {
   };
 
   // Client Management
-  const addClient = ({ name, notes = '', clientType = 'مدين', initialPhoneNumber, initialWalletLabel = 'المحفظة الأساسية', initialLimit = 200000, wallets = [] }) => {
+  const addClient = ({ name, notes = '', clientType = 'عادي', initialPhoneNumber, initialWalletLabel = 'المحفظة الأساسية', initialLimit = 200000, wallets = [] }) => {
+    const finalType = clientType || 'عادي';
     const newClient = {
       id: `client-${Date.now()}`,
       name: name.trim(),
       notes: notes.trim(),
-      clientType: clientType || 'مدين',
+      clientType: finalType,
       createdAt: new Date().toISOString(),
       wallets: []
     };
+
+    try {
+      localStorage.setItem(`elaasar_client_type_${newClient.id}`, finalType);
+    } catch (e) {
+      console.error(e);
+    }
 
     if (Array.isArray(wallets) && wallets.length > 0) {
       wallets.forEach((w, idx) => {
@@ -711,6 +718,32 @@ export function CashProvider({ children }) {
     triggerConfetti();
 
     if (!isShopWallet) {
+      // Auto-transition: If client was 'عادي', convert to 'مدين' upon recharging any of their wallets
+      if (client) {
+        let currentType = client.clientType;
+        if (!currentType) {
+          try {
+            currentType = localStorage.getItem(`elaasar_client_type_${client.id}`) || 'عادي';
+          } catch {
+            currentType = 'عادي';
+          }
+        }
+        if (currentType === 'عادي') {
+          updateClient(client.id, {
+            clientType: 'مدين',
+            excessDebt: null,
+            excessDebtDate: null
+          });
+          try {
+            localStorage.setItem(`elaasar_client_type_${client.id}`, 'مدين');
+            localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+
       // Client Wallet Rules Check (60k daily, 200k monthly)
       const newDailyTotal = stats.todayRecharges + numAmount;
       const newMonthTotal = stats.totalRecharges + numAmount;

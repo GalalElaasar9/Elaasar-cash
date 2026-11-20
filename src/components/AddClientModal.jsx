@@ -14,7 +14,7 @@ export default function AddClientModal() {
 
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [clientType, setClientType] = useState('مدين');
+  const [clientType, setClientType] = useState('عادي');
   const [wallets, setWallets] = useState([
     { phoneNumber: '', label: 'محفظة 1', totalLimit: 200000 }
   ]);
@@ -34,7 +34,7 @@ export default function AddClientModal() {
     setActiveModal(null);
     setName('');
     setNotes('');
-    setClientType('مدين');
+    setClientType('عادي');
     setWallets([{ phoneNumber: '', label: 'محفظة 1', totalLimit: 200000 }]);
   };
 
@@ -148,27 +148,27 @@ export default function AddClientModal() {
           />
         </div>
 
-        {/* Client classification: مدين أو دائن */}
+        {/* Client classification: عادي أو دائن أو مدين */}
         <div>
           <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-            تصنيف نوع العميل
+            تصنيف نوع العميل الأولي
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
-              onClick={() => setClientType('مدين')}
-              className={`btn-interactive py-2.5 px-3 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
-                clientType === 'مدين'
-                  ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+              onClick={() => setClientType('عادي')}
+              className={`btn-interactive py-2.5 px-2 rounded-xl border text-xs font-black flex items-center justify-center gap-1 transition-all ${
+                clientType === 'عادي'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
               }`}
             >
-              <span>مدين (عليه آجل)</span>
+              <span>عادي (خالص)</span>
             </button>
             <button
               type="button"
               onClick={() => setClientType('دائن')}
-              className={`btn-interactive py-2.5 px-3 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+              className={`btn-interactive py-2.5 px-2 rounded-xl border text-xs font-black flex items-center justify-center gap-1 transition-all ${
                 clientType === 'دائن'
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
@@ -176,7 +176,21 @@ export default function AddClientModal() {
             >
               <span>دائن (له رصيد)</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setClientType('مدين')}
+              className={`btn-interactive py-2.5 px-2 rounded-xl border text-xs font-black flex items-center justify-center gap-1 transition-all ${
+                clientType === 'مدين'
+                  ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+              }`}
+            >
+              <span>مدين (عليه آجل)</span>
+            </button>
           </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            ملاحظة: يتحول العميل تلقائياً من "عادي" إلى "مدين" فور شحن أي رقم من أرقامه.
+          </p>
         </div>
 
         {/* Wallets / Phone numbers list */}

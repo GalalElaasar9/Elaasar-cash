@@ -37,7 +37,6 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
 
   const navItems = [
     { id: 'clients', label: 'العملاء', shortLabel: 'العملاء', icon: Wallet },
-    { id: 'accounts', label: 'حسابات العملاء', shortLabel: 'الحسابات', icon: FileSpreadsheet, isEmerald: true },
     { 
       id: 'daily', 
       label: 'سجل اليوم', 

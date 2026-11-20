@@ -160,11 +160,23 @@ export default function ClientPaymentModal() {
               : `⚠️ تم صرف ${formatCurrency(effectiveAmount)} للعميل في تمام ${time}! المبلغ أكبر من رصيده الدائن بمقدار ${formatCurrency(excess)}. تم تحويل العميل تلقائياً إلى "مدين" والدين المستحق عليه هو المبلغ الزائد: ${formatCurrency(excess)} فقط!`,
             'warning'
           );
-        } else if (isExactPayment) {
+        } else if (isExactPayment || remainingAfter === 0) {
+          updateClient(client.id, {
+            clientType: 'عادي',
+            excessDebt: 0,
+            excessDebtDate: null
+          });
+          try {
+            localStorage.setItem(`elaasar_client_type_${client.id}`, 'عادي');
+            localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+          } catch (e) {
+            console.error(e);
+          }
           showToast(
             isVodafoneCash
-              ? `تم صرف كامل مستحقات العميل الدائن بنجاح (${formatCurrency(rawInputAmount)} فودافون كاش × 0.99 = ${formatCurrency(effectiveAmount)}) في تمام ${time}! رصيد الحساب الآن: 0 ج.م`
-              : `تم صرف كامل مستحقات العميل الدائن (${formatCurrency(effectiveAmount)}) في تمام ${time} بنجاح! رصيد الحساب الآن: 0 ج.م`,
+              ? `تم صرف كامل مستحقات العميل الدائن بنجاح (${formatCurrency(rawInputAmount)} فودافون كاش × 0.99 = ${formatCurrency(effectiveAmount)}) في تمام ${time}! رصيد الحساب أصبح 0 ج.م وتم تحويله تلقائياً إلى "عميل عادي"`
+              : `تم صرف كامل مستحقات العميل الدائن (${formatCurrency(effectiveAmount)}) في تمام ${time} بنجاح! رصيد الحساب أصبح 0 ج.م وتم تحويله تلقائياً إلى "عميل عادي"`,
             'success'
           );
         } else {
@@ -199,9 +211,14 @@ export default function ClientPaymentModal() {
               : `🎉 تم تسجيل سداد ${formatCurrency(effectiveAmount)} في تمام ${time}! المبلغ أكبر من المستحق بمقدار ${formatCurrency(excess)}. تم تحويل العميل تلقائياً إلى "دائن" وله رصيد مستحق: ${formatCurrency(excess)}!`,
             'success'
           );
-        } else if (isExactPayment) {
-          updateClient(client.id, { excessDebt: 0 });
+        } else if (isExactPayment || remainingAfter === 0) {
+          updateClient(client.id, {
+            clientType: 'عادي',
+            excessDebt: 0,
+            excessDebtDate: null
+          });
           try {
+            localStorage.setItem(`elaasar_client_type_${client.id}`, 'عادي');
             localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
             localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
           } catch (e) {
@@ -209,18 +226,33 @@ export default function ClientPaymentModal() {
           }
           showToast(
             isVodafoneCash
-              ? `تم سداد كامل المطلوب بنجاح (${formatCurrency(rawInputAmount)} فودافون كاش × 0.99 = ${formatCurrency(effectiveAmount)}) في تمام ${time}! رصيد الحساب الآن: 0 ج.م`
-              : `تم سداد كامل المبلغ المستحق (${formatCurrency(effectiveAmount)}) في تمام ${time} بنجاح! رصيد الحساب الآن: 0 ج.م`,
+              ? `تم سداد كامل المطلوب بنجاح (${formatCurrency(rawInputAmount)} فودافون كاش × 0.99 = ${formatCurrency(effectiveAmount)}) في تمام ${time}! رصيد الحساب الآن: 0 ج.م وتم تحويل العميل تلقائياً إلى "عميل عادي"`
+              : `تم سداد كامل المبلغ المستحق (${formatCurrency(effectiveAmount)}) في تمام ${time} بنجاح! رصيد الحساب الآن: 0 ج.م وتم تحويل العميل تلقائياً إلى "عميل عادي"`,
             'success'
           );
         } else {
           if (client.excessDebt) {
             const nextExcess = Math.max(0, client.excessDebt - effectiveAmount);
-            updateClient(client.id, { excessDebt: nextExcess });
-            try {
-              localStorage.setItem(`elaasar_client_excess_debt_${client.id}`, String(nextExcess));
-            } catch (e) {
-              console.error(e);
+            if (nextExcess === 0) {
+              updateClient(client.id, {
+                clientType: 'عادي',
+                excessDebt: 0,
+                excessDebtDate: null
+              });
+              try {
+                localStorage.setItem(`elaasar_client_type_${client.id}`, 'عادي');
+                localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
+                localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+              } catch (e) {
+                console.error(e);
+              }
+            } else {
+              updateClient(client.id, { excessDebt: nextExcess });
+              try {
+                localStorage.setItem(`elaasar_client_excess_debt_${client.id}`, String(nextExcess));
+              } catch (e) {
+                console.error(e);
+              }
             }
           }
           showToast(

@@ -29,7 +29,7 @@ import CloudSyncModal from './components/CloudSyncModal';
 import RechargeWalletModal from './components/RechargeWalletModal';
 import ClientPaymentModal from './components/ClientPaymentModal';
 
-import { UserPlus, Send, Search, Users, AlertCircle, Sparkles, LayoutGrid, Table } from 'lucide-react';
+import { UserPlus, Send, Search, Users, AlertCircle, Sparkles, LayoutGrid, Table, FileSpreadsheet } from 'lucide-react';
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState('clients'); // 'clients', 'daily', 'inventory', 'matrix', 'inbound', 'reports'
@@ -153,6 +153,15 @@ function MainApp() {
                 </div>
 
                 <button
+                  onClick={() => setActiveTab('accounts')}
+                  className="btn-interactive flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs sm:text-sm font-black shadow-md shadow-emerald-600/20 ring-1 ring-emerald-500/30 transition-all"
+                  title="فتح دفتر حسابات العملاء الدائن والمدين والآجل"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-100 shrink-0" />
+                  <span>حسابات العملاء (دائن / مدين)</span>
+                </button>
+
+                <button
                   onClick={() => setActiveModal('addClient')}
                   className="btn-interactive flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-red-600 dark:hover:bg-red-700 text-white text-xs sm:text-sm font-bold shadow-sm transition-all"
                 >
@@ -204,7 +213,7 @@ function MainApp() {
         {/* Tab 2: Client Accounts & Receivables (حسابات العملاء والآجل) */}
         {activeTab === 'accounts' && (
           <div className="animate-view-fade">
-            <ClientAccountsView />
+            <ClientAccountsView onNavigateToClients={() => setActiveTab('clients')} />
           </div>
         )}
 
