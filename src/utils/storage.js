@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   THEME: 'elaasar_cash_theme_v3',
   INVENTORY: 'elaasar_cash_inventory_v3',
   TRASH: 'elaasar_cash_trash_v1',
+  SHOP_WALLETS: 'elaasar_cash_shop_wallets_v1',
 };
 
 // Generates today's date string and some earlier timestamps
@@ -85,6 +86,51 @@ export const INITIAL_DEMO_CLIENTS = [
         createdAt: getRecentDate(8)
       }
     ]
+  }
+];
+
+export const INITIAL_SHOP_WALLETS = [
+  {
+    id: 'wallet-1-1',
+    phoneNumber: '01098765432',
+    label: 'محفظة المبيعات المركزية (المحل)',
+    totalLimit: 200000,
+    createdAt: getRecentDate(15)
+  },
+  {
+    id: 'wallet-1-2',
+    phoneNumber: '01011223344',
+    label: 'محفظة فرع المحطة (المحل)',
+    totalLimit: 200000,
+    createdAt: getRecentDate(10)
+  },
+  {
+    id: 'wallet-1-3',
+    phoneNumber: '01055667788',
+    label: 'محفظة كبار العملاء والسيولة (المحل)',
+    totalLimit: 200000,
+    createdAt: getRecentDate(5)
+  },
+  {
+    id: 'wallet-2-1',
+    phoneNumber: '01023456789',
+    label: 'محفظة إدارة الحسابات (المحل)',
+    totalLimit: 200000,
+    createdAt: getRecentDate(20)
+  },
+  {
+    id: 'wallet-2-2',
+    phoneNumber: '01034567890',
+    label: 'محفظة المشتريات والتوريدات (المحل)',
+    totalLimit: 200000,
+    createdAt: getRecentDate(12)
+  },
+  {
+    id: 'wallet-3-1',
+    phoneNumber: '01099887766',
+    label: 'محفظة التحويلات الفورية (المحل)',
+    totalLimit: 200000,
+    createdAt: getRecentDate(8)
   }
 ];
 
@@ -473,6 +519,28 @@ export const storage = {
     }
   },
 
+  getShopWallets() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.SHOP_WALLETS);
+      if (!data) {
+        localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(INITIAL_SHOP_WALLETS));
+        return INITIAL_SHOP_WALLETS;
+      }
+      return JSON.parse(data);
+    } catch (e) {
+      console.error('Error reading shop wallets from storage:', e);
+      return INITIAL_SHOP_WALLETS;
+    }
+  },
+
+  saveShopWallets(wallets) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(wallets));
+    } catch (e) {
+      console.error('Error saving shop wallets:', e);
+    }
+  },
+
   getTheme() {
     return localStorage.getItem(STORAGE_KEYS.THEME) || 'light';
   },
@@ -505,15 +573,16 @@ export const storage = {
     }
   },
 
-  exportFullBackup(clients, transactions, inventory, trash) {
+  exportFullBackup(clients, transactions, inventory, trash, shopWallets) {
     const backup = {
-      version: '3.3',
+      version: '3.4',
       system: 'Elaasar Cash & Mobile Shop Management System',
       exportDate: new Date().toISOString(),
       clients,
       transactions,
       inventory: inventory || [],
-      trash: trash || { wallets: [], clients: [], products: [] }
+      trash: trash || { wallets: [], clients: [], products: [] },
+      shopWallets: shopWallets || []
     };
     
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -529,11 +598,13 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(INITIAL_DEMO_CLIENTS));
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(INITIAL_DEMO_TRANSACTIONS));
     localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(INITIAL_DEMO_INVENTORY));
+    localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(INITIAL_SHOP_WALLETS));
     localStorage.removeItem(STORAGE_KEYS.TRASH);
     return {
       clients: INITIAL_DEMO_CLIENTS,
       transactions: INITIAL_DEMO_TRANSACTIONS,
       inventory: INITIAL_DEMO_INVENTORY,
+      shopWallets: INITIAL_SHOP_WALLETS,
       trash: { wallets: [], clients: [], products: [] }
     };
   },
@@ -542,11 +613,13 @@ export const storage = {
     localStorage.removeItem(STORAGE_KEYS.CLIENTS);
     localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
     localStorage.removeItem(STORAGE_KEYS.INVENTORY);
+    localStorage.removeItem(STORAGE_KEYS.SHOP_WALLETS);
     localStorage.removeItem(STORAGE_KEYS.TRASH);
     return {
       clients: [],
       transactions: [],
       inventory: [],
+      shopWallets: [],
       trash: { wallets: [], clients: [], products: [] }
     };
   }

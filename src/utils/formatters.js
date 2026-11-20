@@ -249,10 +249,11 @@ export function calculateWalletStats(wallet, transactions = [], targetMonth = nu
     .filter(t => t.type === 'recharge' || t.type === 'limit_reset')
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-  // Raw remaining limit before cap
+  // Raw remaining limit before cap (actual balance, can exceed totalLimit / 200,000)
   const rawRemaining = totalLimit - totalTransfersOut + totalRecharges;
-  // Capped by max wallet balance cap (200,000) and cannot drop below 0
-  const remainingLimit = Math.max(0, Math.min(MAX_WALLET_BALANCE_CAP, rawRemaining));
+  const remainingLimit = Math.max(0, rawRemaining);
+  const isOverBalanceCap = remainingLimit > totalLimit;
+  const overBalanceAmount = isOverBalanceCap ? remainingLimit - totalLimit : 0;
 
   const percentUsed = totalLimit > 0 ? Math.min(100, Math.max(0, ((totalTransfersOut - totalRecharges) / totalLimit) * 100)) : 0;
   
@@ -271,9 +272,10 @@ export function calculateWalletStats(wallet, transactions = [], targetMonth = nu
     .filter(t => t.type === 'recharge' || t.type === 'limit_reset')
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const remainingDailyRecharge = Math.max(0, DAILY_RECHARGE_LIMIT - todayRecharges);
-  // Max allowed deposit taking both daily recharge cap (120k) and wallet cap (200k) into account
-  const roomInWallet = Math.max(0, MAX_WALLET_BALANCE_CAP - remainingLimit);
-  const maxAllowedDeposit = Math.max(0, Math.min(remainingDailyRecharge, roomInWallet));
+  // Room in wallet to reach totalLimit (0 if already at or above cap)
+  const roomInWallet = Math.max(0, totalLimit - remainingLimit);
+  // Shop lines can accept recharge up to remainingDailyRecharge (and can exceed totalLimit with a warning)
+  const maxAllowedDeposit = remainingDailyRecharge;
   const isDailyRechargeExhausted = remainingDailyRecharge <= 0;
 
   // Status flags:
@@ -298,6 +300,9 @@ export function calculateWalletStats(wallet, transactions = [], targetMonth = nu
     isLocked,    // Wallet locked because monthly limit reached
     isNearLimit, // > 0 and <= 20% (YELLOW / AMBER)
     isSafe,      // > 20% (GREEN)
+    isOverBalanceCap, // > totalLimit (e.g. > 200,000)
+    overBalanceAmount, // amount exceeding totalLimit
+    roomInWallet,
 
     // Daily transfer out stats
     todayTransfersOut,

@@ -9,12 +9,14 @@ import {
 import { Smartphone, X, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function AddWalletModal() {
-  const { activeModal, setActiveModal, modalData, addWallet, showToast } = useCash();
+  const { activeModal, setActiveModal, modalData, addWallet, addShopWallet, showToast } = useCash();
   const dialogRef = useRef(null);
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [label, setLabel] = useState('');
   const [totalLimit, setTotalLimit] = useState(200000);
+
+  const isShopWallet = modalData?.isShopWallet;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -23,12 +25,12 @@ export default function AddWalletModal() {
     if (activeModal === 'addWallet') {
       if (!dialog.open) dialog.showModal();
       setPhoneNumber('');
-      setLabel('');
+      setLabel(isShopWallet ? 'خط مبيعات المحل' : '');
       setTotalLimit(200000);
     } else {
       if (dialog.open) dialog.close();
     }
-  }, [activeModal]);
+  }, [activeModal, isShopWallet]);
 
   const handleClose = () => {
     setActiveModal(null);
@@ -43,6 +45,16 @@ export default function AddWalletModal() {
     const clean = cleanEgyptianPhone(phoneNumber);
     if (!isValidEgyptianPhone(clean)) {
       showToast(getEgyptianPhoneError(clean) || 'يجب أن يبدأ الرقم بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً', 'error');
+      return;
+    }
+
+    if (isShopWallet) {
+      addShopWallet({
+        phoneNumber: clean,
+        label: label || 'خط المحل',
+        totalLimit: Number(totalLimit) || 200000
+      });
+      handleClose();
       return;
     }
 
@@ -73,10 +85,10 @@ export default function AddWalletModal() {
           </div>
           <div>
             <h2 id="add-wallet-title" className="text-base font-bold">
-              إضافة رقم محفظة جديد
+              {isShopWallet ? 'إضافة خط جديد للمحل (فودافون كاش)' : 'إضافة رقم محفظة جديد'}
             </h2>
             <p className="text-xs text-slate-400">
-              للعميل: {modalData?.clientName}
+              {isShopWallet ? 'أرقام وخطوط المحل الشخصية' : `للعميل: ${modalData?.clientName}`}
             </p>
           </div>
         </div>
@@ -106,7 +118,7 @@ export default function AddWalletModal() {
               </span>
             )}
           </div>
-          <div className="relative">
+          <div>
             <input
               type="tel"
               required
@@ -124,9 +136,6 @@ export default function AddWalletModal() {
               }`}
               dir="ltr"
             />
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
-              {phoneNumber.length}/11
-            </span>
           </div>
           {phoneError && (
             <p className="text-[11px] text-rose-500 font-bold mt-1 flex items-center gap-1">
@@ -161,12 +170,12 @@ export default function AddWalletModal() {
           </label>
           <input
             type="number"
-            min="1000"
-            step="1000"
+            min="1"
+            step="any"
             required
             value={totalLimit}
             onChange={(e) => setTotalLimit(e.target.value)}
-            className="w-full px-3.5 py-2 text-base font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+            className="w-full px-3.5 py-2 text-base font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
           <p className="text-[11px] text-slate-400 mt-1">
             الليميت القياسي الافتراضي هو 200,000 ج.م شهرياً مع إمكانية تحويل حتى 60,000 ج.م يومياً.

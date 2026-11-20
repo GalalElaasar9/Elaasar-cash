@@ -3,7 +3,6 @@ import { useCash } from '../context/CashContext';
 import { useAuth } from '../context/AuthContext';
 import ElaasarLogo from './ElaasarLogo';
 import { 
-  Send, 
   Sun, 
   Moon, 
   Database, 
@@ -67,10 +66,10 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
 
   return (
     <>
-      {/* Top Sticky Header */}
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors duration-200 shadow-sm">
+      {/* Top Sticky Header with 10px Top & Bottom Padding */}
+      <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors duration-200 shadow-sm py-[10px]">
         <div className="max-w-[1550px] mx-auto px-2 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 sm:h-18 gap-1.5 sm:gap-6">
+          <div className="flex items-center justify-between min-h-12 sm:min-h-14 gap-1.5 sm:gap-6">
             
             {/* 1. Brand Logo - Professional Elaasar Mobile Services Branding */}
             <ElaasarLogo 
@@ -79,8 +78,8 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
               className="shrink-0"
             />
 
-            {/* 2. Desktop Navigation Tabs (Pill Container matching user design reference) */}
-            <nav className="hidden lg:flex items-center gap-1 bg-[#f1f5f9] dark:bg-slate-800/90 p-1.5 rounded-full border border-slate-200/90 dark:border-slate-700/80 shadow-xs">
+            {/* 2. Desktop Navigation Tabs (Clean Floating Links without container background) */}
+            <nav className="hidden lg:flex items-center gap-1 sm:gap-1.5">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -89,10 +88,10 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 relative select-none ${
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 relative select-none whitespace-nowrap ${
                       isActive
-                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700 font-black'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/40'
+                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700 font-black'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-slate-800/50'
                     }`}
                   >
                     <Icon className={`w-4 h-4 shrink-0 ${
@@ -100,7 +99,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
                         ? (item.isBlue ? 'text-blue-600 dark:text-blue-400' : item.isRose ? 'text-rose-600 dark:text-rose-400' : 'text-red-600 dark:text-red-400')
                         : 'text-slate-400 dark:text-slate-500'
                     }`} />
-                    <span className="leading-none">{item.label}</span>
+                    <span className="leading-none whitespace-nowrap">{item.label}</span>
 
                     {item.badge && (
                       <span className={`w-5 h-5 min-w-[20px] rounded-full text-white font-black text-[11px] flex items-center justify-center leading-none shadow-xs shrink-0 ${
@@ -118,8 +117,8 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
               })}
             </nav>
 
-            {/* 3. Right Side: Quick Search + Primary Transfer CTA + Utilities */}
-            <div className="flex items-center gap-1.5 sm:gap-3">
+            {/* 3. Right Side: Quick Search + Utilities (Red transfer CTA removed as requested) */}
+            <div className="flex items-center gap-2 sm:gap-3">
               
               {/* Desktop Search Input */}
               <div className="relative hidden md:block">
@@ -129,7 +128,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
                   placeholder="بحث سريع..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-32 lg:w-44 focus:w-60 pl-3 pr-8 py-1.5 text-xs bg-slate-100/90 dark:bg-slate-800/90 border border-transparent focus:border-red-400 dark:focus:border-red-500 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:bg-white dark:focus:bg-slate-800 transition-all duration-300"
+                  className="w-36 lg:w-48 focus:w-60 pl-3 pr-8 py-2 text-xs bg-slate-100/90 dark:bg-slate-800/90 border border-transparent focus:border-red-400 dark:focus:border-red-500 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:bg-white dark:focus:bg-slate-800 transition-all duration-300"
                 />
                 {searchQuery && (
                   <button
@@ -144,7 +143,7 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
               {/* Mobile Search Toggle Icon */}
               <button
                 onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
-                className={`p-1.5 sm:p-2 rounded-xl md:hidden transition-colors ${
+                className={`p-2 rounded-xl md:hidden transition-colors ${
                   mobileSearchOpen || searchQuery
                     ? 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50'
                     : 'bg-slate-100/90 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300'
@@ -152,20 +151,6 @@ export default function Navbar({ activeTab, setActiveTab, searchQuery, setSearch
                 title="بحث عن عميل أو هاتف"
               >
                 <Search className="w-4 h-4" />
-              </button>
-
-              {/* Primary Action Button - Prominent & Sleek */}
-              <button
-                onClick={() => {
-                  setModalData(null);
-                  setActiveModal('transfer');
-                }}
-                className="btn-interactive flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-red-600/25 ring-1 ring-red-500/40 shrink-0"
-                title="تسجيل تحويل جديد وخصمه مباشرة من الليميت"
-              >
-                <Send className="w-3.5 h-3.5 rotate-180" />
-                <span className="hidden sm:inline">تحويل كاش</span>
-                <span className="sm:hidden">تحويل</span>
               </button>
 
               {/* Utilities Segment (Theme Switcher + Cloud Realtime + Backup Database) */}

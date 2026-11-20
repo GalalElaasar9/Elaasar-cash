@@ -22,28 +22,39 @@ import {
 } from 'lucide-react';
 
 export default function LimitMatrixView() {
-  const { clients, transactions, setActiveModal, setModalData } = useCash();
+  const { clients, shopWallets, transactions, setActiveModal, setModalData } = useCash();
   const [filterStatus, setFilterStatus] = useState('all'); // all, near, exhausted, safe
   const [query, setQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 6;
 
-  // Collect all wallets flattened with client metadata
+  // Collect all wallets flattened with metadata (prioritizing shop personal wallets)
   const allWallets = useMemo(() => {
     const list = [];
-    clients.forEach(c => {
+    (shopWallets || []).forEach(w => {
+      const stats = calculateWalletStats(w, transactions);
+      list.push({
+        ...w,
+        clientId: 'shop',
+        clientName: 'أرقام وخطوط المحل',
+        isShopWallet: true,
+        stats
+      });
+    });
+    (clients || []).forEach(c => {
       (c.wallets || []).forEach(w => {
         const stats = calculateWalletStats(w, transactions);
         list.push({
           ...w,
           clientId: c.id,
           clientName: c.name,
+          isShopWallet: false,
           stats
         });
       });
     });
     return list;
-  }, [clients, transactions]);
+  }, [shopWallets, clients, transactions]);
 
   const filteredWallets = useMemo(() => {
     return allWallets.filter(item => {
@@ -86,7 +97,9 @@ export default function LimitMatrixView() {
   const handleQuickTransfer = (item) => {
     setModalData({
       clientId: item.clientId,
-      walletId: item.id
+      walletId: item.id,
+      wallet: item,
+      isShopWallet: item.isShopWallet
     });
     setActiveModal('transfer');
   };
@@ -95,7 +108,8 @@ export default function LimitMatrixView() {
     setModalData({
       clientId: item.clientId,
       clientName: item.clientName,
-      wallet: item
+      wallet: item,
+      isShopWallet: item.isShopWallet
     });
     setActiveModal('editLimit');
   };
@@ -104,7 +118,8 @@ export default function LimitMatrixView() {
     setModalData({
       clientId: item.clientId,
       clientName: item.clientName,
-      wallet: item
+      wallet: item,
+      isShopWallet: item.isShopWallet
     });
     setActiveModal('rechargeWallet');
   };

@@ -419,7 +419,7 @@ export default function NewTransferModal() {
                 </span>
               )}
             </div>
-            <div className="relative">
+            <div>
               <input
                 type="tel"
                 maxLength={11}
@@ -435,9 +435,6 @@ export default function NewTransferModal() {
                 }`}
                 dir="ltr"
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
-                {recipientPhone.length}/11
-              </span>
             </div>
             {recipientPhoneError && (
               <p className="text-[11px] text-rose-500 font-bold mt-1 flex items-center gap-1">

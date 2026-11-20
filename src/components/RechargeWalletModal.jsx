@@ -41,11 +41,12 @@ export default function RechargeWalletModal() {
   };
 
   const numAmount = Number(amount) || 0;
-  const newBalance = stats ? Math.min(200000, stats.remainingLimit + numAmount) : 0;
+  const newBalance = stats ? (stats.remainingLimit + numAmount) : 0;
   const maxDeposit = stats ? stats.maxAllowedDeposit : 0;
   const isOverDailyLimit = stats ? numAmount > stats.remainingDailyRecharge : false;
-  const isOverMaxBalance = stats ? (stats.remainingLimit + numAmount) > 200000 : false;
-  const isValidAmount = numAmount > 0 && !isOverDailyLimit && !isOverMaxBalance;
+  const isOverMaxBalance = stats ? (stats.remainingLimit + numAmount) > (stats.totalLimit || 200000) : false;
+  const overBalanceAmount = isOverMaxBalance ? (stats.remainingLimit + numAmount) - (stats.totalLimit || 200000) : 0;
+  const isValidAmount = numAmount > 0 && !isOverDailyLimit;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -108,7 +109,11 @@ export default function RechargeWalletModal() {
           {/* Current Balance */}
           <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
             <span className="text-[10px] sm:text-[11px] text-slate-400 block font-medium">الرصيد المتاح الحالي:</span>
-            <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white font-mono">
+            <span className={`text-sm sm:text-base font-black font-mono ${
+              stats.remainingLimit > (stats.totalLimit || 200000)
+                ? 'text-amber-600 dark:text-amber-400'
+                : 'text-slate-900 dark:text-white'
+            }`}>
               {formatCurrency(stats.remainingLimit)}
             </span>
           </div>
@@ -123,16 +128,28 @@ export default function RechargeWalletModal() {
           </div>
 
           {/* Max Capacity Cap Info */}
-          <div className="col-span-2 p-3 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/40 flex items-center justify-between text-xs">
+          <div className={`col-span-2 p-3 rounded-2xl border flex items-center justify-between text-xs transition-colors ${
+            stats.remainingLimit >= (stats.totalLimit || 200000)
+              ? 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/50'
+              : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-800/40'
+          }`}>
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <ShieldCheck className={`w-4 h-4 shrink-0 ${stats.remainingLimit >= (stats.totalLimit || 200000) ? 'text-amber-600' : 'text-emerald-600'}`} />
               <span className="text-slate-700 dark:text-slate-300 font-bold">
-                السعة القصوى للمحفظة: 200,000 ج.م
+                الحد الأقصى للمحفظة: {formatCurrency(stats.totalLimit || 200000)}
               </span>
             </div>
-            <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
-              المتاح إضافته الآن: {formatCurrency(maxDeposit)}
-            </span>
+            <div className="flex items-center gap-1 font-bold">
+              {stats.remainingLimit >= (stats.totalLimit || 200000) ? (
+                <span className="text-amber-700 dark:text-amber-400 font-medium text-[11px]">
+                  ⚠️ مكتمل الليميت (يقبل رصيد إضافي بتنبيه)
+                </span>
+              ) : (
+                <span className="text-emerald-700 dark:text-emerald-300">
+                  المتبقي للحد: <strong className="font-mono">{formatCurrency((stats.totalLimit || 200000) - stats.remainingLimit)}</strong>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -141,8 +158,8 @@ export default function RechargeWalletModal() {
           <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
             <span>مبلغ الشحن المطلوب إضافته:</span>
             {numAmount > 0 && (
-              <span className="text-[11px] font-bold text-slate-500 font-mono">
-                الرصيد بعد الشحن: <strong className="text-emerald-600 dark:text-emerald-400">{formatCurrency(newBalance)}</strong>
+              <span className="text-[11px] font-bold text-slate-500">
+                الرصيد بعد الشحن: <strong className={`font-mono ${isOverMaxBalance ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{formatCurrency(newBalance)}</strong>
               </span>
             )}
           </label>
@@ -150,13 +167,12 @@ export default function RechargeWalletModal() {
             <input
               type="number"
               min="1"
-              max={maxDeposit}
-              step="500"
+              step="any"
               required
               placeholder="اكتب المبلغ بالجنيه (مثال: 50000)"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 text-base sm:text-lg font-black font-mono bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              className="w-full pl-12 pr-4 py-3 text-base sm:text-lg font-black font-mono bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
               ج.م
@@ -169,36 +185,36 @@ export default function RechargeWalletModal() {
           <span className="text-[10px] text-slate-400 font-bold block">مبالغ سريعة:</span>
           <div className="flex flex-wrap gap-1.5">
             {[10000, 20000, 30000, 50000, 100000].map(val => {
-              const disabled = val > maxDeposit;
+              const disabled = stats.remainingDailyRecharge > 0 && val > stats.remainingDailyRecharge;
               return (
                 <button
                   key={val}
                   type="button"
                   disabled={disabled}
                   onClick={() => setAmount(String(val))}
-                  className={`btn-interactive px-2.5 py-1 rounded-xl text-xs font-bold font-mono border transition-all ${
+                  className={`btn-interactive px-2.5 py-1 rounded-xl text-xs font-bold border transition-all ${
                     disabled
                       ? 'opacity-40 bg-slate-100 dark:bg-slate-800 border-dashed text-slate-400 cursor-not-allowed'
                       : 'bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                   }`}
                 >
-                  +{formatCurrency(val)}
+                  <span className="font-mono">+{formatCurrency(val)}</span>
                 </button>
               );
             })}
-            {maxDeposit > 0 && (
+            {stats.remainingDailyRecharge > 0 && (
               <button
                 type="button"
-                onClick={() => setAmount(String(maxDeposit))}
-                className="btn-interactive px-2.5 py-1 rounded-xl text-xs font-bold font-mono bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-200"
+                onClick={() => setAmount(String(stats.remainingDailyRecharge))}
+                className="btn-interactive px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-200"
               >
-                الحد الأقصى المتاح (+{formatCurrency(maxDeposit)})
+                <span>الحد الأقصى المتاح اليوم</span> <span className="font-mono">(+{formatCurrency(stats.remainingDailyRecharge)})</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Error / Alert Messages */}
+        {/* Alerts & Warnings */}
         {isOverDailyLimit && (
           <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -207,16 +223,21 @@ export default function RechargeWalletModal() {
         )}
 
         {isOverMaxBalance && !isOverDailyLimit && (
-          <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200 text-xs font-bold flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>الرقم لا يمكن أن يقبل أكثر من 200,000 ج.م (الحد الأقصى للسعة). أقصى مبلغ يمكن قبوله الآن: {formatCurrency(200000 - stats.remainingLimit)}</span>
+          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 text-amber-900 dark:text-amber-200 text-xs font-bold space-y-1">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-black">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>⚠️ تنبيه: تم تجاوز الحد المسموح للمحفظة ({formatCurrency(stats.totalLimit || 200000)})</span>
+            </div>
+            <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 pr-6">
+              إجمالي الرصيد سيصبح <strong className="font-mono text-slate-900 dark:text-white underline">{formatCurrency(newBalance)}</strong> (زيادة بمقدار <strong className="font-mono">{formatCurrency(overBalanceAmount)}</strong> عن الليميت المسموح). سيتم تسجيل الرصيد بنجاح.
+            </p>
           </div>
         )}
 
-        {maxDeposit <= 0 && (
-          <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-bold flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
-            <span>لا يمكن إضافة رصيد إضافي لهذا الرقم حالياً (المحفظة عند الحد الأقصى 200,000 ج.م أو اكتمل حد الإيداع اليومي 120,000 ج.م).</span>
+        {stats.remainingDailyRecharge <= 0 && (
+          <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+            <span>اكتمل الحد الأقصى للإيداع اليومي لهذا الخط (120,000 ج.م اليوم). يتجدد غداً الساعة 12:00 منتصف الليل.</span>
           </div>
         )}
 
@@ -246,15 +267,23 @@ export default function RechargeWalletModal() {
           
           <button
             type="submit"
-            disabled={!isValidAmount || isSubmitting || maxDeposit <= 0}
+            disabled={!isValidAmount || isSubmitting}
             className={`btn-interactive flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-white font-bold text-xs sm:text-sm shadow-md transition-all ${
-              isValidAmount && maxDeposit > 0
-                ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30 ring-1 ring-emerald-500/40'
+              isValidAmount && !isSubmitting
+                ? isOverMaxBalance
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30 ring-1 ring-amber-500/40'
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30 ring-1 ring-emerald-500/40'
                 : 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed shadow-none'
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>{isSubmitting ? 'جاري الإضافة...' : 'تأكيد إضافة الرصيد للمحفظة'}</span>
+            <span>
+              {isSubmitting
+                ? 'جاري الإضافة...'
+                : isOverMaxBalance
+                ? 'تأكيد إضافة الرصيد (مع تجاوز الليميت)'
+                : 'تأكيد إضافة الرصيد للمحفظة'}
+            </span>
           </button>
         </div>
 

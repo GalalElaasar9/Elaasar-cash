@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { storage, INITIAL_DEMO_INVENTORY } from '../utils/storage';
+import { storage, INITIAL_DEMO_INVENTORY, INITIAL_SHOP_WALLETS } from '../utils/storage';
 import { 
   calculateWalletStats, 
   getTodayString, 
@@ -32,6 +32,7 @@ export function CashProvider({ children }) {
   const [clients, setClients] = useState(() => storage.getClients());
   const [transactions, setTransactions] = useState(() => storage.getTransactions());
   const [inventory, setInventory] = useState(() => storage.getInventory());
+  const [shopWallets, setShopWallets] = useState(() => storage.getShopWallets());
   const [theme, setTheme] = useState(() => storage.getTheme());
   const [selectedDate, setSelectedDate] = useState(getTodayString());
   const [toast, setToast] = useState(null);
@@ -212,6 +213,11 @@ export function CashProvider({ children }) {
     storage.saveInventory(inventory);
   }, [inventory]);
 
+  // Sync shopWallets to localStorage
+  useEffect(() => {
+    storage.saveShopWallets(shopWallets);
+  }, [shopWallets]);
+
   // Sync trash to localStorage
   useEffect(() => {
     storage.saveTrash(trash);
@@ -309,15 +315,26 @@ export function CashProvider({ children }) {
     }
   };
 
-  // Helper to find wallet & client by walletId
+  // Helper to find wallet & client by walletId (supports shop wallets & client wallets)
   const findWalletAndClient = (walletId) => {
+    // 1. Check shop personal wallets
+    const shopWallet = (shopWallets || []).find(w => w.id === walletId);
+    if (shopWallet) {
+      return {
+        client: { id: 'shop', name: 'أرقام وخطوط المحل' },
+        wallet: { ...shopWallet, isShopWallet: true },
+        isShopWallet: true
+      };
+    }
+
+    // 2. Check client wallets
     for (const client of clients) {
       const wallet = (client.wallets || []).find(w => w.id === walletId);
       if (wallet) {
-        return { client, wallet };
+        return { client, wallet: { ...wallet, isShopWallet: false }, isShopWallet: false };
       }
     }
-    return { client: null, wallet: null };
+    return { client: null, wallet: null, isShopWallet: false };
   };
 
   // Client Management
@@ -497,6 +514,68 @@ export function CashProvider({ children }) {
     showToast(`تم نقل المحفظة (${wallet.phoneNumber}) إلى سلة المحذوفات`, 'info');
   };
 
+  // ==========================================
+  // SHOP WALLETS MANAGEMENT (أرقام وخطوط المحل الشخصية)
+  // ==========================================
+  const addShopWallet = ({ phoneNumber, label = 'خط المحل', totalLimit = 200000 }) => {
+    const cleanPhone = cleanEgyptianPhone(phoneNumber);
+    if (!isValidEgyptianPhone(cleanPhone)) {
+      showToast(getEgyptianPhoneError(cleanPhone) || 'رقم الخط غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً', 'error');
+      return null;
+    }
+    const cleanLimit = Number(totalLimit) || 200000;
+
+    const newWallet = {
+      id: `shop-wallet-${Date.now()}`,
+      phoneNumber: cleanPhone,
+      label: label.trim() || 'خط المحل',
+      totalLimit: cleanLimit,
+      isShopWallet: true,
+      createdAt: new Date().toISOString()
+    };
+
+    setShopWallets(prev => [newWallet, ...prev]);
+    showToast(`تمت إضافة خط المحل (${cleanPhone}) بليميت ${formatCurrency(cleanLimit)}`);
+    return newWallet;
+  };
+
+  const updateShopWallet = (walletId, updatedFields) => {
+    const fieldsToUpdate = { ...updatedFields };
+    if (fieldsToUpdate.phoneNumber) {
+      const cleanPhone = cleanEgyptianPhone(fieldsToUpdate.phoneNumber);
+      if (!isValidEgyptianPhone(cleanPhone)) {
+        showToast(getEgyptianPhoneError(cleanPhone) || 'رقم الخط غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً', 'error');
+        return;
+      }
+      fieldsToUpdate.phoneNumber = cleanPhone;
+    }
+
+    setShopWallets(prev => prev.map(w =>
+      w.id === walletId ? { ...w, ...fieldsToUpdate } : w
+    ));
+    showToast('تم تحديث بيانات خط المحل والليميت بنجاح');
+  };
+
+  const deleteShopWallet = (walletId) => {
+    const wallet = shopWallets.find(w => w.id === walletId);
+    if (!wallet) return;
+
+    // Move to Trash
+    const trashedWallet = {
+      ...wallet,
+      isShopWallet: true,
+      clientName: 'أرقام وخطوط المحل',
+      deletedAt: new Date().toISOString()
+    };
+    setTrash(prev => ({
+      ...prev,
+      wallets: [trashedWallet, ...(prev.wallets || []).filter(w => w.id !== walletId)]
+    }));
+
+    setShopWallets(prev => prev.filter(w => w.id !== walletId));
+    showToast(`تم نقل خط المحل (${wallet.phoneNumber}) إلى سلة المحذوفات`, 'info');
+  };
+
   // Transaction Management
   const addTransaction = ({
     walletId,
@@ -507,7 +586,7 @@ export function CashProvider({ children }) {
     notes = '',
     date = null
   }) => {
-    const { client, wallet } = findWalletAndClient(walletId);
+    const { client, wallet, isShopWallet } = findWalletAndClient(walletId);
     if (!wallet) {
       showToast('المحفظة غير موجودة', 'error');
       return null;
@@ -516,22 +595,25 @@ export function CashProvider({ children }) {
     const numAmount = Number(amount);
     const stats = calculateWalletStats(wallet, transactions);
 
-    if (stats.isExhausted) {
-      showToast('عفواً، هذا الرقم مقفل لاكتمال ليميت الـ 200,000 ج.م الشهري بالكامل!', 'error');
-      return null;
-    }
+    // Apply strict limit checks ONLY for shop personal lines (client limits relaxed as requested)
+    if (isShopWallet) {
+      if (stats.isExhausted) {
+        showToast('عفواً، هذا الرقم مقفل لاكتمال ليميت الـ 200,000 ج.م الشهري بالكامل!', 'error');
+        return null;
+      }
 
-    if (numAmount > stats.remainingDailyTransfer) {
-      showToast(
-        `عفواً، الحد الأقصى للتحويل من هذا الرقم هو 60,000 ج.م في اليوم الواحد! المتبقي اليوم: ${formatCurrency(stats.remainingDailyTransfer)}`,
-        'error'
-      );
-      return null;
-    }
+      if (numAmount > stats.remainingDailyTransfer) {
+        showToast(
+          `عفواً، الحد الأقصى للتحويل من هذا الرقم هو 60,000 ج.م في اليوم الواحد! المتبقي اليوم: ${formatCurrency(stats.remainingDailyTransfer)}`,
+          'error'
+        );
+        return null;
+      }
 
-    if (numAmount > stats.remainingLimit) {
-      showToast('المبلغ المطلوب تحويله أكبر من الليميت المتاح لهذه المحفظة!', 'error');
-      return null;
+      if (numAmount > stats.remainingLimit) {
+        showToast('المبلغ المطلوب تحويله أكبر من الليميت المتاح لهذه المحفظة!', 'error');
+        return null;
+      }
     }
 
     const cleanRecipient = recipientPhone ? cleanEgyptianPhone(recipientPhone) : '';
@@ -583,7 +665,7 @@ export function CashProvider({ children }) {
   // Recharge / Add balance to wallet
   // Rules: Max 120,000 EGP per day, total balance cannot exceed 200,000 EGP
   const addRecharge = ({ walletId, amount, notes = '', date = null }) => {
-    const { client, wallet } = findWalletAndClient(walletId);
+    const { client, wallet, isShopWallet } = findWalletAndClient(walletId);
     if (!wallet) {
       showToast('المحفظة غير موجودة', 'error');
       return null;
@@ -597,25 +679,19 @@ export function CashProvider({ children }) {
 
     const stats = calculateWalletStats(wallet, transactions);
 
-    if (numAmount > stats.remainingDailyRecharge) {
-      showToast(
-        `عفواً، الحد الأقصى لإضافة الرصيد هو 120,000 ج.م في اليوم الواحد! المتبقي اليوم: ${formatCurrency(stats.remainingDailyRecharge)}`,
-        'error'
-      );
-      return null;
-    }
-
-    if (stats.remainingLimit + numAmount > 200000) {
-      showToast(
-        `عفواً، لا يمكن للرقم قبول أكثر من 200,000 ج.م (الحد الأقصى للسعة)! المتاح قبوله حالياً: ${formatCurrency(200000 - stats.remainingLimit)}`,
-        'error'
-      );
-      return null;
+    if (isShopWallet) {
+      if (numAmount > stats.remainingDailyRecharge) {
+        showToast(
+          `عفواً، الحد الأقصى لإضافة الرصيد هو 120,000 ج.م في اليوم الواحد! المتبقي اليوم: ${formatCurrency(stats.remainingDailyRecharge)}`,
+          'error'
+        );
+        return null;
+      }
     }
 
     const dateObj = date ? new Date(date) : new Date();
     const dateOnly = dateObj.toISOString().split('T')[0];
-    const limitAfter = Math.min(200000, stats.remainingLimit + numAmount);
+    const limitAfter = stats.remainingLimit + numAmount;
 
     const newTx = {
       id: `tx-rc-${Date.now()}`,
@@ -642,10 +718,20 @@ export function CashProvider({ children }) {
     }
 
     triggerConfetti();
-    showToast(
-      `تم شحن الرصيد بنجاح بقيمة ${formatCurrency(numAmount)} - الرصيد الجديد: ${formatCurrency(limitAfter)}`,
-      'success'
-    );
+
+    const walletCap = wallet.totalLimit || 200000;
+    if (limitAfter > walletCap) {
+      const overAmount = limitAfter - walletCap;
+      showToast(
+        `تم شحن الرصيد بنجاح بقيمة ${formatCurrency(numAmount)} - ⚠️ تنبيه: إجمالي الرصيد تجاوز الليميت المسموح (${formatCurrency(limitAfter)}، زيادة ${formatCurrency(overAmount)})`,
+        'warning'
+      );
+    } else {
+      showToast(
+        `تم شحن الرصيد بنجاح بقيمة ${formatCurrency(numAmount)} - الرصيد الجديد: ${formatCurrency(limitAfter)}`,
+        'success'
+      );
+    }
 
     return newTx;
   };
@@ -871,6 +957,7 @@ export function CashProvider({ children }) {
     setClients(demo.clients);
     setTransactions(demo.transactions);
     setInventory(demo.inventory);
+    setShopWallets(demo.shopWallets || INITIAL_SHOP_WALLETS);
     showToast('تم استعادة البيانات التجريبية الافتراضية بنجاح');
   };
 
@@ -881,12 +968,13 @@ export function CashProvider({ children }) {
     setTransactions(empty.transactions);
     setInventory(empty.inventory);
     setTrash(empty.trash);
+    setShopWallets([]);
     showToast('تم مسح جميع البيانات بنجاح', 'info');
   };
 
   // Export data
   const handleExport = () => {
-    storage.exportFullBackup(clients, transactions, inventory, trash);
+    storage.exportFullBackup(clients, transactions, inventory, trash, shopWallets);
     showToast('تم تصدير النسخة الاحتياطية بنجاح');
   };
 
@@ -900,6 +988,9 @@ export function CashProvider({ children }) {
     setTransactions(backupData.transactions);
     if (Array.isArray(backupData.inventory)) {
       setInventory(backupData.inventory);
+    }
+    if (Array.isArray(backupData.shopWallets)) {
+      setShopWallets(backupData.shopWallets);
     }
     if (backupData.trash && typeof backupData.trash === 'object') {
       setTrash(backupData.trash);
@@ -922,6 +1013,14 @@ export function CashProvider({ children }) {
     }));
 
     const { clientId, clientName, deletedAt, ...cleanWallet } = wallet;
+
+    // If it's a shop line, restore back to shopWallets!
+    if (wallet.isShopWallet) {
+      setShopWallets(prev => [cleanWallet, ...prev]);
+      triggerConfetti();
+      showToast(`تمت استعادة خط المحل ${wallet.phoneNumber} بنجاح!`, 'success');
+      return true;
+    }
 
     const clientExists = clients.some(c => c.id === clientId);
     if (clientExists) {
@@ -1094,6 +1193,7 @@ export function CashProvider({ children }) {
         clients,
         transactions,
         inventory,
+        shopWallets,
         theme,
         toggleTheme,
         selectedDate,
@@ -1116,6 +1216,9 @@ export function CashProvider({ children }) {
         addWallet,
         updateWallet,
         deleteWallet,
+        addShopWallet,
+        updateShopWallet,
+        deleteShopWallet,
         addTransaction,
         addRecharge,
         deleteTransaction,

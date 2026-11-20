@@ -9,12 +9,14 @@ import {
 import { Edit2, X, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function EditLimitModal() {
-  const { activeModal, setActiveModal, modalData, updateWallet, showToast } = useCash();
+  const { activeModal, setActiveModal, modalData, updateWallet, updateShopWallet, showToast } = useCash();
   const dialogRef = useRef(null);
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [label, setLabel] = useState('');
   const [totalLimit, setTotalLimit] = useState(200000);
+
+  const isShopWallet = modalData?.isShopWallet || modalData?.wallet?.isShopWallet || modalData?.clientId === 'shop';
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -40,13 +42,25 @@ export default function EditLimitModal() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!modalData?.clientId || !modalData?.wallet?.id) return;
+    if (!modalData?.wallet?.id) return;
 
     const clean = cleanEgyptianPhone(phoneNumber);
     if (!isValidEgyptianPhone(clean)) {
       showToast(getEgyptianPhoneError(clean) || 'يجب أن يبدأ الرقم بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً', 'error');
       return;
     }
+
+    if (isShopWallet) {
+      updateShopWallet(modalData.wallet.id, {
+        phoneNumber: clean,
+        label,
+        totalLimit: Number(totalLimit) || 200000
+      });
+      handleClose();
+      return;
+    }
+
+    if (!modalData?.clientId) return;
 
     updateWallet(modalData.clientId, modalData.wallet.id, {
       phoneNumber: clean,
@@ -73,10 +87,10 @@ export default function EditLimitModal() {
           </div>
           <div>
             <h2 id="edit-wallet-title" className="text-base font-bold">
-              تعديل بيانات المحفظة والليميت
+              {isShopWallet ? 'تعديل بيانات خط المحل والليميت' : 'تعديل بيانات المحفظة والليميت'}
             </h2>
             <p className="text-xs text-slate-400">
-              العميل: {modalData?.clientName}
+              {isShopWallet ? 'أرقام وخطوط المحل الشخصية' : `العميل: ${modalData?.clientName}`}
             </p>
           </div>
         </div>
@@ -106,7 +120,7 @@ export default function EditLimitModal() {
               </span>
             )}
           </div>
-          <div className="relative">
+          <div>
             <input
               type="tel"
               required
@@ -122,9 +136,6 @@ export default function EditLimitModal() {
               }`}
               dir="ltr"
             />
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
-              {phoneNumber.length}/11
-            </span>
           </div>
           {phoneError && (
             <p className="text-[11px] text-rose-500 font-bold mt-1 flex items-center gap-1">
@@ -168,12 +179,12 @@ export default function EditLimitModal() {
           </div>
           <input
             type="number"
-            min="1000"
-            step="1000"
+            min="1"
+            step="any"
             required
             value={totalLimit}
             onChange={(e) => setTotalLimit(e.target.value)}
-            className="w-full px-3.5 py-2 text-lg font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+            className="w-full px-3.5 py-2 text-lg font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
         </div>
 

@@ -195,14 +195,14 @@ export default function AddClientModal() {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div className="sm:col-span-1 relative">
+                    <div className="sm:col-span-1">
                       <input
                         type="tel"
                         maxLength={11}
                         placeholder="010XXXXXXXX"
                         value={wallet.phoneNumber}
                         onChange={(e) => handleWalletChange(idx, 'phoneNumber', e.target.value)}
-                        className={`w-full pl-8 pr-2.5 py-1.5 text-xs font-bold font-mono bg-white dark:bg-slate-900 border rounded-lg text-slate-900 dark:text-white transition-colors ${
+                        className={`w-full px-2.5 py-1.5 text-xs font-bold font-mono bg-white dark:bg-slate-900 border rounded-lg text-slate-900 dark:text-white transition-colors ${
                           isValid
                             ? 'border-emerald-500 ring-1 ring-emerald-500/30'
                             : hasError
@@ -211,9 +211,6 @@ export default function AddClientModal() {
                         }`}
                         dir="ltr"
                       />
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400">
-                        {wallet.phoneNumber.length}/11
-                      </span>
                     </div>
 
                     <div className="sm:col-span-1">
@@ -229,11 +226,11 @@ export default function AddClientModal() {
                     <div className="sm:col-span-1">
                       <input
                         type="number"
-                        step="1000"
+                        step="any"
                         placeholder="الليميت (افتراضي 200000)"
                         value={wallet.totalLimit}
                         onChange={(e) => handleWalletChange(idx, 'totalLimit', e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                        className="w-full px-2.5 py-1.5 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         title="الليميت الأقصى (افتراضي 200,000 ج.م)"
                       />
                     </div>
