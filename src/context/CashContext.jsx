@@ -750,6 +750,57 @@ export function CashProvider({ children }) {
     return newTx;
   };
 
+  // Add client payment (سداد دفعة نقدية أو بنكية من حساب العميل)
+  const addClientPayment = ({
+    clientId,
+    amount,
+    notes = '',
+    paymentMethod = 'cash',
+    date = null,
+    time = null
+  }) => {
+    const client = clients.find(c => c.id === clientId);
+    if (!client) {
+      showToast('العميل غير موجود', 'error');
+      return null;
+    }
+
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      showToast('يرجى إدخال مبلغ سداد صحيح أكبر من 0', 'error');
+      return null;
+    }
+
+    const dateObj = date ? new Date(date) : new Date();
+    const dateOnly = dateObj.toISOString().split('T')[0];
+    const timeStr = time || dateObj.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+
+    const newTx = {
+      id: `tx-pay-${Date.now()}`,
+      clientId: client.id,
+      customerId: client.id,
+      customerName: client.name,
+      type: 'client_payment',
+      amount: numAmount,
+      paymentMethod: paymentMethod || 'cash',
+      notes: notes.trim() || 'سداد دفعة من الحساب',
+      date: dateObj.toISOString(),
+      dateOnly,
+      time: timeStr,
+      transactionCode: `PAY-${Math.floor(100000 + Math.random() * 900000)}`
+    };
+
+    setTransactions(prev => [newTx, ...prev]);
+    realtime.addTransaction(newTx);
+    if (currentUser && shopId) {
+      syncTransactionToCloud(shopId, newTx);
+      syncClientToCloud(shopId, client);
+    }
+
+    triggerConfetti();
+    return newTx;
+  };
+
   // Delete transaction (reverts the deduction from limit)
   const deleteTransaction = (txId) => {
     const tx = transactions.find(t => t.id === txId);
@@ -758,7 +809,11 @@ export function CashProvider({ children }) {
     setTransactions(prev => prev.filter(t => t.id !== txId));
     realtime.deleteTransaction(txId);
     if (currentUser && shopId) deleteTransactionFromCloud(shopId, txId);
-    showToast(`تم حذف التحويل وإعادة ${formatCurrency(tx.amount)} إلى ليميت المحفظة`, 'info');
+    if (tx.type === 'client_payment') {
+      showToast(`تم حذف حركة السداد بقيمة ${formatCurrency(tx.amount)}`, 'info');
+    } else {
+      showToast(`تم حذف التحويل وإعادة ${formatCurrency(tx.amount)} إلى ليميت المحفظة`, 'info');
+    }
   };
 
   // Update transaction details
@@ -1235,6 +1290,7 @@ export function CashProvider({ children }) {
         deleteShopWallet,
         addTransaction,
         addRecharge,
+        addClientPayment,
         deleteTransaction,
         updateTransaction,
         findWalletAndClient,

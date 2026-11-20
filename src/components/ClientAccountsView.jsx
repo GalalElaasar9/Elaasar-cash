@@ -30,7 +30,12 @@ import {
   Share2,
   TrendingUp,
   TrendingDown,
-  AlertCircle
+  AlertCircle,
+  Wallet,
+  Clock,
+  Sparkles,
+  Trash2,
+  CheckCircle2
 } from 'lucide-react';
 
 export default function ClientAccountsView() {
@@ -38,9 +43,11 @@ export default function ClientAccountsView() {
     clients,
     transactions,
     updateClient,
+    deleteTransaction,
     setActiveModal,
     setModalData,
-    showToast
+    showToast,
+    askConfirm
   } = useCash();
 
   // Selected time range for recharges: 'today' | 'month' | 'all'
@@ -157,7 +164,36 @@ export default function ClientAccountsView() {
         }
       }
 
-      // Relevant transactions for statement modal
+      // 4. Client Payments (سداد الدفعات النقدية والتحصيلات)
+      const clientPayments = transactions.filter(t => 
+        (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment'
+      );
+
+      const clientTodayPayments = clientPayments
+        .filter(t => (t.dateOnly || t.date || '').startsWith(todayKey))
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+      const clientMonthPayments = clientPayments
+        .filter(t => (t.dateOnly || t.date || '').slice(0, 7) === currentMonthKey)
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+      const clientAllPayments = clientPayments
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+      const paidAmount = timeRange === 'today'
+        ? clientTodayPayments
+        : timeRange === 'month'
+        ? clientMonthPayments
+        : clientAllPayments;
+
+      const grossRequired = finalAmount;
+      const netBalance = grossRequired - paidAmount;
+      const remainingDebt = netBalance > 0 ? netBalance : 0;
+      const creditAmount = netBalance < 0 ? Math.abs(netBalance) : 0;
+      const isSettled = netBalance === 0 && grossRequired > 0;
+      const effectiveClientType = creditAmount > 0 ? 'دائن' : (clientType || 'مدين');
+
+      // Relevant recharge transactions for statement modal
       const clientTxList = transactions.filter(t => {
         if (!walletIds.has(t.walletId)) return false;
         if (t.type !== 'recharge' && t.type !== 'limit_reset') return false;
@@ -173,6 +209,7 @@ export default function ClientAccountsView() {
       return {
         client,
         clientType,
+        effectiveClientType,
         wallets: walletsBreakdown,
         todayRecharges: clientTodayRecharges,
         monthRecharges: clientMonthRecharges,
@@ -183,6 +220,14 @@ export default function ClientAccountsView() {
         commissionPercent,
         commissionAmount,
         finalAmount,
+        grossRequired,
+        paidAmount,
+        allPaidAmount: clientAllPayments,
+        netBalance,
+        remainingDebt,
+        creditAmount,
+        isSettled,
+        payments: clientPayments,
         transactionsCount: clientTxList.length,
         transactions: clientTxList
       };
@@ -191,31 +236,33 @@ export default function ClientAccountsView() {
 
   // Pre-filtered client groups for counts and live stats
   const debtorClients = useMemo(() => {
-    return clientAccountsData.filter(i => (i.clientType || 'مدين') === 'مدين');
+    return clientAccountsData.filter(i => (i.effectiveClientType || i.clientType || 'مدين') === 'مدين');
   }, [clientAccountsData]);
 
   const creditorClients = useMemo(() => {
-    return clientAccountsData.filter(i => i.clientType === 'دائن');
+    return clientAccountsData.filter(i => (i.effectiveClientType || i.clientType) === 'دائن');
   }, [clientAccountsData]);
 
   const debtorTotalFinal = useMemo(() => {
-    return debtorClients.reduce((sum, i) => sum + i.finalAmount, 0);
+    return debtorClients.reduce((sum, i) => sum + (i.remainingDebt || i.finalAmount), 0);
   }, [debtorClients]);
 
   const creditorTotalFinal = useMemo(() => {
-    return creditorClients.reduce((sum, i) => sum + i.finalAmount, 0);
+    return creditorClients.reduce((sum, i) => sum + (i.creditAmount > 0 ? i.creditAmount : i.finalAmount), 0);
   }, [creditorClients]);
 
   // Filter clients based on accountTypeTab ('مدين' | 'دائن'), search query & active debt filter
   const filteredAccounts = useMemo(() => {
     return clientAccountsData.filter(item => {
       // 1. Account type tab: 'مدين' or 'دائن'
-      if (item.clientType !== accountTypeTab) {
+      if ((item.effectiveClientType || item.clientType) !== accountTypeTab) {
         return false;
       }
 
       // 2. Filter active only (> 0)
-      if (filterActiveOnly && item.baseAmount <= 0) {
+      if (filterActiveOnly && (item.baseAmount <= 0 && item.paidAmount <= 0)) {
+        return false;
+      }
         return false;
       }
 
@@ -287,6 +334,17 @@ export default function ClientAccountsView() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  // Quick action: Switch Client Type between 'مدين' and 'دائن' immediately
+  const handleSetClientType = (client, type) => {
+    updateClient(client.id, { clientType: type });
+    try {
+      localStorage.setItem(`elaasar_client_type_${client.id}`, type);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast(`تم نقل العميل (${client.name}) إلى كشف ${type === 'مدين' ? 'المدينين' : 'الدائنين'}`);
   };
 
   // Quick action: Open recharge modal for a wallet
@@ -431,21 +489,27 @@ export default function ClientAccountsView() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* Card 1: Total Receivables (المبلغ الآجل بعد العمولة) */}
-        <div className="card-hover bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-5 rounded-2xl shadow-lg shadow-emerald-600/20 relative overflow-hidden">
+        <div className={`card-hover text-white p-5 rounded-2xl shadow-lg relative overflow-hidden transition-all ${
+          accountTypeTab === 'مدين'
+            ? 'bg-gradient-to-br from-rose-600 to-rose-700 shadow-rose-600/20'
+            : 'bg-gradient-to-br from-emerald-600 to-teal-700 shadow-emerald-600/20'
+        }`}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-100 flex items-center gap-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-white/90 flex items-center gap-1">
               <TrendingUp className="w-4 h-4" />
-              <span>إجمالي الآجل المستحق (بعد العمولة)</span>
+              <span>{accountTypeTab === 'مدين' ? 'إجمالي الآجل المستحق (المدينين)' : 'إجمالي الأرصدة الدائنة (الدائنين)'}</span>
             </span>
             <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-white/20 text-white">
-              المطلوب تحصيله
+              {accountTypeTab === 'مدين' ? 'المطلوب تحصيله' : 'مستحق للدائنين'}
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-black tracking-tight font-mono">
             {formatCurrency(summaryTotals.totalFinal)}
           </div>
-          <span className="text-[11px] text-emerald-100 mt-2 block">
-            صافي المبالغ الآجلة المطلوبة من كافة العملاء المعروضين
+          <span className="text-[11px] text-white/80 mt-2 block">
+            {accountTypeTab === 'مدين'
+              ? 'صافي المبالغ الآجلة المطلوبة من كافة عملاء كشف المدينين'
+              : 'صافي الأرصدة الدائنة المستحقة لكافة عملاء كشف الدائنين'}
           </span>
         </div>
 
@@ -497,9 +561,13 @@ export default function ClientAccountsView() {
           </div>
 
           <div className="flex items-center justify-between pt-1">
-            <span className="text-xs text-slate-600 dark:text-slate-300">عملاء عليهم آجل نشط:</span>
-            <strong className="text-emerald-600 dark:text-emerald-400 font-mono text-base font-black">
-              {summaryTotals.activeClientsCount} من {clients.length}
+            <span className="text-xs text-slate-600 dark:text-slate-300">
+              {accountTypeTab === 'مدين' ? 'عملاء عليهم آجل نشط:' : 'عملاء لهم رصيد نشط:'}
+            </span>
+            <strong className={`font-mono text-base font-black ${
+              accountTypeTab === 'مدين' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+            }`}>
+              {summaryTotals.activeClientsCount} من {accountTypeTab === 'مدين' ? debtorClients.length : creditorClients.length}
             </strong>
           </div>
 
@@ -588,22 +656,85 @@ export default function ClientAccountsView() {
 
       </div>
 
+      {/* 2 Tabs above the table: داين ومدين */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+        <div className="flex items-center gap-2 p-1.5 bg-slate-200/80 dark:bg-slate-800/90 rounded-2xl w-fit border border-slate-300/70 dark:border-slate-700 shadow-xs">
+          {/* Tab 1: مدين */}
+          <button
+            type="button"
+            onClick={() => setAccountTypeTab('مدين')}
+            className={`btn-interactive flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
+              accountTypeTab === 'مدين'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span>حسابات المدينين (مدين)</span>
+            <span className={`px-2.5 py-0.5 text-xs rounded-full font-mono font-bold ${
+              accountTypeTab === 'مدين'
+                ? 'bg-white/20 text-white'
+                : 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300'
+            }`}>
+              {debtorClients.length}
+            </span>
+          </button>
+
+          {/* Tab 2: دائن */}
+          <button
+            type="button"
+            onClick={() => setAccountTypeTab('دائن')}
+            className={`btn-interactive flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
+              accountTypeTab === 'دائن'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span>حسابات الدائنين (دائن)</span>
+            <span className={`px-2.5 py-0.5 text-xs rounded-full font-mono font-bold ${
+              accountTypeTab === 'دائن'
+                ? 'bg-white/20 text-white'
+                : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300'
+            }`}>
+              {creditorClients.length}
+            </span>
+          </button>
+        </div>
+
+        <div className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+          {accountTypeTab === 'مدين' ? (
+            <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+              إجمالي مستحقات كشف المدينين: <strong className="font-mono text-base font-black mr-1">{formatCurrency(debtorTotalFinal)}</strong>
+            </span>
+          ) : (
+            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              إجمالي أرصدة كشف الدائنين: <strong className="font-mono text-base font-black mr-1">{formatCurrency(creditorTotalFinal)}</strong>
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* 4. The Main Accounts Table (جدول حسابات العملاء المباشر) */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         
         <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-slate-900 dark:text-white text-base">
-              جدول المبالغ الآجلة على أصحاب الخطوط
+              {accountTypeTab === 'مدين' ? 'جدول المبالغ الآجلة على العملاء (المدينين)' : 'جدول الأرصدة المستحقة للعملاء (الدائنين)'}
             </h3>
-            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-              {filteredAccounts.length} عميل
+            <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full ${
+              accountTypeTab === 'مدين'
+                ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+            }`}>
+              {filteredAccounts.length} عميل ({accountTypeTab})
             </span>
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>تحديث فوري ومباشر مع أي حركة رصيد</span>
+            <span className={`w-2 h-2 rounded-full animate-pulse ${accountTypeTab === 'مدين' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
+            <span>تحديث فوري ومباشر مع أي حركة رصيد أو تصنيف</span>
           </div>
         </div>
 
@@ -629,8 +760,12 @@ export default function ClientAccountsView() {
                     المبلغ قبل العمولة
                   </th>
                   <th className="py-3.5 px-4 min-w-[210px]">ضبط العمولة (% / خصم / إضافة)</th>
-                  <th className="py-3.5 px-4 min-w-[180px] text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20">
-                    الآجل المطلوب (بعد العمولة)
+                  <th className={`py-3.5 px-4 min-w-[180px] ${
+                    accountTypeTab === 'مدين'
+                      ? 'text-rose-700 dark:text-rose-300 bg-rose-50/50 dark:bg-rose-950/20'
+                      : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20'
+                  }`}>
+                    {accountTypeTab === 'مدين' ? 'الآجل المطلوب (بعد العمولة)' : 'الرصيد الدائن المستحق (بعد العمولة)'}
                   </th>
                   <th className="py-3.5 px-4 w-32 text-center">إجراءات</th>
                 </tr>
@@ -652,13 +787,48 @@ export default function ClientAccountsView() {
                       {/* Client Identity */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-slate-900 to-slate-800 dark:from-red-600 dark:to-rose-700 text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
+                          <div className={`w-9 h-9 rounded-xl text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs ${
+                            item.clientType === 'مدين'
+                              ? 'bg-gradient-to-tr from-slate-900 to-rose-900'
+                              : 'bg-gradient-to-tr from-slate-900 to-emerald-900'
+                          }`}>
                             {client.name.charAt(0)}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-black text-slate-900 dark:text-white text-sm leading-tight">
-                              {client.name}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-black text-slate-900 dark:text-white text-sm leading-tight">
+                                {client.name}
+                              </span>
+
+                              {/* 2 Buttons to change classification: مدين / دائن */}
+                              <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetClientType(client, 'مدين')}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all ${
+                                    item.clientType === 'مدين'
+                                      ? 'bg-rose-600 text-white shadow-2xs'
+                                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                                  }`}
+                                  title="تحديد كـ مدين"
+                                >
+                                  مدين
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetClientType(client, 'دائن')}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all ${
+                                    item.clientType === 'دائن'
+                                      ? 'bg-emerald-600 text-white shadow-2xs'
+                                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                                  }`}
+                                  title="تحديد كـ دائن"
+                                >
+                                  دائن
+                                </button>
+                              </div>
                             </div>
+
                             <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                               {wallets.length} {wallets.length === 1 ? 'رقم مسجل' : 'أرقام مسجلة'}
                             </div>
@@ -753,12 +923,18 @@ export default function ClientAccountsView() {
                       </td>
 
                       {/* Amount after commission (الآجل المستحق النهائي) */}
-                      <td className="py-3.5 px-4 whitespace-nowrap bg-emerald-50/40 dark:bg-emerald-950/20">
-                        <div className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-300" dir="ltr">
+                      <td className={`py-3.5 px-4 whitespace-nowrap ${
+                        accountTypeTab === 'مدين' ? 'bg-rose-50/40 dark:bg-rose-950/20' : 'bg-emerald-50/40 dark:bg-emerald-950/20'
+                      }`}>
+                        <div className={`font-mono text-lg font-black ${
+                          accountTypeTab === 'مدين' ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
+                        }`} dir="ltr">
                           {formatCurrency(finalAmount)}
                         </div>
                         <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                          {(item.effectiveMode || commissionMode) === 'add' ? 'إجمالي بعد إضافة العمولة' : 'صافي بعد خصم العمولة'}
+                          {accountTypeTab === 'مدين'
+                            ? ((item.effectiveMode || commissionMode) === 'add' ? 'مطلوب سداده بعد إضافة العمولة' : 'مطلوب سداده بعد خصم العمولة')
+                            : ((item.effectiveMode || commissionMode) === 'add' ? 'رصيد مستحق للعميل بعد الإضافة' : 'رصيد مستحق للعميل بعد الخصم')}
                         </span>
                       </td>
 

@@ -27,6 +27,7 @@ import RestockModal from './components/RestockModal';
 import ProductDetailsModal from './components/ProductDetailsModal';
 import CloudSyncModal from './components/CloudSyncModal';
 import RechargeWalletModal from './components/RechargeWalletModal';
+import ClientPaymentModal from './components/ClientPaymentModal';
 
 import { UserPlus, Send, Search, Users, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -199,6 +200,7 @@ function MainApp() {
       <ProductDetailsModal />
       <CloudSyncModal />
       <RechargeWalletModal />
+      <ClientPaymentModal />
 
       {/* Toast Notification */}
       <Toast />
