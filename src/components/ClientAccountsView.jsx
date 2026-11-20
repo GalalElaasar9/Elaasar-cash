@@ -37,10 +37,11 @@ import {
   Clock,
   Sparkles,
   Trash2,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft
 } from 'lucide-react';
 
-export default function ClientAccountsView() {
+export default function ClientAccountsView({ onNavigateToClients }) {
   const {
     clients,
     transactions,
@@ -325,6 +326,10 @@ export default function ClientAccountsView() {
     return clientAccountsData.filter(i => (i.effectiveClientType || i.clientType) === 'دائن');
   }, [clientAccountsData]);
 
+  const normalClients = useMemo(() => {
+    return clientAccountsData.filter(i => (i.effectiveClientType || i.clientType) === 'عادي');
+  }, [clientAccountsData]);
+
   const debtorTotalFinal = useMemo(() => {
     return debtorClients.reduce((sum, i) => sum + (i.remainingDebt || i.finalAmount), 0);
   }, [debtorClients]);
@@ -454,7 +459,7 @@ export default function ClientAccountsView() {
     }
   };
 
-  // Quick action: Switch Client Type between 'مدين' and 'دائن' immediately
+  // Quick action: Switch Client Type between 'عادي' and 'مدين' and 'دائن' immediately
   const handleSetClientType = (client, type) => {
     updateClient(client.id, { clientType: type, excessDebt: null, excessDebtDate: null });
     try {
@@ -464,7 +469,8 @@ export default function ClientAccountsView() {
     } catch (e) {
       console.error(e);
     }
-    showToast(`تم نقل العميل (${client.name}) إلى كشف ${type === 'مدين' ? 'المدينين' : 'الدائنين'}`);
+    const label = type === 'عادي' ? 'الحسابات العادية الخالصة' : type === 'مدين' ? 'كشف المدينين' : 'كشف الدائنين';
+    showToast(`تم نقل العميل (${client.name}) إلى ${label}`);
   };
 
   // Quick action: Open recharge modal for a wallet
@@ -600,7 +606,17 @@ ${balanceLine}
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          
+          {onNavigateToClients && (
+            <button
+              onClick={onNavigateToClients}
+              className="btn-interactive flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 shadow-xs transition-all"
+              title="العودة لشاشة دليل العملاء"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>العودة لدليل العملاء</span>
+            </button>
+          )}
+
           <button
             onClick={handleExportCSV}
             className="btn-interactive flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-xs"
@@ -630,15 +646,23 @@ ${balanceLine}
         <div className={`card-hover text-white p-5 rounded-2xl shadow-lg relative overflow-hidden transition-all ${
           accountTypeTab === 'مدين'
             ? 'bg-gradient-to-br from-rose-600 to-rose-700 shadow-rose-600/20'
-            : 'bg-gradient-to-br from-emerald-600 to-teal-700 shadow-emerald-600/20'
+            : accountTypeTab === 'دائن'
+            ? 'bg-gradient-to-br from-emerald-600 to-teal-700 shadow-emerald-600/20'
+            : 'bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-600/20'
         }`}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-white/90 flex items-center gap-1">
               <TrendingUp className="w-4 h-4" />
-              <span>{accountTypeTab === 'مدين' ? 'إجمالي الآجل المستحق (المدينين)' : 'إجمالي الأرصدة الدائنة (الدائنين)'}</span>
+              <span>
+                {accountTypeTab === 'مدين'
+                  ? 'إجمالي الآجل المستحق (المدينين)'
+                  : accountTypeTab === 'دائن'
+                  ? 'إجمالي الأرصدة الدائنة (الدائنين)'
+                  : 'إجمالي الحسابات العادية (خالص)'}
+              </span>
             </span>
             <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-white/20 text-white">
-              {accountTypeTab === 'مدين' ? 'المطلوب تحصيله' : 'مستحق للدائنين'}
+              {accountTypeTab === 'مدين' ? 'المطلوب تحصيله' : accountTypeTab === 'دائن' ? 'مستحق للدائنين' : 'حسابات مسددة'}
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-black tracking-tight font-mono">
@@ -647,7 +671,9 @@ ${balanceLine}
           <span className="text-[11px] text-white/80 mt-2 block">
             {accountTypeTab === 'مدين'
               ? 'صافي المبالغ الآجلة المطلوبة من كافة عملاء كشف المدينين'
-              : 'صافي الأرصدة الدائنة المستحقة لكافة عملاء كشف الدائنين'}
+              : accountTypeTab === 'دائن'
+              ? 'صافي الأرصدة الدائنة المستحقة لكافة عملاء كشف الدائنين'
+              : 'عملاء حساباتهم مسددة وخالصة لا دائن ولا مدين'}
           </span>
         </div>
 
@@ -794,21 +820,21 @@ ${balanceLine}
 
       </div>
 
-      {/* 2 Tabs above the table: داين ومدين */}
+      {/* 3 Tabs above the table: مدين / دائن / عادي */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-        <div className="flex items-center gap-2 p-1.5 bg-slate-200/80 dark:bg-slate-800/90 rounded-2xl w-fit border border-slate-300/70 dark:border-slate-700 shadow-xs">
+        <div className="flex items-center gap-2 p-1.5 bg-slate-200/80 dark:bg-slate-800/90 rounded-2xl w-fit border border-slate-300/70 dark:border-slate-700 shadow-xs flex-wrap">
           {/* Tab 1: مدين */}
           <button
             type="button"
             onClick={() => setAccountTypeTab('مدين')}
-            className={`btn-interactive flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
+            className={`btn-interactive flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
               accountTypeTab === 'مدين'
                 ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <span>حسابات المدينين (مدين)</span>
-            <span className={`px-2.5 py-0.5 text-xs rounded-full font-mono font-bold ${
+            <span className={`px-2 py-0.5 text-xs rounded-full font-mono font-bold ${
               accountTypeTab === 'مدين'
                 ? 'bg-white/20 text-white'
                 : 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300'
@@ -821,19 +847,39 @@ ${balanceLine}
           <button
             type="button"
             onClick={() => setAccountTypeTab('دائن')}
-            className={`btn-interactive flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
+            className={`btn-interactive flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
               accountTypeTab === 'دائن'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <span>حسابات الدائنين (دائن)</span>
-            <span className={`px-2.5 py-0.5 text-xs rounded-full font-mono font-bold ${
+            <span className={`px-2 py-0.5 text-xs rounded-full font-mono font-bold ${
               accountTypeTab === 'دائن'
                 ? 'bg-white/20 text-white'
                 : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300'
             }`}>
               {creditorClients.length}
+            </span>
+          </button>
+
+          {/* Tab 3: عادي */}
+          <button
+            type="button"
+            onClick={() => setAccountTypeTab('عادي')}
+            className={`btn-interactive flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
+              accountTypeTab === 'عادي'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span>حسابات عادية (خالص)</span>
+            <span className={`px-2 py-0.5 text-xs rounded-full font-mono font-bold ${
+              accountTypeTab === 'عادي'
+                ? 'bg-white/20 text-white'
+                : 'bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300'
+            }`}>
+              {normalClients.length}
             </span>
           </button>
         </div>
@@ -844,10 +890,15 @@ ${balanceLine}
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
               إجمالي مستحقات كشف المدينين: <strong className="font-mono text-base font-black mr-1">{formatCurrency(debtorTotalFinal)}</strong>
             </span>
-          ) : (
+          ) : accountTypeTab === 'دائن' ? (
             <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               إجمالي أرصدة كشف الدائنين: <strong className="font-mono text-base font-black mr-1">{formatCurrency(creditorTotalFinal)}</strong>
+            </span>
+          ) : (
+            <span className="text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+              عملاء خالصين (مسدد): <strong className="font-mono text-base font-black mr-1">{normalClients.length} عميل</strong>
             </span>
           )}
         </div>
@@ -859,12 +910,14 @@ ${balanceLine}
         <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-slate-900 dark:text-white text-base">
-              {accountTypeTab === 'مدين' ? 'جدول المبالغ الآجلة على العملاء (المدينين)' : 'جدول الأرصدة المستحقة للعملاء (الدائنين)'}
+              {accountTypeTab === 'مدين' ? 'جدول المبالغ الآجلة على العملاء (المدينين)' : accountTypeTab === 'دائن' ? 'جدول الأرصدة المستحقة للعملاء (الدائنين)' : 'جدول العملاء العاديين (الحسابات الخالصة)'}
             </h3>
             <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full ${
               accountTypeTab === 'مدين'
                 ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
-                : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                : accountTypeTab === 'دائن'
+                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                : 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
             }`}>
               {filteredAccounts.length} عميل ({accountTypeTab})
             </span>
@@ -941,24 +994,24 @@ ${balanceLine}
                                 {client.name}
                               </span>
 
-                              {/* 2 Buttons to change classification: مدين / دائن */}
+                              {/* 3 Buttons to change classification: عادي / دائن / مدين */}
                               <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
                                 <button
                                   type="button"
-                                  onClick={() => handleSetClientType(client, 'مدين')}
-                                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all ${
-                                    (item.effectiveClientType || item.clientType) === 'مدين'
-                                      ? 'bg-rose-600 text-white shadow-2xs'
+                                  onClick={() => handleSetClientType(client, 'عادي')}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
+                                    (item.effectiveClientType || item.clientType) === 'عادي'
+                                      ? 'bg-blue-600 text-white shadow-2xs'
                                       : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                                   }`}
-                                  title="تحديد كـ مدين"
+                                  title="تحديد كـ عادي (حساب خالص)"
                                 >
-                                  مدين
+                                  عادي
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleSetClientType(client, 'دائن')}
-                                  className={`px-2 py-0.5 rounded text-[10px] font-black transition-all ${
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
                                     (item.effectiveClientType || item.clientType) === 'دائن'
                                       ? 'bg-emerald-600 text-white shadow-2xs'
                                       : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
@@ -966,6 +1019,18 @@ ${balanceLine}
                                   title="تحديد كـ دائن"
                                 >
                                   دائن
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetClientType(client, 'مدين')}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
+                                    (item.effectiveClientType || item.clientType) === 'مدين'
+                                      ? 'bg-rose-600 text-white shadow-2xs'
+                                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                                  }`}
+                                  title="تحديد كـ مدين"
+                                >
+                                  مدين
                                 </button>
                               </div>
                             </div>

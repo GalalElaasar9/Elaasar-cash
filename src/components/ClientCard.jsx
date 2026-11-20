@@ -128,13 +128,13 @@ export default function ClientCard({ client }) {
     }
   });
 
-  // Client classification: 'مدين' (default) | 'دائن'
+  // Client classification: 'عادي' | 'دائن' | 'مدين'
   const [clientType, setClientType] = useState(() => {
     if (client.clientType) return client.clientType;
     try {
-      return localStorage.getItem(`elaasar_client_type_${client.id}`) || 'مدين';
+      return localStorage.getItem(`elaasar_client_type_${client.id}`) || 'عادي';
     } catch {
-      return 'مدين';
+      return 'عادي';
     }
   });
 
@@ -155,7 +155,8 @@ export default function ClientCard({ client }) {
     } catch (e) {
       console.error(e);
     }
-    showToast(`تم تحديد العميل (${client.name}) كـ ${type === 'مدين' ? 'مدين (عليه آجل)' : 'دائن (له رصيد)'}`);
+    const label = type === 'عادي' ? 'عادي (حساب خالص)' : type === 'مدين' ? 'مدين (عليه آجل)' : 'دائن (له رصيد)';
+    showToast(`تم تحديد العميل (${client.name}) كـ ${label}`);
   };
 
   // Toggle between deduct and add while updating the multiplier factor (0.995 <-> 1.005)
@@ -501,24 +502,24 @@ export default function ClientCard({ client }) {
                   {wallets.length} {wallets.length === 1 ? 'رقم مسجل' : 'أرقام مسجلة'}
                 </span>
 
-                {/* 2 Buttons for Client Classification: مدين / دائن */}
+                {/* 3 Buttons for Client Classification: عادي / دائن / مدين */}
                 <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-xl text-xs font-bold shrink-0 border border-slate-300/60 dark:border-slate-700 shadow-2xs">
                   <button
                     type="button"
-                    onClick={() => handleSetClientType('مدين')}
-                    className={`btn-interactive px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                      effectiveClientType === 'مدين'
-                        ? 'bg-rose-600 text-white shadow-xs'
+                    onClick={() => handleSetClientType('عادي')}
+                    className={`btn-interactive px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
+                      effectiveClientType === 'عادي'
+                        ? 'bg-blue-600 text-white shadow-xs'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
-                    title="تحديد العميل كـ مدين (عليه مبالغ آجلة)"
+                    title="تحديد العميل كـ عادي (حساب خالص - لا دائن ولا مدين)"
                   >
-                    مدين
+                    عادي
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSetClientType('دائن')}
-                    className={`btn-interactive px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                    className={`btn-interactive px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
                       effectiveClientType === 'دائن'
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -526,6 +527,18 @@ export default function ClientCard({ client }) {
                     title="تحديد العميل كـ دائن (له رصيد مستحق)"
                   >
                     دائن
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetClientType('مدين')}
+                    className={`btn-interactive px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
+                      effectiveClientType === 'مدين'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                    title="تحديد العميل كـ مدين (عليه مبالغ آجلة)"
+                  >
+                    مدين
                   </button>
                 </div>
               </div>
