@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useCash } from '../context/CashContext';
 import { 
   formatCurrency, 
@@ -20,7 +20,9 @@ import {
   Phone,
   ShieldCheck,
   Tag,
-  DollarSign
+  DollarSign,
+  ChevronRight,
+  ChevronLeft
 } from 'lucide-react';
 
 export default function TrashView() {
@@ -78,6 +80,43 @@ export default function TrashView() {
       (p.variants || []).some(v => v.color?.toLowerCase().includes(q))
     );
   }, [trash.products, searchQuery]);
+
+  // Pagination Settings (6 boxes per page as requested)
+  const ITEMS_PER_PAGE = 6;
+  const [walletPage, setWalletPage] = useState(1);
+  const [productPage, setProductPage] = useState(1);
+
+  // Reset pagination when search or section changes
+  useEffect(() => {
+    setWalletPage(1);
+  }, [searchQuery, activeSection]);
+
+  useEffect(() => {
+    setProductPage(1);
+  }, [searchQuery, activeSection]);
+
+  // Combined Wallets & Clients for pagination
+  const combinedWalletItems = useMemo(() => {
+    const items = [];
+    filteredWallets.forEach(w => items.push({ type: 'wallet', id: `w-${w.id}`, data: w }));
+    filteredClients.forEach(c => items.push({ type: 'client', id: `c-${c.id}`, data: c }));
+    return items;
+  }, [filteredWallets, filteredClients]);
+
+  const totalWalletPages = Math.ceil(combinedWalletItems.length / ITEMS_PER_PAGE) || 1;
+  const safeWalletPage = Math.min(Math.max(1, walletPage), totalWalletPages);
+  const paginatedWalletItems = useMemo(() => {
+    const start = (safeWalletPage - 1) * ITEMS_PER_PAGE;
+    return combinedWalletItems.slice(start, start + ITEMS_PER_PAGE);
+  }, [combinedWalletItems, safeWalletPage]);
+
+  // Products pagination
+  const totalProductPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
+  const safeProductPage = Math.min(Math.max(1, productPage), totalProductPages);
+  const paginatedProducts = useMemo(() => {
+    const start = (safeProductPage - 1) * ITEMS_PER_PAGE;
+    return filteredProducts.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredProducts, safeProductPage]);
 
   // Handlers for Confirmation
   const handleRestoreWallet = async (wallet) => {
@@ -344,154 +383,209 @@ export default function TrashView() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              
-              {/* Deleted Individual Wallets */}
-              {filteredWallets.map((wallet) => (
-                <div
-                  key={wallet.id}
-                  className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm flex flex-col justify-between gap-4 transition-all"
-                >
-                  <div>
-                    {/* Top Header */}
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="min-w-0">
-                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400 truncate block">
-                          العميل: {wallet.clientName || 'عميل'}
-                        </span>
-                        <div className="text-lg font-black font-mono tracking-wider text-slate-900 dark:text-white mt-0.5" dir="ltr">
-                          {formatPhone(wallet.phoneNumber)}
-                        </div>
-                        <span className="text-xs text-slate-600 dark:text-slate-400">
-                          {wallet.label || 'محفظة فودافون'}
-                        </span>
-                      </div>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                
+                {paginatedWalletItems.map((item) => {
+                  if (item.type === 'wallet') {
+                    const wallet = item.data;
+                    return (
+                      <div
+                        key={wallet.id}
+                        className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm flex flex-col justify-between gap-4 transition-all"
+                      >
+                        <div>
+                          {/* Top Header */}
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 truncate block">
+                                العميل: {wallet.clientName || 'عميل'}
+                              </span>
+                              <div className="text-lg font-black font-mono tracking-wider text-slate-900 dark:text-white mt-0.5" dir="ltr">
+                                {formatPhone(wallet.phoneNumber)}
+                              </div>
+                              <span className="text-xs text-slate-600 dark:text-slate-400">
+                                {wallet.label || 'محفظة فودافون'}
+                              </span>
+                            </div>
 
-                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
-                        رقم محذوف
-                      </span>
-                    </div>
+                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
+                              رقم محذوف
+                            </span>
+                          </div>
 
-                    {/* Meta info */}
-                    <div className="space-y-1 text-xs bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 mt-3">
-                      <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-                        <span>الليميت الشهري المسجل:</span>
-                        <strong className="text-slate-800 dark:text-slate-200 font-mono">
-                          {formatCurrency(wallet.totalLimit || 200000)}
-                        </strong>
-                      </div>
-                      {wallet.deletedAt && (
-                        <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
-                          <span>تاريخ الحذف:</span>
-                          <span className="font-mono">
-                            {formatDateArabic(wallet.deletedAt)} • {formatTimeArabic(wallet.deletedAt)}
-                          </span>
+                          {/* Meta info */}
+                          <div className="space-y-1 text-xs bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 mt-3">
+                            <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                              <span>الليميت الشهري المسجل:</span>
+                              <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                                {formatCurrency(wallet.totalLimit || 200000)}
+                              </strong>
+                            </div>
+                            {wallet.deletedAt && (
+                              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
+                                <span>تاريخ الحذف:</span>
+                                <span className="font-mono">
+                                  {formatDateArabic(wallet.deletedAt)} • {formatTimeArabic(wallet.deletedAt)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                          <button
+                            onClick={() => handleRestoreWallet(wallet)}
+                            className="btn-interactive flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-600/25"
+                            title="استعادة هذا الرقم إلى دليل العملاء"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>استعادة الرقم</span>
+                          </button>
+
+                          <button
+                            onClick={() => handlePermanentDeleteWallet(wallet)}
+                            className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/50 dark:text-slate-400 dark:hover:text-rose-400 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors"
+                            title="حذف نهائي للرقم من السلة"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (item.type === 'client') {
+                    const client = item.data;
+                    return (
+                      <div
+                        key={client.id}
+                        className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border-2 border-rose-200 dark:border-rose-900/60 shadow-sm flex flex-col justify-between gap-4 transition-all"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div>
+                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300">
+                                عميل محذوف بالكامل
+                              </span>
+                              <h4 className="text-base font-black text-slate-900 dark:text-white mt-1">
+                                {client.name}
+                              </h4>
+                              {client.notes && (
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                  {client.notes}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="text-left shrink-0">
+                              <span className="text-[10px] text-slate-400 block">عدد المحافظ</span>
+                              <span className="text-sm font-black font-mono text-slate-800 dark:text-slate-200">
+                                {client.wallets?.length || 0} أرقام
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Wallets preview */}
+                          <div className="space-y-1.5 mt-3 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                            <span className="text-[10px] font-bold text-slate-400 block mb-1">
+                              الأرقام التابعة لهذا العميل:
+                            </span>
+                            {(client.wallets || []).map((w, idx) => (
+                              <div key={w.id || idx} className="flex items-center justify-between text-xs">
+                                <span className="font-mono font-bold text-slate-700 dark:text-slate-300" dir="ltr">
+                                  {formatPhone(w.phoneNumber)}
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  {w.label}
+                                </span>
+                              </div>
+                            ))}
+                            {client.deletedAt && (
+                              <div className="pt-1.5 mt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400">
+                                <span>تاريخ الحذف:</span>
+                                <span className="font-mono">
+                                  {formatDateArabic(client.deletedAt)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                          <button
+                            onClick={() => handleRestoreClient(client)}
+                            className="btn-interactive flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-600/25"
+                            title="استعادة العميل وجميع محافظه إلى دليل العملاء"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>استعادة العميل بالكامل</span>
+                          </button>
+
+                          <button
+                            onClick={() => handlePermanentDeleteClient(client)}
+                            className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/50 dark:text-slate-400 dark:hover:text-rose-400 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors"
+                            title="حذف نهائي للعميل"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })}
+
+              </div>
+
+              {/* Pagination (shown if more than 6 items) */}
+              {combinedWalletItems.length > ITEMS_PER_PAGE && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    عرض <span className="font-bold text-slate-800 dark:text-white font-mono">{(safeWalletPage - 1) * ITEMS_PER_PAGE + 1}</span> - <span className="font-bold text-slate-800 dark:text-white font-mono">{Math.min(combinedWalletItems.length, safeWalletPage * ITEMS_PER_PAGE)}</span> من إجمالي <span className="font-bold text-slate-800 dark:text-white font-mono">{combinedWalletItems.length}</span> عنصر محذوف
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-1.5" dir="rtl">
                     <button
-                      onClick={() => handleRestoreWallet(wallet)}
-                      className="btn-interactive flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-600/25"
-                      title="استعادة هذا الرقم إلى دليل العملاء"
+                      onClick={() => setWalletPage(p => Math.max(1, p - 1))}
+                      disabled={safeWalletPage === 1}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                     >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>استعادة الرقم</span>
+                      <ChevronRight className="w-4 h-4" />
+                      <span>السابق</span>
                     </button>
 
-                    <button
-                      onClick={() => handlePermanentDeleteWallet(wallet)}
-                      className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/50 dark:text-slate-400 dark:hover:text-rose-400 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors"
-                      title="حذف نهائي للرقم من السلة"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {/* Deleted Clients (With multiple wallets) */}
-              {filteredClients.map((client) => (
-                <div
-                  key={client.id}
-                  className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border-2 border-rose-200 dark:border-rose-900/60 shadow-sm flex flex-col justify-between gap-4 transition-all"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300">
-                          عميل محذوف بالكامل
-                        </span>
-                        <h4 className="text-base font-black text-slate-900 dark:text-white mt-1">
-                          {client.name}
-                        </h4>
-                        {client.notes && (
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            {client.notes}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="text-left shrink-0">
-                        <span className="text-[10px] text-slate-400 block">عدد المحافظ</span>
-                        <span className="text-sm font-black font-mono text-slate-800 dark:text-slate-200">
-                          {client.wallets?.length || 0} أرقام
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Wallets preview */}
-                    <div className="space-y-1.5 mt-3 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <span className="text-[10px] font-bold text-slate-400 block mb-1">
-                        الأرقام التابعة لهذا العميل:
-                      </span>
-                      {(client.wallets || []).map((w, idx) => (
-                        <div key={w.id || idx} className="flex items-center justify-between text-xs">
-                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300" dir="ltr">
-                            {formatPhone(w.phoneNumber)}
-                          </span>
-                          <span className="text-[11px] text-slate-400">
-                            {w.label}
-                          </span>
-                        </div>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalWalletPages }, (_, i) => i + 1).map((pageNum) => (
+                        <button
+                          key={pageNum}
+                          onClick={() => setWalletPage(pageNum)}
+                          className={`min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold font-mono transition-all ${
+                            safeWalletPage === pageNum
+                              ? 'bg-rose-600 text-white shadow-sm'
+                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
                       ))}
-                      {client.deletedAt && (
-                        <div className="pt-1.5 mt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400">
-                          <span>تاريخ الحذف:</span>
-                          <span className="font-mono">
-                            {formatDateArabic(client.deletedAt)}
-                          </span>
-                        </div>
-                      )}
                     </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <button
-                      onClick={() => handleRestoreClient(client)}
-                      className="btn-interactive flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-600/25"
-                      title="استعادة العميل وجميع محافظه إلى دليل العملاء"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>استعادة العميل بالكامل</span>
-                    </button>
 
                     <button
-                      onClick={() => handlePermanentDeleteClient(client)}
-                      className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/50 dark:text-slate-400 dark:hover:text-rose-400 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors"
-                      title="حذف نهائي للعميل"
+                      onClick={() => setWalletPage(p => Math.min(totalWalletPages, p + 1))}
+                      disabled={safeWalletPage === totalWalletPages}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <span>التالي</span>
+                      <ChevronLeft className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-              ))}
-
-            </div>
+              )}
+            </>
           )}
 
         </div>
@@ -531,128 +625,175 @@ export default function TrashView() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredProducts.map((product) => {
-                const mainImage = product.images?.[0];
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {paginatedProducts.map((product) => {
+                  const mainImage = product.images?.[0];
 
-                return (
-                  <div
-                    key={product.id}
-                    className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm flex flex-col justify-between gap-4 transition-all"
-                  >
-                    <div>
-                      {/* Product Header */}
-                      <div className="flex items-start gap-3 mb-3">
-                        {/* Thumbnail */}
-                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
-                          {mainImage ? (
-                            <img
-                              src={mainImage}
-                              alt={product.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Smartphone className="w-7 h-7 text-slate-400" />
-                          )}
-                        </div>
-
-                        {/* Title & Brand */}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                              {product.category === 'phones' ? 'هاتف محمول' : 'إكسسوار'}
-                            </span>
-                            {product.brand && (
-                              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                                {product.brand}
-                              </span>
+                  return (
+                    <div
+                      key={product.id}
+                      className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm flex flex-col justify-between gap-4 transition-all"
+                    >
+                      <div>
+                        {/* Product Header */}
+                        <div className="flex items-start gap-3 mb-3">
+                          {/* Thumbnail */}
+                          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                            {mainImage ? (
+                              <img
+                                src={mainImage}
+                                alt={product.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <Smartphone className="w-7 h-7 text-slate-400" />
                             )}
                           </div>
 
-                          <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate mt-1">
-                            {product.name}
-                          </h4>
+                          {/* Title & Brand */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                {product.category === 'phones' ? 'هاتف محمول' : 'إكسسوار'}
+                              </span>
+                              {product.brand && (
+                                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                                  {product.brand}
+                                </span>
+                              )}
+                            </div>
 
-                          {product.storage && (
-                            <span className="text-xs text-slate-500 dark:text-slate-400 block font-mono">
-                              {product.storage}
-                            </span>
+                            <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate mt-1">
+                              {product.name}
+                            </h4>
+
+                            {product.storage && (
+                              <span className="text-xs text-slate-500 dark:text-slate-400 block font-mono">
+                                {product.storage}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Pricing & Stock Meta */}
+                        <div className="space-y-1.5 text-xs bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">سعر البيع:</span>
+                            <strong className="text-slate-900 dark:text-white font-mono font-black">
+                              {formatCurrency(product.salePrice)}
+                            </strong>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">الكمية عند الحذف:</span>
+                            <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                              {product.totalQuantity || 0} قطع
+                            </strong>
+                          </div>
+
+                          {/* Variants list preview */}
+                          {product.variants?.length > 0 && (
+                            <div className="pt-1 mt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                              <div className="flex flex-wrap gap-1">
+                                {product.variants.map((v, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600"
+                                  >
+                                    {v.hex && (
+                                      <span
+                                        className="w-2 h-2 rounded-full border border-black/20"
+                                        style={{ backgroundColor: v.hex }}
+                                      />
+                                    )}
+                                    <span>{v.color}: {v.quantity}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {product.deletedAt && (
+                            <div className="pt-1.5 mt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400">
+                              <span>تاريخ الحذف:</span>
+                              <span className="font-mono">
+                                {formatDateArabic(product.deletedAt)} • {formatTimeArabic(product.deletedAt)}
+                              </span>
+                            </div>
                           )}
                         </div>
                       </div>
 
-                      {/* Pricing & Stock Meta */}
-                      <div className="space-y-1.5 text-xs bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500">سعر البيع:</span>
-                          <strong className="text-slate-900 dark:text-white font-mono font-black">
-                            {formatCurrency(product.salePrice)}
-                          </strong>
-                        </div>
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <button
+                          onClick={() => handleRestoreProduct(product)}
+                          className="btn-interactive flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-600/25"
+                          title="استعادة هذا الصنف إلى المخزون"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>استعادة إلى المخزون</span>
+                        </button>
 
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500">الكمية عند الحذف:</span>
-                          <strong className="text-slate-800 dark:text-slate-200 font-mono">
-                            {product.totalQuantity || 0} قطع
-                          </strong>
-                        </div>
-
-                        {/* Variants list preview */}
-                        {product.variants?.length > 0 && (
-                          <div className="pt-1 mt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                            <div className="flex flex-wrap gap-1">
-                              {product.variants.map((v, i) => (
-                                <span
-                                  key={i}
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600"
-                                >
-                                  {v.hex && (
-                                    <span
-                                      className="w-2 h-2 rounded-full border border-black/20"
-                                      style={{ backgroundColor: v.hex }}
-                                    />
-                                  )}
-                                  <span>{v.color}: {v.quantity}</span>
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {product.deletedAt && (
-                          <div className="pt-1.5 mt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400">
-                            <span>تاريخ الحذف:</span>
-                            <span className="font-mono">
-                              {formatDateArabic(product.deletedAt)} • {formatTimeArabic(product.deletedAt)}
-                            </span>
-                          </div>
-                        )}
+                        <button
+                          onClick={() => handlePermanentDeleteProduct(product)}
+                          className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/50 dark:text-slate-400 dark:hover:text-rose-400 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors"
+                          title="حذف نهائي للمنتج من السلة"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                      <button
-                        onClick={() => handleRestoreProduct(product)}
-                        className="btn-interactive flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-600/25"
-                        title="استعادة هذا الصنف إلى المخزون"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>استعادة إلى المخزون</span>
-                      </button>
-
-                      <button
-                        onClick={() => handlePermanentDeleteProduct(product)}
-                        className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:bg-slate-800 dark:hover:bg-rose-950/50 dark:text-slate-400 dark:hover:text-rose-400 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors"
-                        title="حذف نهائي للمنتج من السلة"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+              {/* Pagination (shown if more than 6 items) */}
+              {filteredProducts.length > ITEMS_PER_PAGE && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    عرض <span className="font-bold text-slate-800 dark:text-white font-mono">{(safeProductPage - 1) * ITEMS_PER_PAGE + 1}</span> - <span className="font-bold text-slate-800 dark:text-white font-mono">{Math.min(filteredProducts.length, safeProductPage * ITEMS_PER_PAGE)}</span> من إجمالي <span className="font-bold text-slate-800 dark:text-white font-mono">{filteredProducts.length}</span> صنف محذوف
                   </div>
-                );
-              })}
-            </div>
+
+                  <div className="flex items-center gap-1.5" dir="rtl">
+                    <button
+                      onClick={() => setProductPage(p => Math.max(1, p - 1))}
+                      disabled={safeProductPage === 1}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                      <span>السابق</span>
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalProductPages }, (_, i) => i + 1).map((pageNum) => (
+                        <button
+                          key={pageNum}
+                          onClick={() => setProductPage(pageNum)}
+                          className={`min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold font-mono transition-all ${
+                            safeProductPage === pageNum
+                              ? 'bg-rose-600 text-white shadow-sm'
+                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={() => setProductPage(p => Math.min(totalProductPages, p + 1))}
+                      disabled={safeProductPage === totalProductPages}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <span>التالي</span>
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
         </div>
