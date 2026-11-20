@@ -140,13 +140,17 @@ export default function ClientPaymentModal() {
           updateClient(client.id, {
             clientType: 'مدين',
             excessDebt: excessAmount,
-            excessDebtDate: payoutISO
+            excessDebtDate: payoutISO,
+            commissionPercent: 1,
+            commissionMode: 'none'
           });
 
           try {
             localStorage.setItem(`elaasar_client_type_${client.id}`, 'مدين');
             localStorage.setItem(`elaasar_client_excess_debt_${client.id}`, String(excessAmount));
             localStorage.setItem(`elaasar_client_excess_debt_date_${client.id}`, payoutISO);
+            localStorage.setItem(`elaasar_client_commission_${client.id}`, '1');
+            localStorage.setItem(`elaasar_client_commission_mode_${client.id}`, 'none');
           } catch (err) {
             console.error(err);
           }

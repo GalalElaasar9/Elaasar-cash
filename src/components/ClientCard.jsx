@@ -300,6 +300,12 @@ export default function ClientCard({ client }) {
 
   const hasExcessDebt = clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
 
+  if (hasExcessDebt) {
+    commissionAmount = 0;
+    effectiveMode = 'none';
+    finalAmount = clientExcessDebt;
+  }
+
   let remainingDebt = 0;
   let creditExcess = 0;
   let isSettled = false;
@@ -581,56 +587,63 @@ export default function ClientCard({ client }) {
             {/* 1. قبل إضافة العمولة */}
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shadow-xs">
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
-                {hasExcessDebt ? 'المبلغ المطلوب:' : 'قبل العمولة:'}
+                {hasExcessDebt ? 'المبلغ الأساسي المطلوب:' : 'قبل العمولة:'}
               </span>
               <span className="font-mono text-sm sm:text-base font-black text-slate-900 dark:text-white" dir="ltr">
-                {formatCurrency(hasExcessDebt ? remainingDebt : baseAmount)}
+                {formatCurrency(hasExcessDebt ? clientExcessDebt : baseAmount)}
               </span>
             </div>
+
             {/* 2. معامل ونوع العمولة (خصم / إضافة) */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border shadow-xs transition-colors ${
-              effectiveMode === 'add'
-                ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60'
-                : 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60'
-            }`}>
-              {/* زر التبديل بين إضافة وخصم */}
-              <button
-                type="button"
-                onClick={handleToggleMode}
-                className={`btn-interactive px-2 py-1 rounded-lg text-xs font-black transition-all shadow-xs ${
-                  effectiveMode === 'add'
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    : 'bg-rose-600 hover:bg-rose-700 text-white'
-                }`}
-                title="اضغط للتبديل بين إضافة أو خصم العمولة"
-              >
-                {effectiveMode === 'add' ? 'إضافة (+)' : 'خصم (-)'}
-              </button>
-
-              <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-0.5 shadow-2xs">
-                <span className="text-xs font-bold text-slate-400 select-none">×</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={commissionPercent}
-                  onChange={(e) => setCommissionPercent(e.target.value)}
-                  placeholder="0.995"
-                  className="w-20 sm:w-24 text-sm font-black font-mono text-center bg-transparent border-none p-0 text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  title="أدخل معامل الحساب (مثال: 0.995 أو 1.005)"
-                />
+            {hasExcessDebt ? (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold text-xs shadow-xs">
+                <span>صافي نقدي (بدون عمولة أو خصم)</span>
               </div>
+            ) : (
+              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border shadow-xs transition-colors ${
+                effectiveMode === 'add'
+                  ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60'
+                  : 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60'
+              }`}>
+                {/* زر التبديل بين إضافة وخصم */}
+                <button
+                  type="button"
+                  onClick={handleToggleMode}
+                  className={`btn-interactive px-2 py-1 rounded-lg text-xs font-black transition-all shadow-xs ${
+                    effectiveMode === 'add'
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-rose-600 hover:bg-rose-700 text-white'
+                  }`}
+                  title="اضغط للتبديل بين إضافة أو خصم العمولة"
+                >
+                  {effectiveMode === 'add' ? 'إضافة (+)' : 'خصم (-)'}
+                </button>
 
-              {/* قيمة فرق العمولة المحسوبة */}
-              {commissionAmount > 0 && (
-                <span className={`text-[11px] font-black font-mono mr-0.5 ${
-                  effectiveMode === 'add'
-                    ? 'text-emerald-700 dark:text-emerald-400'
-                    : 'text-rose-700 dark:text-rose-400'
-                }`} dir="ltr">
-                  ({effectiveMode === 'add' ? '+' : '-'}{formatCurrency(commissionAmount)})
-                </span>
-              )}
-            </div>
+                <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-0.5 shadow-2xs">
+                  <span className="text-xs font-bold text-slate-400 select-none">×</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={commissionPercent}
+                    onChange={(e) => setCommissionPercent(e.target.value)}
+                    placeholder="0.995"
+                    className="w-20 sm:w-24 text-sm font-black font-mono text-center bg-transparent border-none p-0 text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    title="أدخل معامل الحساب (مثال: 0.995 أو 1.005)"
+                  />
+                </div>
+
+                {/* قيمة فرق العمولة المحسوبة */}
+                {commissionAmount > 0 && (
+                  <span className={`text-[11px] font-black font-mono mr-0.5 ${
+                    effectiveMode === 'add'
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-rose-700 dark:text-rose-400'
+                  }`} dir="ltr">
+                    ({effectiveMode === 'add' ? '+' : '-'}{formatCurrency(commissionAmount)})
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* 3. المبلغ بعد العمولة (سواء إضافة أو خصم) */}
             <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-white shadow-sm ring-2 transition-all ${
@@ -642,22 +655,43 @@ export default function ClientCard({ client }) {
             }`}>
               <span className="text-[11px] font-bold text-white/95">
                 {hasExcessDebt
-                  ? 'المطلوب سداده (الزيادة المصروفة):'
-                  : effectiveMode === 'add' ? 'بعد إضافة العمولة:' : 'بعد خصم العمولة:'}
+                  ? 'المطلوب الأساسي (قبل السداد):'
+                  : effectiveMode === 'add' ? 'بعد إضافة العمولة (الأساسي):' : 'بعد خصم العمولة (الأساسي):'}
               </span>
               <span className="font-mono text-sm sm:text-base font-black tracking-tight" dir="ltr">
-                {formatCurrency(hasExcessDebt ? remainingDebt : finalAmount)}
+                {formatCurrency(hasExcessDebt ? clientExcessDebt : finalAmount)}
               </span>
             </div>
 
             {/* 4. تفاصيل المسدد والمتبقي إن وُجد */}
             {hasExcessDebt ? (
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200">
-                  <span className="text-[11px] font-bold">المتبقي مطلوب:</span>
-                  <span className="font-mono text-sm font-black text-rose-700 dark:text-rose-300" dir="ltr">
-                    {formatCurrency(remainingDebt)}
-                  </span>
+                {remainingDebt < clientExcessDebt && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                    <span className="text-[11px] font-bold">المسدد:</span>
+                    <span className="font-mono text-sm font-black" dir="ltr">
+                      {formatCurrency(clientExcessDebt - remainingDebt)}
+                    </span>
+                  </div>
+                )}
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold ${
+                  remainingDebt === 0
+                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border-emerald-300'
+                    : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+                }`}>
+                  {remainingDebt === 0 ? (
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>خالص بالكامل (0 ج.م)</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[11px] font-bold">المتبقي مطلوب:</span>
+                      <span className="font-mono text-sm font-black text-rose-700 dark:text-rose-300" dir="ltr">
+                        {formatCurrency(remainingDebt)}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             ) : paidAmount > 0 ? (

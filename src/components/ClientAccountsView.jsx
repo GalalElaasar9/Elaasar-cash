@@ -243,6 +243,11 @@ export default function ClientAccountsView() {
       let effectiveClientType = clientType || 'مدين';
       let activeFinalAmount = finalAmount;
       let isExcessDebtOnly = false;
+      let effectiveBaseAmount = baseAmount;
+      let effectiveCommissionAmount = commissionAmount;
+      let effectiveFactorStr = commissionPercent;
+      let effectiveModeResult = effectiveMode;
+      let effectivePaidAmount = paidAmount;
 
       if (hasExcessDebt) {
         const cutoffTime = clientExcessDate ? new Date(clientExcessDate).getTime() : 0;
@@ -254,13 +259,20 @@ export default function ClientAccountsView() {
           .filter(t => new Date(t.date).getTime() > cutoffTime)
           .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-        const currentExcessDebt = Math.max(0, clientExcessDebt + postRecharges - postPayments);
+        // العميل المحول من دائن إلى مدين: المبلغ لا يطبق عليه أي خصم أو عمولة
+        const initialDebt = clientExcessDebt + postRecharges;
+        const currentExcessDebt = Math.max(0, initialDebt - postPayments);
         remainingDebt = currentExcessDebt;
         creditAmount = 0;
         isSettled = currentExcessDebt === 0;
         effectiveClientType = 'مدين';
-        activeFinalAmount = currentExcessDebt;
+        activeFinalAmount = initialDebt; // المبلغ الأساسي قبل السداد بدون عمولة أو خصم
         isExcessDebtOnly = true;
+        effectiveBaseAmount = initialDebt;
+        effectiveCommissionAmount = 0; // ZERO COMMISSION
+        effectiveFactorStr = '1'; // NO MULTIPLIER
+        effectiveModeResult = 'none'; // NO DISCOUNT / COMMISSION
+        effectivePaidAmount = postPayments;
       } else {
         const grossRequired = finalAmount;
         const netBalance = grossRequired - paidAmount;
@@ -268,6 +280,7 @@ export default function ClientAccountsView() {
         creditAmount = netBalance < 0 ? Math.abs(netBalance) : (clientType === 'دائن' ? finalAmount : 0);
         isSettled = netBalance === 0 && (grossRequired > 0 || paidAmount !== 0);
         effectiveClientType = creditAmount > 0 ? 'دائن' : (remainingDebt > 0 ? 'مدين' : (clientType || 'مدين'));
+        activeFinalAmount = finalAmount;
       }
 
       return {
@@ -278,20 +291,21 @@ export default function ClientAccountsView() {
         todayRecharges: clientTodayRecharges,
         monthRecharges: clientMonthRecharges,
         allRecharges: clientAllRecharges,
-        baseAmount,
-        commissionMode,
-        effectiveMode,
-        commissionPercent,
-        commissionAmount,
+        baseAmount: effectiveBaseAmount,
+        commissionMode: effectiveModeResult,
+        effectiveMode: effectiveModeResult,
+        commissionPercent: effectiveFactorStr,
+        commissionAmount: effectiveCommissionAmount,
         finalAmount: activeFinalAmount,
         grossRequired: activeFinalAmount,
-        paidAmount,
+        paidAmount: effectivePaidAmount,
         allPaidAmount: clientAllPayments,
         netBalance: isExcessDebtOnly ? remainingDebt : (finalAmount - paidAmount),
         remainingDebt,
         creditAmount,
         isSettled,
         isExcessDebtOnly,
+        hasExcessDebt,
         excessDebt: clientExcessDebt,
         payments: clientPayments,
         transactionsCount: clientTxList.length,
@@ -490,8 +504,8 @@ export default function ClientAccountsView() {
 عدد الخطوط: ${item.wallets.filter(w => w.amount > 0).length || item.wallets.length}
 -----------------------------
 المبلغ قبل العمولة: ${formatNumber(item.baseAmount)} ج.م
-معامل الحساب: × ${item.commissionPercent} (${modeText} ${formatNumber(item.commissionAmount)} ج.م)
-إجمالي المستحق بعد العمولة: ${formatNumber(item.finalAmount)} ج.م
+${item.hasExcessDebt ? 'العمولة: بدون عمولة (صافي نقدي مباشر)' : `معامل الحساب: × ${item.commissionPercent} (${modeText} ${formatNumber(item.commissionAmount)} ج.م)`}
+المبلغ الأساسي المطلوب (قبل السداد): ${formatNumber(item.finalAmount)} ج.م
 -----------------------------
 ${balanceLine}
 -----------------------------
@@ -517,10 +531,12 @@ ${balanceLine}
       'عدد الخطوط',
       'أرقام الهواتف',
       'إجمالي الشحن (قبل العمولة)',
-      'نوع الحساب',
+      'نوع الحساب والعمولة',
       'معامل الضرب',
       'فرق العمولة',
-      'المبلغ الآجل المستحق (بعد العمولة)'
+      'المبلغ الأساسي (قبل السداد)',
+      'المسدد',
+      'المتبقي المطلوب (بعد السداد)'
     ];
 
     const rows = filteredAccounts.map((item, idx) => {
@@ -531,16 +547,18 @@ ${balanceLine}
         item.wallets.length,
         `"${item.wallets.map(w => w.phoneNumber).join(' - ')}"`,
         item.baseAmount,
-        isAdd ? 'إضافة (+)' : 'خصم (-)',
+        item.hasExcessDebt ? 'صافي نقدي (بدون عمولة)' : (isAdd ? 'إضافة (+)' : 'خصم (-)'),
         item.commissionPercent,
-        isAdd ? item.commissionAmount : -item.commissionAmount,
-        item.finalAmount
+        item.hasExcessDebt ? 0 : (isAdd ? item.commissionAmount : -item.commissionAmount),
+        item.finalAmount,
+        item.paidAmount,
+        item.remainingDebt
       ];
     });
 
     rows.push([]);
-    rows.push([`كشف حسابات العملاء والآجل - فترة: ${periodLabel}`, '', '', '', '', '', '', '', '']);
-    rows.push(['الإجمالي العام', '', '', '', summaryTotals.totalBase, '', '', summaryTotals.totalCommission, summaryTotals.totalFinal]);
+    rows.push([`كشف حسابات العملاء والآجل - فترة: ${periodLabel}`, '', '', '', '', '', '', '', '', '', '']);
+    rows.push(['الإجمالي العام', '', '', '', summaryTotals.totalBase, '', '', summaryTotals.totalCommission, summaryTotals.totalFinal, summaryTotals.totalPaid, summaryTotals.totalRemaining]);
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -872,18 +890,21 @@ ${balanceLine}
               <thead>
                 <tr className="bg-slate-100/90 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 text-xs font-black border-b border-slate-200 dark:border-slate-800">
                   <th className="py-3.5 px-4 w-12 text-center">#</th>
-                  <th className="py-3.5 px-4 min-w-[180px]">اسم العميل</th>
-                  <th className="py-3.5 px-4 min-w-[280px]">أرقام وخطوط العميل</th>
-                  <th className="py-3.5 px-4 min-w-[150px] text-blue-700 dark:text-blue-300">
+                  <th className="py-3.5 px-4 min-w-[170px]">اسم العميل</th>
+                  <th className="py-3.5 px-4 min-w-[260px]">أرقام وخطوط العميل</th>
+                  <th className="py-3.5 px-4 min-w-[140px] text-blue-700 dark:text-blue-300">
                     المبلغ قبل العمولة
                   </th>
-                  <th className="py-3.5 px-4 min-w-[210px]">ضبط العمولة (% / خصم / إضافة)</th>
+                  <th className="py-3.5 px-4 min-w-[190px]">ضبط العمولة (% / خصم / إضافة)</th>
+                  <th className="py-3.5 px-4 min-w-[160px] text-slate-900 dark:text-white bg-slate-200/60 dark:bg-slate-800/60 font-black">
+                    المبلغ الأساسي (قبل السداد)
+                  </th>
                   <th className={`py-3.5 px-4 min-w-[180px] ${
                     accountTypeTab === 'مدين'
                       ? 'text-rose-700 dark:text-rose-300 bg-rose-50/50 dark:bg-rose-950/20'
                       : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20'
                   }`}>
-                    {accountTypeTab === 'مدين' ? 'الآجل المطلوب (بعد العمولة)' : 'الرصيد الدائن المستحق (بعد العمولة)'}
+                    {accountTypeTab === 'مدين' ? 'المتبقي المطلوب (بعد السداد)' : 'الرصيد الدائن المتبقي (بعد الصرف)'}
                   </th>
                   <th className="py-3.5 px-4 w-32 text-center">إجراءات</th>
                 </tr>
@@ -993,89 +1014,98 @@ ${balanceLine}
 
                       {/* Amount before commission (المبلغ قبل العمولة) */}
                       <td className="py-3.5 px-4 whitespace-nowrap font-mono text-base font-black text-blue-700 dark:text-blue-300" dir="ltr">
-                        {formatCurrency(item.isExcessDebtOnly ? item.finalAmount : baseAmount)}
+                        {formatCurrency(item.hasExcessDebt ? item.excessDebt : baseAmount)}
                       </td>
 
                       {/* Commission Settings (معامل ونوع العمولة) */}
                       <td className="py-3.5 px-4">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {/* Mode Toggle Button: إضافة (+) أو خصم (-) */}
-                          <button
-                            type="button"
-                            onClick={() => handleToggleCommissionMode(client, item.effectiveMode || commissionMode, commissionPercent)}
-                            className={`btn-interactive px-2 py-1 rounded-lg text-xs font-black transition-all shadow-xs ${
-                              (item.effectiveMode || commissionMode) === 'add'
-                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                : 'bg-rose-600 hover:bg-rose-700 text-white'
-                            }`}
-                            title="اضغط للتبديل بين إضافة أو خصم العمولة"
-                          >
-                            {(item.effectiveMode || commissionMode) === 'add' ? 'إضافة (+)' : 'خصم (-)'}
-                          </button>
-
-                          {/* Multiplier Input without % symbol */}
-                          <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-0.5 shadow-2xs">
-                            <span className="text-xs font-bold text-slate-400 select-none">×</span>
-                            <input
-                              type="number"
-                              step="any"
-                              value={commissionPercent}
-                              onChange={(e) => handleChangeCommissionPercent(client, e.target.value)}
-                              placeholder="0.995"
-                              className="w-20 text-sm font-black font-mono text-center bg-transparent border-none p-0 text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              title="أدخل معامل الحساب (مثال: 0.995 أو 1.005)"
-                            />
-                          </div>
-
-                          {/* Calculated Commission Value */}
-                          {commissionAmount > 0 && (
-                            <span className={`text-[11px] font-black font-mono mr-0.5 ${
-                              (item.effectiveMode || commissionMode) === 'add'
-                                ? 'text-emerald-700 dark:text-emerald-400'
-                                : 'text-rose-700 dark:text-rose-400'
-                            }`} dir="ltr">
-                              ({(item.effectiveMode || commissionMode) === 'add' ? '+' : '-'}{formatCurrency(commissionAmount)})
+                        {item.hasExcessDebt ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shadow-2xs">
+                              صافي نقدي (بدون عمولة أو خصم)
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {/* Mode Toggle Button: إضافة (+) أو خصم (-) */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleCommissionMode(client, item.effectiveMode || commissionMode, commissionPercent)}
+                              className={`btn-interactive px-2 py-1 rounded-lg text-xs font-black transition-all shadow-xs ${
+                                (item.effectiveMode || commissionMode) === 'add'
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                  : 'bg-rose-600 hover:bg-rose-700 text-white'
+                              }`}
+                              title="اضغط للتبديل بين إضافة أو خصم العمولة"
+                            >
+                              {(item.effectiveMode || commissionMode) === 'add' ? 'إضافة (+)' : 'خصم (-)'}
+                            </button>
+
+                            {/* Multiplier Input without % symbol */}
+                            <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-0.5 shadow-2xs">
+                              <span className="text-xs font-bold text-slate-400 select-none">×</span>
+                              <input
+                                type="number"
+                                step="any"
+                                value={commissionPercent}
+                                onChange={(e) => handleChangeCommissionPercent(client, e.target.value)}
+                                placeholder="0.995"
+                                className="w-20 text-sm font-black font-mono text-center bg-transparent border-none p-0 text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                title="أدخل معامل الحساب (مثال: 0.995 أو 1.005)"
+                              />
+                            </div>
+
+                            {/* Calculated Commission Value */}
+                            {commissionAmount > 0 && (
+                              <span className={`text-[11px] font-black font-mono mr-0.5 ${
+                                (item.effectiveMode || commissionMode) === 'add'
+                                  ? 'text-emerald-700 dark:text-emerald-400'
+                                  : 'text-rose-700 dark:text-rose-400'
+                              }`} dir="ltr">
+                                ({(item.effectiveMode || commissionMode) === 'add' ? '+' : '-'}{formatCurrency(commissionAmount)})
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
 
-                      {/* Amount after commission & Net balance (المطلوب والمسدد والصافي) */}
+                      {/* NEW COLUMN: المبلغ الأساسي (قبل السداد) */}
+                      <td className="py-3.5 px-4 whitespace-nowrap bg-slate-50/70 dark:bg-slate-800/40 font-mono">
+                        <div className="text-base font-black text-slate-900 dark:text-white" dir="ltr">
+                          {formatCurrency(item.finalAmount)}
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block mt-0.5">
+                          {item.hasExcessDebt 
+                            ? 'المبلغ الزائد من المحل' 
+                            : accountTypeTab === 'مدين' 
+                            ? 'المستحق بعد العمولة' 
+                            : 'الرصيد الدائن المستحق'}
+                        </span>
+                      </td>
+
+                      {/* Amount after payment & Net balance (المتبقي المطلوب بعد السداد) */}
                       <td className={`py-3.5 px-4 whitespace-nowrap ${
                         accountTypeTab === 'مدين' ? 'bg-rose-50/40 dark:bg-rose-950/20' : 'bg-emerald-50/40 dark:bg-emerald-950/20'
                       }`}>
                         {accountTypeTab === 'مدين' ? (
-                          item.isExcessDebtOnly ? (
+                          item.isSettled ? (
                             <div>
-                              <div className="font-mono text-lg font-black text-rose-700 dark:text-rose-300" dir="ltr">
-                                {formatCurrency(item.remainingDebt)}
+                              <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-black text-sm">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                <span>خالص بالكامل (0 ج.م)</span>
                               </div>
-                              <span className="text-[10px] text-rose-700 dark:text-rose-300 font-bold block mt-0.5">
-                                المبلغ الزائد المصروف من المحل (مطلوب سداده)
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                                المطلوب: {formatCurrency(item.finalAmount)} • تم سداد: {formatCurrency(item.paidAmount)}
                               </span>
                             </div>
                           ) : item.paidAmount > 0 ? (
                             <div>
-                              {item.isSettled ? (
-                                <div>
-                                  <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-black text-sm">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                                    <span>خالص بالكامل (0 ج.م)</span>
-                                  </div>
-                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                                    المطلوب: {formatCurrency(item.finalAmount)} • تم سداد: {formatCurrency(item.paidAmount)}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div>
-                                  <div className="font-mono text-lg font-black text-rose-700 dark:text-rose-300" dir="ltr">
-                                    {formatCurrency(item.remainingDebt)}
-                                  </div>
-                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                                    المتبقي مطلوب • مسدد: {formatCurrency(item.paidAmount)} من {formatCurrency(item.finalAmount)}
-                                  </span>
-                                </div>
-                              )}
+                              <div className="font-mono text-lg font-black text-rose-700 dark:text-rose-300" dir="ltr">
+                                {formatCurrency(item.remainingDebt)}
+                              </div>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block mt-0.5">
+                                المتبقي مطلوب • مسدد: {formatCurrency(item.paidAmount)} من {formatCurrency(item.finalAmount)}
+                              </span>
                             </div>
                           ) : (
                             <div>
