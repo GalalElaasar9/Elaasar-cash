@@ -30,7 +30,8 @@ import {
   X,
   ArrowDownToLine,
   Percent,
-  Calculator
+  Calculator,
+  Wallet
 } from 'lucide-react';
 
 export default function ClientCard({ client }) {
@@ -235,6 +236,44 @@ export default function ClientCard({ client }) {
     }
   }
 
+  // Payments made by this client
+  const clientPayments = useMemo(() => {
+    return transactions.filter(t => 
+      (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment'
+    );
+  }, [transactions, client.id]);
+
+  const paidAmount = useMemo(() => {
+    const todayKey = new Date().toISOString().split('T')[0];
+    const currentMonthKey = todayKey.slice(0, 7);
+
+    if (timeRange === 'today') {
+      return clientPayments
+        .filter(t => (t.dateOnly || t.date || '').startsWith(todayKey))
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    }
+    if (timeRange === 'month') {
+      return clientPayments
+        .filter(t => (t.dateOnly || t.date || '').slice(0, 7) === currentMonthKey)
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    }
+    return clientPayments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  }, [clientPayments, timeRange]);
+
+  const remainingDebt = finalAmount > paidAmount ? finalAmount - paidAmount : 0;
+  const creditExcess = paidAmount > finalAmount ? paidAmount - finalAmount : 0;
+  const isSettled = paidAmount > 0 && finalAmount === paidAmount;
+
+  const handleOpenPayment = () => {
+    setModalData({
+      client,
+      currentDebt: remainingDebt > 0 ? remainingDebt : finalAmount,
+      currentPaid: paidAmount,
+      clientType
+    });
+    setActiveModal('clientPayment');
+  };
+
   // Close history popover when clicking outside or pressing Escape
   useEffect(() => {
     if (!activeHistoryWalletId) return;
@@ -386,6 +425,15 @@ export default function ClientCard({ client }) {
           {/* Action buttons on client */}
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
+              onClick={handleOpenPayment}
+              className="btn-interactive flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
+              title="تسجيل سداد دفعة نقدية لهذا العميل"
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>تسجيل سداد</span>
+            </button>
+
+            <button
               onClick={handleAddWallet}
               className="btn-interactive flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/60 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 shadow-xs"
               title="إضافة رقم محمول إضافي لهذا العميل"
@@ -531,6 +579,41 @@ export default function ClientCard({ client }) {
                 {formatCurrency(finalAmount)}
               </span>
             </div>
+
+            {/* 4. تفاصيل المسدد والمتبقي إن وُجد */}
+            {paidAmount > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {/* المسدد */}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300">
+                  <span className="text-[11px] font-bold">المسدد:</span>
+                  <span className="font-mono text-sm font-black" dir="ltr">
+                    {formatCurrency(paidAmount)}
+                  </span>
+                </div>
+
+                {/* المتبقي أو الفائض */}
+                {creditExcess > 0 ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-200 font-bold text-xs">
+                    <span>له رصيد دائن:</span>
+                    <strong className="font-mono text-sm font-black text-teal-700 dark:text-teal-300" dir="ltr">
+                      {formatCurrency(creditExcess)}
+                    </strong>
+                  </div>
+                ) : isSettled ? (
+                  <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 font-black text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>خالص (0 ج.م)</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200">
+                    <span className="text-[11px] font-bold">المتبقي:</span>
+                    <span className="font-mono text-sm font-black text-rose-700 dark:text-rose-300" dir="ltr">
+                      {formatCurrency(remainingDebt)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
 

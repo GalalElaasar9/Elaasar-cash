@@ -1121,7 +1121,7 @@ ${balanceLine}
             </div>
 
             {/* Financial Summary Strip */}
-            <div className="grid grid-cols-3 gap-2 text-center shrink-0">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center shrink-0">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                 <span className="text-[11px] text-slate-500 block mb-0.5">قبل العمولة</span>
                 <strong className="font-mono text-base text-blue-600 dark:text-blue-400">
@@ -1131,56 +1131,182 @@ ${balanceLine}
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                 <span className="text-[11px] text-slate-500 block mb-0.5">
-                  العمولة ({selectedClientForStatement.commissionPercent}% {selectedClientForStatement.commissionMode === 'add' ? 'إضافة' : 'خصم'})
+                  المطلوب بعد العمولة
                 </span>
-                <strong className="font-mono text-base text-amber-600 dark:text-amber-400">
-                  {selectedClientForStatement.commissionMode === 'add' ? '+' : '-'}{formatCurrency(selectedClientForStatement.commissionAmount)}
+                <strong className="font-mono text-base text-slate-900 dark:text-white">
+                  {formatCurrency(selectedClientForStatement.finalAmount)}
                 </strong>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900">
-                <span className="text-[11px] text-emerald-700 dark:text-emerald-300 block mb-0.5">الآجل المستحق النهائي</span>
-                <strong className="font-mono text-base text-emerald-700 dark:text-emerald-300 font-black">
-                  {formatCurrency(selectedClientForStatement.finalAmount)}
+              <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
+                <span className="text-[11px] text-emerald-700 dark:text-emerald-300 block mb-0.5">إجمالي المسدد</span>
+                <strong className="font-mono text-base text-emerald-600 dark:text-emerald-400 font-black">
+                  {formatCurrency(selectedClientForStatement.paidAmount)}
+                </strong>
+              </div>
+
+              <div className={`p-3 rounded-xl border ${
+                selectedClientForStatement.creditAmount > 0
+                  ? 'bg-teal-50 dark:bg-teal-950/50 border-teal-300 text-teal-800 dark:text-teal-200'
+                  : selectedClientForStatement.remainingDebt > 0
+                  ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 text-rose-800 dark:text-rose-200'
+                  : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 text-emerald-800 dark:text-emerald-200'
+              }`}>
+                <span className="text-[11px] block mb-0.5 font-bold">
+                  {selectedClientForStatement.creditAmount > 0
+                    ? 'له رصيد دائن'
+                    : selectedClientForStatement.remainingDebt > 0
+                    ? 'الصافي المتبقي مطلوب'
+                    : 'الحساب'}
+                </span>
+                <strong className="font-mono text-base font-black">
+                  {selectedClientForStatement.creditAmount > 0
+                    ? formatCurrency(selectedClientForStatement.creditAmount)
+                    : selectedClientForStatement.remainingDebt > 0
+                    ? formatCurrency(selectedClientForStatement.remainingDebt)
+                    : 'خالص (0 ج.م)'}
                 </strong>
               </div>
             </div>
 
-            {/* Transactions List */}
-            <div className="overflow-y-auto flex-1 pr-1 space-y-2 max-h-72">
-              <div className="text-xs font-bold text-slate-600 dark:text-slate-400 mb-1 flex items-center justify-between">
-                <span>سجل عمليات الشحن المسجلة ({selectedClientForStatement.transactions.length} عملية):</span>
-                <span>فترة: {timeRange === 'today' ? 'اليوم' : timeRange === 'month' ? 'هذا الشهر' : 'الكل'}</span>
+            {/* Quick Action: Register Payment from modal */}
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-200/90 dark:border-emerald-800/80 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
+                  <Wallet className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-slate-900 dark:text-white block">
+                    تسجيل سداد دفعة لهذا العميل
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    تسجيل المبلغ مع التاريخ والوقت بالدقيقة والتحويل التلقائي لدائن في حال الزيادة
+                  </span>
+                </div>
               </div>
 
-              {selectedClientForStatement.transactions.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-400 border border-dashed rounded-xl">
-                  لا توجد عمليات شحن مسجلة لهذا العميل في الفترة المحددة.
-                </div>
-              ) : (
-                selectedClientForStatement.transactions.map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 flex items-center justify-between text-xs"
-                  >
-                    <div>
-                      <div className="font-black text-emerald-600 dark:text-emerald-400 font-mono text-sm">
-                        + {formatCurrency(tx.amount)}
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-2">
-                        <span dir="ltr" className="font-mono font-bold">{formatPhone(tx.walletPhone)}</span>
-                        <span>•</span>
-                        <span>{tx.notes || 'شحن رصيد'}</span>
-                      </div>
-                    </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetClient = selectedClientForStatement;
+                  setSelectedClientForStatement(null);
+                  handleOpenPayment(targetClient);
+                }}
+                className="btn-interactive flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-sm"
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                <span>تسجيل سداد</span>
+              </button>
+            </div>
 
-                    <div className="text-left text-[11px] text-slate-400">
-                      <div>{formatDateArabic(tx.date)}</div>
-                      <div className="text-[10px]">{formatTimeArabic(tx.date)}</div>
-                    </div>
+            {/* Scrollable Container with Payments Log & Recharges Log */}
+            <div className="overflow-y-auto flex-1 pr-1 space-y-4 max-h-72">
+              
+              {/* Section 1: Payments Log (سجل السداد والتحصيلات) */}
+              <div>
+                <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-black">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>سجل المدفوعات والتحصيلات ({selectedClientForStatement.payments?.length || 0} حركة):</span>
+                  </span>
+                  <span className="text-[11px] text-emerald-600 font-mono font-black">
+                    إجمالي المسدد: {formatCurrency(selectedClientForStatement.paidAmount)}
+                  </span>
+                </div>
+
+                {(!selectedClientForStatement.payments || selectedClientForStatement.payments.length === 0) ? (
+                  <div className="p-3 text-center text-xs text-slate-400 border border-dashed rounded-xl bg-slate-50/50 dark:bg-slate-800/30">
+                    لم يتم تسجيل أي مدفوعات نقدية لهذا العميل حتى الآن.
                   </div>
-                ))
-              )}
+                ) : (
+                  <div className="space-y-1.5">
+                    {selectedClientForStatement.payments.map((p) => (
+                      <div
+                        key={p.id}
+                        className="p-2.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-emerald-700 dark:text-emerald-400 font-mono text-sm" dir="ltr">
+                              - {formatCurrency(p.amount)}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
+                              {p.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : p.paymentMethod === 'instapay' ? 'إنستاباي' : p.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقدي'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            {p.notes || 'سداد دفعة من الحساب'}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-left">
+                          <div className="text-[11px] text-slate-500">
+                            <div>{formatDateArabic(p.date)}</div>
+                            <div className="text-[10px] text-emerald-600 font-mono font-bold flex items-center gap-1 justify-end">
+                              <Clock className="w-3 h-3" />
+                              <span>{p.time || formatTimeArabic(p.date)}</span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePayment(p)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                            title="حذف حركة السداد"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 2: Recharges Log (سجل الشحنات المدخلة للخطوط) */}
+              <div>
+                <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-blue-700 dark:text-blue-400 font-black">
+                    <ArrowDownToLine className="w-3.5 h-3.5" />
+                    <span>سجل شحنات الخطوط ({selectedClientForStatement.transactions.length} حركة):</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    فترة: {timeRange === 'today' ? 'اليوم' : timeRange === 'month' ? 'هذا الشهر' : 'الكل'}
+                  </span>
+                </div>
+
+                {selectedClientForStatement.transactions.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-slate-400 border border-dashed rounded-xl bg-slate-50/50 dark:bg-slate-800/30">
+                    لا توجد عمليات شحن مسجلة لهذا العميل في الفترة المحددة.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {selectedClientForStatement.transactions.map((tx) => (
+                      <div
+                        key={tx.id}
+                        className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 flex items-center justify-between text-xs"
+                      >
+                        <div>
+                          <div className="font-black text-blue-600 dark:text-blue-400 font-mono text-sm" dir="ltr">
+                            + {formatCurrency(tx.amount)}
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-2">
+                            <span dir="ltr" className="font-mono font-bold">{formatPhone(tx.walletPhone)}</span>
+                            <span>•</span>
+                            <span>{tx.notes || 'شحن رصيد'}</span>
+                          </div>
+                        </div>
+
+                        <div className="text-left text-[11px] text-slate-400">
+                          <div>{formatDateArabic(tx.date)}</div>
+                          <div className="text-[10px]">{formatTimeArabic(tx.date)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
             </div>
 
             {/* Footer Buttons */}
