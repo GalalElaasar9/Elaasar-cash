@@ -31,7 +31,9 @@ import {
   ArrowDownToLine,
   Percent,
   Calculator,
-  Wallet
+  Wallet,
+  LayoutGrid,
+  Table
 } from 'lucide-react';
 
 export default function ClientCard({ client }) {
@@ -50,6 +52,46 @@ export default function ClientCard({ client }) {
   const [copiedPhone, setCopiedPhone] = useState(null);
   const [activeHistoryWalletId, setActiveHistoryWalletId] = useState(null);
   const [walletPage, setWalletPage] = useState(1);
+
+  // Wallets Display Mode: 'grid' (كروت) | 'table' (جدول)
+  const [walletsViewMode, setWalletsViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('elaasar_client_wallets_view_mode') || 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === 'elaasar_client_wallets_view_mode' && e.newValue) {
+        setWalletsViewMode(e.newValue);
+      }
+    };
+    const handleCustomChange = (e) => {
+      if (e.detail?.mode) {
+        setWalletsViewMode(e.detail.mode);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('elaasar_wallets_view_mode_change', handleCustomChange);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('elaasar_wallets_view_mode_change', handleCustomChange);
+    };
+  }, []);
+
+  const handleToggleViewMode = (mode) => {
+    setWalletsViewMode(mode);
+    setWalletPage(1);
+    if (!isExpanded) setIsExpanded(true);
+    try {
+      localStorage.setItem('elaasar_client_wallets_view_mode', mode);
+      window.dispatchEvent(new CustomEvent('elaasar_wallets_view_mode_change', { detail: { mode } }));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Selected time range for client total recharges: 'today' | 'month' | 'all'
   const [timeRange, setTimeRange] = useState(() => {
@@ -179,14 +221,14 @@ export default function ClientCard({ client }) {
 
   // Client wallets
   const wallets = client.wallets || [];
-  const WALLETS_PER_PAGE = 3;
+  const WALLETS_PER_PAGE = walletsViewMode === 'table' ? 6 : 3;
   const totalWalletPages = Math.ceil(wallets.length / WALLETS_PER_PAGE) || 1;
   const validWalletPage = Math.min(Math.max(1, walletPage), totalWalletPages);
 
   const paginatedWallets = useMemo(() => {
     const startIndex = (validWalletPage - 1) * WALLETS_PER_PAGE;
     return wallets.slice(startIndex, startIndex + WALLETS_PER_PAGE);
-  }, [wallets, validWalletPage]);
+  }, [wallets, validWalletPage, WALLETS_PER_PAGE]);
 
   // Calculations for total amounts entered into client lines (recharges)
   const clientWalletIds = useMemo(() => new Set(wallets.map(w => w.id)), [wallets]);
@@ -513,6 +555,34 @@ export default function ClientCard({ client }) {
               <span>إضافة رقم</span>
             </button>
 
+            {/* Wallets Display Mode Toggle Pill (Grid vs Table) */}
+            <div className="inline-flex items-center bg-slate-200/70 dark:bg-slate-800 p-0.5 rounded-full border border-slate-300/80 dark:border-slate-700 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleToggleViewMode('grid')}
+                className={`p-1.5 rounded-full transition-all ${
+                  walletsViewMode === 'grid'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+                title="عرض الأرقام كـ كروت (شبكة)"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleViewMode('table')}
+                className={`p-1.5 rounded-full transition-all ${
+                  walletsViewMode === 'table'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+                title="عرض الأرقام كـ جدول تفصيلي"
+              >
+                <Table className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             <button
               onClick={handleDeleteClient}
               className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
@@ -754,271 +824,532 @@ export default function ClientCard({ client }) {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {paginatedWallets.map((wallet) => {
-                  const isHistoryOpen = activeHistoryWalletId === wallet.id;
-                  const walletTxList = transactions.filter(t => t.walletId === wallet.id);
-                  const carrier = getEgyptianCarrier(wallet.phoneNumber);
-                  const stats = calculateWalletStats(wallet, transactions);
+              {walletsViewMode === 'table' ? (
+                /* Table View Mode (طريقة عرض الجدول التفصيلي) */
+                <div className="overflow-x-auto rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-900 shadow-xs">
+                  <table className="w-full text-right border-collapse min-w-[760px]">
+                    <thead>
+                      <tr className="bg-slate-100/90 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 text-[11px] font-bold border-b border-slate-200/80 dark:border-slate-700">
+                        <th className="py-3 px-3 text-center w-12">#</th>
+                        <th className="py-3 px-3">رقم المحفظة والشبكة</th>
+                        <th className="py-3 px-3">المسمى والحالة</th>
+                        <th className="py-3 px-3">شحن اليوم (حد 60,000 ج.م)</th>
+                        <th className="py-3 px-3">شحن الشهر (حد 200,000 ج.م)</th>
+                        <th className="py-3 px-3 text-center">الإجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                      {paginatedWallets.map((wallet, index) => {
+                        const isHistoryOpen = activeHistoryWalletId === wallet.id;
+                        const walletTxList = transactions.filter(t => t.walletId === wallet.id);
+                        const carrier = getEgyptianCarrier(wallet.phoneNumber);
+                        const stats = calculateWalletStats(wallet, transactions);
+                        const rowNumber = (validWalletPage - 1) * WALLETS_PER_PAGE + index + 1;
 
-                  return (
-                    <div
-                      key={wallet.id}
-                      className="relative bg-slate-50/80 dark:bg-slate-800/50 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-700/70 hover:border-emerald-300 dark:hover:border-emerald-900/60 transition-all duration-200 group flex flex-col justify-between"
-                    >
-                      {/* Top Row: Label & Carrier Badge & Warnings */}
-                      <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Smartphone className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
-                            {wallet.label || 'محفظة العميل'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {carrier && (
-                            <span className="px-2 py-0.5 text-[10px] sm:text-[11px] font-bold rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/40">
-                              {carrier.name}
-                            </span>
-                          )}
-                          {stats.isClientMonthlyOver && (
-                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
-                              <AlertCircle className="w-2.5 h-2.5" />
-                              تجاوز ليميت الشهر (+{formatCurrency(stats.clientMonthlyOverAmount)})
-                            </span>
-                          )}
-                          {stats.isClientDailyOver && (
-                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
-                              <AlertCircle className="w-2.5 h-2.5" />
-                              تجاوز حد اليوم (+{formatCurrency(stats.clientDailyOverAmount)})
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                        return (
+                          <React.Fragment key={wallet.id}>
+                            <tr className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
+                              isHistoryOpen ? 'bg-emerald-50/50 dark:bg-emerald-950/25' : ''
+                            }`}>
+                              {/* Row Index */}
+                              <td className="py-3 px-3 text-center font-mono font-bold text-slate-400">
+                                {rowNumber}
+                              </td>
 
-                      {/* Phone Number Display Box */}
-                      <div className="bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-slate-200/80 dark:border-slate-750 flex items-center justify-between gap-2 mb-2.5">
-                        <span className="text-base sm:text-xl font-black font-mono tracking-wider text-slate-900 dark:text-white" dir="ltr">
-                          {formatPhone(wallet.phoneNumber)}
-                        </span>
-                        <button
-                          onClick={(e) => handleCopyPhone(wallet.phoneNumber, e)}
-                          className="btn-interactive flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors"
-                          title="نسخ الرقم"
-                        >
-                          {copiedPhone === wallet.phoneNumber ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="text-[11px] text-emerald-600 font-bold">تم النسخ</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              <span className="text-[11px]">نسخ</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Daily Recharge Tracker (Rule 1: 60,000 EGP / day with warning) */}
-                      <div className="flex items-center justify-between text-[11px] bg-slate-100/90 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 mb-2">
-                        <span className="text-slate-500 dark:text-slate-400">
-                          شحن اليوم: <strong className={stats.isClientDailyOver ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>{formatCurrency(stats.todayRecharges)}</strong> / 60,000 ج.م
-                        </span>
-                        <span className={`font-bold font-mono ${stats.isClientDailyOver ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                          {stats.isClientDailyOver ? `تجاوز (+${formatCurrency(stats.clientDailyOverAmount)})` : `متبقي: ${formatCurrency(stats.remainingClientDaily)}`}
-                        </span>
-                      </div>
-
-                      {/* Monthly Recharge Tracker (Rule 2: 200,000 EGP / month with warning) */}
-                      <div className="space-y-1 mb-3 bg-white dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-750">
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                          <span>
-                            شحن الشهر: <strong className={stats.isClientMonthlyOver ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>{formatCurrency(stats.totalRecharges)}</strong>
-                          </span>
-                          <span>
-                            الليميت الشهري: <strong className="text-slate-800 dark:text-slate-200">{formatCurrency(stats.clientMonthlyLimit)}</strong>
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-300 ${
-                              stats.isClientMonthlyOver ? 'bg-amber-500' : 'bg-emerald-500'
-                            }`}
-                            style={{ width: `${Math.min(100, (stats.totalRecharges / stats.clientMonthlyLimit) * 100)}%` }}
-                          />
-                        </div>
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="text-slate-400">
-                            نسبة الشحن: {((stats.totalRecharges / stats.clientMonthlyLimit) * 100).toFixed(0)}%
-                          </span>
-                          <span className={`font-bold ${stats.isClientMonthlyOver ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                            {stats.isClientMonthlyOver
-                              ? `تجاوز بمقدار ${formatCurrency(stats.clientMonthlyOverAmount)}`
-                              : `متبقي للشحن: ${formatCurrency(stats.remainingClientMonthly)}`}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Action buttons for this wallet - Recharge balance only as requested */}
-                      <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
-                        {/* Direct Recharge Button (الخط يتشحن له رصيد فقط) */}
-                        <button
-                          onClick={() => handleRechargeWallet(wallet)}
-                          className="btn-interactive flex-1 min-w-0 h-9 sm:h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs shadow-sm shadow-emerald-600/25 whitespace-nowrap"
-                          title="شحن وإضافة رصيد لهذا الخط (حد يومي 60,000 ج.م وشهري 200,000 ج.م)"
-                        >
-                          <ArrowDownToLine className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">شحن رصيد</span>
-                        </button>
-
-                        {/* Edit Phone / Label */}
-                        <button
-                          onClick={() => handleEditWallet(wallet)}
-                          className="btn-interactive shrink-0 h-9 sm:h-10 px-2 sm:px-2.5 flex items-center justify-center gap-1 rounded-xl bg-white dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200/90 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
-                          title="تعديل اسم أو ليميت المحفظة"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-                          <span className="hidden xl:inline">تعديل</span>
-                        </button>
-
-                        {/* History Toggle */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveHistoryWalletId(isHistoryOpen ? null : wallet.id);
-                          }}
-                          className={`btn-interactive shrink-0 h-9 sm:h-10 px-2.5 flex items-center justify-center gap-1 rounded-xl text-xs font-semibold border transition-colors shadow-xs ${isHistoryOpen
-                            ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900'
-                            : 'bg-white dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200/90 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
-                            }`}
-                          title="عرض شحنات وعمليات هذا الرقم"
-                        >
-                          <History className="w-3.5 h-3.5" />
-                          <span className="font-mono font-bold text-[11px]">({walletTxList.length})</span>
-                        </button>
-
-                        {/* Delete Wallet */}
-                        <button
-                          onClick={() => handleDeleteWallet(wallet)}
-                          className="btn-interactive shrink-0 h-9 sm:h-10 w-9 sm:w-10 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700/80 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200/90 dark:border-slate-600 hover:border-rose-200 dark:hover:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 shadow-xs transition-colors"
-                          title="حذف هذا الرقم"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {/* Floating History Popover outside normal div layout */}
-                      {isHistoryOpen && (
-                        <>
-                          {/* Mobile Backdrop */}
-                          <div
-                            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 sm:hidden animate-fadeIn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveHistoryWalletId(null);
-                            }}
-                          />
-
-                          {/* Floating Popover Container with fixed max-height & sticky header/footer */}
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="history-popover-container fixed sm:absolute inset-x-3 bottom-4 sm:inset-x-2 sm:bottom-14 max-h-[80vh] sm:max-h-[350px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-3.5 z-50 animate-popover flex flex-col overflow-hidden"
-                          >
-                            {/* Popover Header */}
-                            <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 shrink-0">
-                                  <History className="w-4 h-4" />
+                              {/* Phone Number & Carrier */}
+                              <td className="py-3 px-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-black text-sm tracking-wide text-slate-900 dark:text-white" dir="ltr">
+                                    {formatPhone(wallet.phoneNumber)}
+                                  </span>
+                                  <button
+                                    onClick={(e) => handleCopyPhone(wallet.phoneNumber, e)}
+                                    className="p-1 rounded text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                    title="نسخ الرقم"
+                                  >
+                                    {copiedPhone === wallet.phoneNumber ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                  {carrier && (
+                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/40">
+                                      {carrier.name}
+                                    </span>
+                                  )}
                                 </div>
-                                <div className="min-w-0">
-                                  <h4 className="text-xs font-black text-slate-900 dark:text-white leading-tight truncate">
-                                    سجل عمليات هذا الرقم
-                                  </h4>
-                                  <div className="text-[10px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
-                                    <span>{wallet.label || 'محفظة فودافون'}</span>
-                                    <span>•</span>
-                                    <span dir="ltr" className="font-mono text-slate-600 dark:text-slate-300 font-bold">{formatPhone(wallet.phoneNumber)}</span>
+                              </td>
+
+                              {/* Label & Limit Alerts */}
+                              <td className="py-3 px-3">
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
+                                    <Smartphone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span>{wallet.label || 'محفظة العميل'}</span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {stats.isClientDailyOver && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                        <AlertCircle className="w-2.5 h-2.5" />
+                                        تجاوز حد اليوم (+{formatCurrency(stats.clientDailyOverAmount)})
+                                      </span>
+                                    )}
+                                    {stats.isClientMonthlyOver && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                        <AlertCircle className="w-2.5 h-2.5" />
+                                        تجاوز ليميت الشهر (+{formatCurrency(stats.clientMonthlyOverAmount)})
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
-                              </div>
+                              </td>
 
-                              <div className="flex items-center gap-1.5 shrink-0 mr-2">
-                                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
-                                  {walletTxList.length} {walletTxList.length === 1 ? 'عملية' : 'عمليات'}
-                                </span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveHistoryWalletId(null);
-                                  }}
-                                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                                  title="إغلاق السجل"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Popover Transactions List (Scrollable with max-height) */}
-                            <div className="overflow-y-auto flex-1 pr-1.5 pl-0.5 space-y-2 max-h-48 sm:max-h-52 overscroll-contain">
-                              {walletTxList.length === 0 ? (
-                                <div className="text-center py-6 px-3">
-                                  <History className="w-7 h-7 mx-auto text-slate-300 dark:text-slate-600 mb-1.5" />
-                                  <p className="text-xs text-slate-400">لا توجد عمليات تحويل أو شحن مسجلة لهذا الرقم حتى الآن.</p>
+                              {/* Today Recharges (Limit: 60k) */}
+                              <td className="py-3 px-3">
+                                <div className="space-y-0.5">
+                                  <div className="font-black font-mono text-xs text-slate-800 dark:text-slate-200">
+                                    {formatCurrency(stats.todayRecharges)}
+                                    <span className="text-[10px] text-slate-400 font-normal mr-1">/ 60,000 ج.م</span>
+                                  </div>
+                                  <div className={`text-[10px] font-mono ${
+                                    stats.isClientDailyOver ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-emerald-600 dark:text-emerald-400'
+                                  }`}>
+                                    {stats.isClientDailyOver ? `تجاوز (+${formatCurrency(stats.clientDailyOverAmount)})` : `متبقي: ${formatCurrency(stats.remainingClientDaily)}`}
+                                  </div>
                                 </div>
-                              ) : (
-                                walletTxList.map((tx) => (
-                                  <div
-                                    key={tx.id}
-                                    className={`flex items-center justify-between p-2.5 rounded-xl border transition-colors ${
-                                      tx.type === 'recharge'
-                                        ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60'
-                                        : 'bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 hover:border-red-200 dark:hover:border-red-900/50'
-                                    }`}
+                              </td>
+
+                              {/* Monthly Recharges (Limit: 200k) */}
+                              <td className="py-3 px-3 min-w-[150px]">
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <span className="font-black font-mono text-slate-800 dark:text-slate-200">
+                                      {formatCurrency(stats.totalRecharges)}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      {((stats.totalRecharges / stats.clientMonthlyLimit) * 100).toFixed(0)}%
+                                    </span>
+                                  </div>
+                                  <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-300 ${
+                                        stats.isClientMonthlyOver ? 'bg-amber-500' : 'bg-emerald-500'
+                                      }`}
+                                      style={{ width: `${Math.min(100, (stats.totalRecharges / stats.clientMonthlyLimit) * 100)}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-[9px] text-slate-400">
+                                    <span>الليميت: {formatCurrency(stats.clientMonthlyLimit)}</span>
+                                    <span className={`font-semibold ${stats.isClientMonthlyOver ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                      {stats.isClientMonthlyOver
+                                        ? `تجاوز: ${formatCurrency(stats.clientMonthlyOverAmount)}`
+                                        : `متبقي: ${formatCurrency(stats.remainingClientMonthly)}`}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Quick Actions */}
+                              <td className="py-3 px-3 text-center">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => handleRechargeWallet(wallet)}
+                                    className="btn-interactive inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs shadow-xs shadow-emerald-600/20"
+                                    title="شحن وإضافة رصيد لهذا الخط"
                                   >
-                                    <div>
-                                      {tx.type === 'recharge' ? (
-                                        <div className="font-black text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm font-mono">
-                                          + {formatCurrency(tx.amount)}
+                                    <ArrowDownToLine className="w-3.5 h-3.5" />
+                                    <span>شحن</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleEditWallet(wallet)}
+                                    className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors shadow-xs"
+                                    title="تعديل اسم أو ليميت المحفظة"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveHistoryWalletId(isHistoryOpen ? null : wallet.id);
+                                    }}
+                                    className={`p-1.5 rounded-xl border transition-colors inline-flex items-center gap-1 text-xs font-mono font-semibold shadow-xs ${
+                                      isHistoryOpen
+                                        ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900'
+                                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
+                                    }`}
+                                    title="عرض سجل العمليات"
+                                  >
+                                    <History className="w-3.5 h-3.5" />
+                                    <span>({walletTxList.length})</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeleteWallet(wallet)}
+                                    className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200 dark:border-slate-700 transition-colors shadow-xs"
+                                    title="حذف هذا الرقم"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* Expandable History Drawer for Table View */}
+                            {isHistoryOpen && (
+                              <tr className="bg-slate-50/95 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 animate-fadeIn">
+                                <td colSpan={6} className="p-4">
+                                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-700/80 shadow-md space-y-3">
+                                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                                      <div className="flex items-center gap-2">
+                                        <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400">
+                                          <History className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                          <h4 className="text-xs font-black text-slate-900 dark:text-white">
+                                            سجل عمليات الرقم ({formatPhone(wallet.phoneNumber)})
+                                          </h4>
+                                          <span className="text-[10px] text-slate-400">
+                                            {wallet.label || 'محفظة العميل'} • {walletTxList.length} {walletTxList.length === 1 ? 'عملية مسجلة' : 'عمليات مسجلة'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => setActiveHistoryWalletId(null)}
+                                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                        title="إغلاق السجل"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+
+                                    {/* Transactions List */}
+                                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                                      {walletTxList.length === 0 ? (
+                                        <div className="text-center py-6 text-slate-400 text-xs">
+                                          <History className="w-7 h-7 mx-auto text-slate-300 dark:text-slate-600 mb-1" />
+                                          <p>لا توجد عمليات تحويل أو شحن مسجلة لهذا الرقم حتى الآن.</p>
                                         </div>
                                       ) : (
-                                        <div className="font-black text-rose-600 dark:text-rose-400 text-xs sm:text-sm font-mono">
-                                          - {formatCurrency(tx.amount)}
-                                        </div>
+                                        walletTxList.map(tx => (
+                                          <div
+                                            key={tx.id}
+                                            className={`flex items-center justify-between p-2.5 rounded-xl text-xs border ${
+                                              tx.type === 'recharge'
+                                                ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60'
+                                                : 'bg-slate-50/90 dark:bg-slate-800/60 border-slate-200/70 dark:border-slate-700/60'
+                                            }`}
+                                          >
+                                            <div>
+                                              <div className={`font-mono font-black text-xs sm:text-sm ${tx.type === 'recharge' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                {tx.type === 'recharge' ? '+' : '-'} {formatCurrency(tx.amount)}
+                                              </div>
+                                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                                {tx.type === 'recharge' ? (
+                                                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">شحن وإيداع رصيد</span>
+                                                ) : (
+                                                  <span>إلى: <span className="font-mono text-slate-600 dark:text-slate-300" dir="ltr">{formatPhone(tx.recipientPhone) || 'غير محدد'}</span></span>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <div className="text-left text-[11px] text-slate-500 dark:text-slate-400">
+                                              <div className="font-semibold text-slate-700 dark:text-slate-300">{formatTimeArabic(tx.date)}</div>
+                                              <div className="text-[10px] text-slate-400">{tx.dateOnly}</div>
+                                            </div>
+                                          </div>
+                                        ))
                                       )}
-                                      
-                                      <div className="text-[10px] text-slate-400 mt-0.5">
-                                        {tx.type === 'recharge' ? (
-                                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">شحن وإيداع رصيد</span>
-                                        ) : (
-                                          <span>إلى: <span className="font-mono text-slate-600 dark:text-slate-300" dir="ltr">{formatPhone(tx.recipientPhone) || 'غير محدد'}</span></span>
-                                        )}
+                                    </div>
+
+                                    {/* History Summary Footer */}
+                                    {walletTxList.length > 0 && (
+                                      <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                                        <span>إجمالي المحول من الرقم:</span>
+                                        <span className="font-mono font-black text-slate-800 dark:text-slate-200">
+                                          {formatCurrency(stats.totalTransfersOut)}
+                                        </span>
                                       </div>
-                                    </div>
-                                    <div className="text-left text-[11px] text-slate-500 dark:text-slate-400">
-                                      <div className="font-semibold text-slate-700 dark:text-slate-300">{formatTimeArabic(tx.date)}</div>
-                                      <div className="text-[10px] text-slate-400">{tx.dateOnly}</div>
-                                    </div>
+                                    )}
                                   </div>
-                                ))
-                              )}
-                            </div>
-                            {/* Popover Footer */}
-                            {walletTxList.length > 0 && (
-                              <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
-                                <span>إجمالي المحول من الرقم:</span>
-                                <span className="font-black text-slate-800 dark:text-slate-200 font-mono">
-                                  {formatCurrency(stats.totalTransfersOut)}
-                                </span>
-                              </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Grid Cards View Mode (طريقة عرض الكروت الحالية) */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paginatedWallets.map((wallet) => {
+                    const isHistoryOpen = activeHistoryWalletId === wallet.id;
+                    const walletTxList = transactions.filter(t => t.walletId === wallet.id);
+                    const carrier = getEgyptianCarrier(wallet.phoneNumber);
+                    const stats = calculateWalletStats(wallet, transactions);
+
+                    return (
+                      <div
+                        key={wallet.id}
+                        className="relative bg-slate-50/80 dark:bg-slate-800/50 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-700/70 hover:border-emerald-300 dark:hover:border-emerald-900/60 transition-all duration-200 group flex flex-col justify-between"
+                      >
+                        {/* Top Row: Label & Carrier Badge & Warnings */}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Smartphone className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
+                              {wallet.label || 'محفظة العميل'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {carrier && (
+                              <span className="px-2 py-0.5 text-[10px] sm:text-[11px] font-bold rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/40">
+                                {carrier.name}
+                              </span>
+                            )}
+                            {stats.isClientMonthlyOver && (
+                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                                <AlertCircle className="w-2.5 h-2.5" />
+                                تجاوز ليميت الشهر (+{formatCurrency(stats.clientMonthlyOverAmount)})
+                              </span>
+                            )}
+                            {stats.isClientDailyOver && (
+                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                                <AlertCircle className="w-2.5 h-2.5" />
+                                تجاوز حد اليوم (+{formatCurrency(stats.clientDailyOverAmount)})
+                              </span>
                             )}
                           </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        </div>
+
+                        {/* Phone Number Display Box */}
+                        <div className="bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-slate-200/80 dark:border-slate-750 flex items-center justify-between gap-2 mb-2.5">
+                          <span className="text-base sm:text-xl font-black font-mono tracking-wider text-slate-900 dark:text-white" dir="ltr">
+                            {formatPhone(wallet.phoneNumber)}
+                          </span>
+                          <button
+                            onClick={(e) => handleCopyPhone(wallet.phoneNumber, e)}
+                            className="btn-interactive flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors"
+                            title="نسخ الرقم"
+                          >
+                            {copiedPhone === wallet.phoneNumber ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-[11px] text-emerald-600 font-bold">تم النسخ</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span className="text-[11px]">نسخ</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Daily Recharge Tracker (Rule 1: 60,000 EGP / day with warning) */}
+                        <div className="flex items-center justify-between text-[11px] bg-slate-100/90 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 mb-2">
+                          <span className="text-slate-500 dark:text-slate-400">
+                            شحن اليوم: <strong className={stats.isClientDailyOver ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>{formatCurrency(stats.todayRecharges)}</strong> / 60,000 ج.م
+                          </span>
+                          <span className={`font-bold font-mono ${stats.isClientDailyOver ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {stats.isClientDailyOver ? `تجاوز (+${formatCurrency(stats.clientDailyOverAmount)})` : `متبقي: ${formatCurrency(stats.remainingClientDaily)}`}
+                          </span>
+                        </div>
+
+                        {/* Monthly Recharge Tracker (Rule 2: 200,000 EGP / month with warning) */}
+                        <div className="space-y-1 mb-3 bg-white dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-750">
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                            <span>
+                              شحن الشهر: <strong className={stats.isClientMonthlyOver ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>{formatCurrency(stats.totalRecharges)}</strong>
+                            </span>
+                            <span>
+                              الليميت الشهري: <strong className="text-slate-800 dark:text-slate-200">{formatCurrency(stats.clientMonthlyLimit)}</strong>
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                stats.isClientMonthlyOver ? 'bg-amber-500' : 'bg-emerald-500'
+                              }`}
+                              style={{ width: `${Math.min(100, (stats.totalRecharges / stats.clientMonthlyLimit) * 100)}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-slate-400">
+                              نسبة الشحن: {((stats.totalRecharges / stats.clientMonthlyLimit) * 100).toFixed(0)}%
+                            </span>
+                            <span className={`font-bold ${stats.isClientMonthlyOver ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              {stats.isClientMonthlyOver
+                                ? `تجاوز بمقدار ${formatCurrency(stats.clientMonthlyOverAmount)}`
+                                : `متبقي للشحن: ${formatCurrency(stats.remainingClientMonthly)}`}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Action buttons for this wallet - Recharge balance only as requested */}
+                        <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                          {/* Direct Recharge Button (الخط يتشحن له رصيد فقط) */}
+                          <button
+                            onClick={() => handleRechargeWallet(wallet)}
+                            className="btn-interactive flex-1 min-w-0 h-9 sm:h-10 flex items-center justify-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs shadow-sm shadow-emerald-600/25 whitespace-nowrap"
+                            title="شحن وإضافة رصيد لهذا الخط (حد يومي 60,000 ج.م وشهري 200,000 ج.م)"
+                          >
+                            <ArrowDownToLine className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">شحن رصيد</span>
+                          </button>
+
+                          {/* Edit Phone / Label */}
+                          <button
+                            onClick={() => handleEditWallet(wallet)}
+                            className="btn-interactive shrink-0 h-9 sm:h-10 px-2 sm:px-2.5 flex items-center justify-center gap-1 rounded-xl bg-white dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200/90 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
+                            title="تعديل اسم أو ليميت المحفظة"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
+                            <span className="hidden xl:inline">تعديل</span>
+                          </button>
+
+                          {/* History Toggle */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveHistoryWalletId(isHistoryOpen ? null : wallet.id);
+                            }}
+                            className={`btn-interactive shrink-0 h-9 sm:h-10 px-2.5 flex items-center justify-center gap-1 rounded-xl text-xs font-semibold border transition-colors shadow-xs ${isHistoryOpen
+                              ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900'
+                              : 'bg-white dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200/90 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600'
+                              }`}
+                            title="عرض شحنات وعمليات هذا الرقم"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                            <span className="font-mono font-bold text-[11px]">({walletTxList.length})</span>
+                          </button>
+
+                          {/* Delete Wallet */}
+                          <button
+                            onClick={() => handleDeleteWallet(wallet)}
+                            className="btn-interactive shrink-0 h-9 sm:h-10 w-9 sm:w-10 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700/80 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200/90 dark:border-slate-600 hover:border-rose-200 dark:hover:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 shadow-xs transition-colors"
+                            title="حذف هذا الرقم"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Floating History Popover outside normal div layout */}
+                        {isHistoryOpen && (
+                          <>
+                            {/* Mobile Backdrop */}
+                            <div
+                              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 sm:hidden animate-fadeIn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveHistoryWalletId(null);
+                              }}
+                            />
+
+                            {/* Floating Popover Container with fixed max-height & sticky header/footer */}
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="history-popover-container fixed sm:absolute inset-x-3 bottom-4 sm:inset-x-2 sm:bottom-14 max-h-[80vh] sm:max-h-[350px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-3.5 z-50 animate-popover flex flex-col overflow-hidden"
+                            >
+                              {/* Popover Header */}
+                              <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 shrink-0">
+                                    <History className="w-4 h-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className="text-xs font-black text-slate-900 dark:text-white leading-tight truncate">
+                                      سجل عمليات هذا الرقم
+                                    </h4>
+                                    <div className="text-[10px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
+                                      <span>{wallet.label || 'محفظة فودافون'}</span>
+                                      <span>•</span>
+                                      <span dir="ltr" className="font-mono text-slate-600 dark:text-slate-300 font-bold">{formatPhone(wallet.phoneNumber)}</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0 mr-2">
+                                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+                                    {walletTxList.length} {walletTxList.length === 1 ? 'عملية' : 'عمليات'}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveHistoryWalletId(null);
+                                    }}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                    title="إغلاق السجل"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Popover Transactions List (Scrollable with max-height) */}
+                              <div className="overflow-y-auto flex-1 pr-1.5 pl-0.5 space-y-2 max-h-48 sm:max-h-52 overscroll-contain">
+                                {walletTxList.length === 0 ? (
+                                  <div className="text-center py-6 px-3">
+                                    <History className="w-7 h-7 mx-auto text-slate-300 dark:text-slate-600 mb-1.5" />
+                                    <p className="text-xs text-slate-400">لا توجد عمليات تحويل أو شحن مسجلة لهذا الرقم حتى الآن.</p>
+                                  </div>
+                                ) : (
+                                  walletTxList.map((tx) => (
+                                    <div
+                                      key={tx.id}
+                                      className={`flex items-center justify-between p-2.5 rounded-xl border transition-colors ${
+                                        tx.type === 'recharge'
+                                          ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60'
+                                          : 'bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 hover:border-red-200 dark:hover:border-red-900/50'
+                                      }`}
+                                    >
+                                      <div>
+                                        {tx.type === 'recharge' ? (
+                                          <div className="font-black text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm font-mono">
+                                            + {formatCurrency(tx.amount)}
+                                          </div>
+                                        ) : (
+                                          <div className="font-black text-rose-600 dark:text-rose-400 text-xs sm:text-sm font-mono">
+                                            - {formatCurrency(tx.amount)}
+                                          </div>
+                                        )}
+                                        
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                          {tx.type === 'recharge' ? (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">شحن وإيداع رصيد</span>
+                                          ) : (
+                                            <span>إلى: <span className="font-mono text-slate-600 dark:text-slate-300" dir="ltr">{formatPhone(tx.recipientPhone) || 'غير محدد'}</span></span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="text-left text-[11px] text-slate-500 dark:text-slate-400">
+                                        <div className="font-semibold text-slate-700 dark:text-slate-300">{formatTimeArabic(tx.date)}</div>
+                                        <div className="text-[10px] text-slate-400">{tx.dateOnly}</div>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                              {/* Popover Footer */}
+                              {walletTxList.length > 0 && (
+                                <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
+                                  <span>إجمالي المحول من الرقم:</span>
+                                  <span className="font-black text-slate-800 dark:text-slate-200 font-mono">
+                                    {formatCurrency(stats.totalTransfersOut)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Wallets Pagination Bar (Displayed when client has > 3 wallets) */}
               {wallets.length > WALLETS_PER_PAGE && (

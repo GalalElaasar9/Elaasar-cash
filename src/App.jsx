@@ -29,13 +29,51 @@ import CloudSyncModal from './components/CloudSyncModal';
 import RechargeWalletModal from './components/RechargeWalletModal';
 import ClientPaymentModal from './components/ClientPaymentModal';
 
-import { UserPlus, Send, Search, Users, AlertCircle, Sparkles } from 'lucide-react';
+import { UserPlus, Send, Search, Users, AlertCircle, Sparkles, LayoutGrid, Table } from 'lucide-react';
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState('clients'); // 'clients', 'daily', 'inventory', 'matrix', 'inbound', 'reports'
   const [searchQuery, setSearchQuery] = useState('');
 
   const { clients, setActiveModal } = useCash();
+
+  // Global display mode for client wallets/numbers: 'grid' | 'table'
+  const [globalWalletsView, setGlobalWalletsView] = useState(() => {
+    try {
+      return localStorage.getItem('elaasar_client_wallets_view_mode') || 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+
+  React.useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === 'elaasar_client_wallets_view_mode' && e.newValue) {
+        setGlobalWalletsView(e.newValue);
+      }
+    };
+    const handleCustomChange = (e) => {
+      if (e.detail?.mode) {
+        setGlobalWalletsView(e.detail.mode);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('elaasar_wallets_view_mode_change', handleCustomChange);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('elaasar_wallets_view_mode_change', handleCustomChange);
+    };
+  }, []);
+
+  const handleToggleGlobalWalletsView = (mode) => {
+    setGlobalWalletsView(mode);
+    try {
+      localStorage.setItem('elaasar_client_wallets_view_mode', mode);
+      window.dispatchEvent(new CustomEvent('elaasar_wallets_view_mode_change', { detail: { mode } }));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Filter clients based on search query
   const filteredClients = clients.filter(c => {
@@ -85,7 +123,35 @@ function MainApp() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* View Mode Toggle Pill (Grid vs Table) */}
+                <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-full border border-slate-200/90 dark:border-slate-700 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleGlobalWalletsView('grid')}
+                    className={`p-2 rounded-full transition-all ${
+                      globalWalletsView === 'grid'
+                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                    }`}
+                    title="طريقة عرض أرقام العملاء: كروت (شبكة)"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleGlobalWalletsView('table')}
+                    className={`p-2 rounded-full transition-all ${
+                      globalWalletsView === 'table'
+                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                    }`}
+                    title="طريقة عرض أرقام العملاء: جدول تفصيلي"
+                  >
+                    <Table className="w-4 h-4" />
+                  </button>
+                </div>
+
                 <button
                   onClick={() => setActiveModal('addClient')}
                   className="btn-interactive flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-red-600 dark:hover:bg-red-700 text-white text-xs sm:text-sm font-bold shadow-sm transition-all"
