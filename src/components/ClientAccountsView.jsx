@@ -544,6 +544,16 @@ export default function ClientAccountsView({ onNavigateToClients }) {
   // Quick action: Switch Client Type between 'عادي' and 'مدين' (دائن لا يتم يدوياً بل تلقائياً عند السداد بأكثر من المستحق)
   const handleSetClientType = (client, type) => {
     if (type === 'دائن') return; // لا يمكن تحويل العميل لدائن يدوياً
+    
+    const account = clientAccountsData.find(a => a.client.id === client.id);
+    const currentEffective = account?.effectiveClientType || client.clientType || 'مدين';
+    if (type === currentEffective) return;
+
+    if (type === 'عادي' && account && account.remainingDebt > 0) {
+      showToast(`لا يمكن التحويل لحساب عادي لوجود مديونية مستحقة غير مسددة (${formatCurrency(account.remainingDebt)})`, 'warning');
+      return;
+    }
+
     updateClient(client.id, { clientType: type, excessDebt: null, excessDebtDate: null, excessCredit: null, excessCreditDate: null });
     try {
       localStorage.setItem(`elaasar_client_type_${client.id}`, type);
@@ -1089,22 +1099,30 @@ ${balanceLine}
                                 <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
                                   <button
                                     type="button"
+                                    disabled={item.remainingDebt > 0}
                                     onClick={() => handleSetClientType(client, 'عادي')}
                                     className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
                                       (item.effectiveClientType || item.clientType) === 'عادي'
-                                        ? 'bg-blue-600 text-white shadow-2xs'
+                                        ? 'bg-blue-600 text-white shadow-2xs cursor-default'
+                                        : item.remainingDebt > 0
+                                        ? 'text-slate-400 dark:text-slate-600 opacity-40 cursor-not-allowed'
                                         : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                                     }`}
-                                    title="تحديد كـ عادي (حساب خالص)"
+                                    title={
+                                      item.remainingDebt > 0
+                                        ? 'لا يمكن التحويل لحساب عادي لوجود مديونية مستحقة غير مسددة'
+                                        : 'تحديد كـ عادي (حساب خالص)'
+                                    }
                                   >
                                     عادي
                                   </button>
                                   <button
                                     type="button"
+                                    disabled={(item.effectiveClientType || item.clientType) === 'مدين'}
                                     onClick={() => handleSetClientType(client, 'مدين')}
                                     className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
                                       (item.effectiveClientType || item.clientType) === 'مدين'
-                                        ? 'bg-rose-600 text-white shadow-2xs'
+                                        ? 'bg-rose-600 text-white shadow-2xs cursor-default'
                                         : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                                     }`}
                                     title="تحديد كـ مدين"

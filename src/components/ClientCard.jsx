@@ -145,6 +145,11 @@ export default function ClientCard({ client }) {
 
   const handleSetClientType = (type) => {
     if (type === 'دائن') return; // العميل لا يتحول إلى دائن يدوياً، بل فقط عندما يسدد مبلغاً أكبر من دينه
+    if (type === effectiveClientType) return;
+    if (type === 'عادي' && remainingDebt > 0) {
+      showToast(`لا يمكن التحويل لحساب عادي لوجود مديونية مستحقة غير مسددة (${formatCurrency(remainingDebt)})`, 'warning');
+      return;
+    }
     setClientType(type);
     updateClient(client.id, { clientType: type, excessDebt: null, excessDebtDate: null, excessCredit: null, excessCreditDate: null });
     try {
@@ -579,22 +584,30 @@ export default function ClientCard({ client }) {
                   <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-xl text-xs font-bold shrink-0 border border-slate-300/60 dark:border-slate-700 shadow-2xs">
                     <button
                       type="button"
+                      disabled={remainingDebt > 0}
                       onClick={() => handleSetClientType('عادي')}
                       className={`btn-interactive px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
                         effectiveClientType === 'عادي'
-                          ? 'bg-blue-600 text-white shadow-xs'
+                          ? 'bg-blue-600 text-white shadow-xs cursor-default'
+                          : remainingDebt > 0
+                          ? 'text-slate-400 dark:text-slate-600 opacity-40 cursor-not-allowed'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                       }`}
-                      title="عميل عادي (حساب خالص)"
+                      title={
+                        remainingDebt > 0
+                          ? 'لا يمكن التحويل لحساب عادي لوجود مديونية مستحقة غير مسددة'
+                          : 'عميل عادي (حساب خالص)'
+                      }
                     >
                       عادي
                     </button>
                     <button
                       type="button"
+                      disabled={effectiveClientType === 'مدين'}
                       onClick={() => handleSetClientType('مدين')}
                       className={`btn-interactive px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
                         effectiveClientType === 'مدين'
-                          ? 'bg-rose-600 text-white shadow-xs'
+                          ? 'bg-rose-600 text-white shadow-xs cursor-default'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       title="عميل مدين (عليه مبالغ آجلة)"
