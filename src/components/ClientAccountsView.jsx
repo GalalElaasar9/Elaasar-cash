@@ -164,34 +164,27 @@ export default function ClientAccountsView() {
         }
       }
 
-      // 4. Client Payments (سداد الدفعات النقدية والتحصيلات)
+      // 4. Client Payments (سداد الدفعات النقدية والتحصيلات وصرف المستحقات)
       const clientPayments = transactions.filter(t => 
         (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment'
       );
 
       const clientTodayPayments = clientPayments
         .filter(t => (t.dateOnly || t.date || '').startsWith(todayKey))
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        .reduce((sum, t) => sum + (t.isCreditorPayout ? -Number(t.amount) : Number(t.amount)), 0);
 
       const clientMonthPayments = clientPayments
         .filter(t => (t.dateOnly || t.date || '').slice(0, 7) === currentMonthKey)
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        .reduce((sum, t) => sum + (t.isCreditorPayout ? -Number(t.amount) : Number(t.amount)), 0);
 
       const clientAllPayments = clientPayments
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        .reduce((sum, t) => sum + (t.isCreditorPayout ? -Number(t.amount) : Number(t.amount)), 0);
 
       const paidAmount = timeRange === 'today'
         ? clientTodayPayments
         : timeRange === 'month'
         ? clientMonthPayments
         : clientAllPayments;
-
-      const grossRequired = finalAmount;
-      const netBalance = grossRequired - paidAmount;
-      const remainingDebt = netBalance > 0 ? netBalance : 0;
-      const creditAmount = netBalance < 0 ? Math.abs(netBalance) : 0;
-      const isSettled = netBalance === 0 && grossRequired > 0;
-      const effectiveClientType = creditAmount > 0 ? 'دائن' : (clientType || 'مدين');
 
       // Relevant recharge transactions for statement modal
       const clientTxList = transactions.filter(t => {
@@ -206,6 +199,77 @@ export default function ClientAccountsView() {
         return true;
       });
 
+      // Check if client converted from دائن to مدين with excess debt (المبلغ الزائد من صاحب المحل)
+      let clientExcessDebt = client.excessDebt;
+      let clientExcessDate = client.excessDebtDate;
+      if (clientExcessDebt === undefined || clientExcessDebt === null) {
+        try {
+          const saved = localStorage.getItem(`elaasar_client_excess_debt_${client.id}`);
+          if (saved !== null && saved !== '') {
+            clientExcessDebt = Number(saved);
+            clientExcessDate = localStorage.getItem(`elaasar_client_excess_debt_date_${client.id}`);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Fallback detection from transactions if converted to مدين from creditor payout
+      if ((clientExcessDebt === undefined || clientExcessDebt === null) && clientType === 'مدين') {
+        const recentPayoutTx = clientPayments
+          .filter(t => t.isCreditorPayout)
+          .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+        if (recentPayoutTx) {
+          if (recentPayoutTx.excessDebt) {
+            clientExcessDebt = Number(recentPayoutTx.excessDebt);
+            clientExcessDate = recentPayoutTx.date;
+          } else if (recentPayoutTx.creditBefore) {
+            const pAmt = Number(recentPayoutTx.amount) || 0;
+            const cBefore = Number(recentPayoutTx.creditBefore) || 0;
+            if (pAmt > cBefore) {
+              clientExcessDebt = pAmt - cBefore;
+              clientExcessDate = recentPayoutTx.date;
+            }
+          }
+        }
+      }
+
+      const hasExcessDebt = clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
+
+      let remainingDebt = 0;
+      let creditAmount = 0;
+      let isSettled = false;
+      let effectiveClientType = clientType || 'مدين';
+      let activeFinalAmount = finalAmount;
+      let isExcessDebtOnly = false;
+
+      if (hasExcessDebt) {
+        const cutoffTime = clientExcessDate ? new Date(clientExcessDate).getTime() : 0;
+        const postPayments = clientPayments
+          .filter(t => !t.isCreditorPayout && new Date(t.date).getTime() > cutoffTime)
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const postRecharges = clientTxList
+          .filter(t => new Date(t.date).getTime() > cutoffTime)
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const currentExcessDebt = Math.max(0, clientExcessDebt + postRecharges - postPayments);
+        remainingDebt = currentExcessDebt;
+        creditAmount = 0;
+        isSettled = currentExcessDebt === 0;
+        effectiveClientType = 'مدين';
+        activeFinalAmount = currentExcessDebt;
+        isExcessDebtOnly = true;
+      } else {
+        const grossRequired = finalAmount;
+        const netBalance = grossRequired - paidAmount;
+        remainingDebt = netBalance > 0 ? netBalance : 0;
+        creditAmount = netBalance < 0 ? Math.abs(netBalance) : (clientType === 'دائن' ? finalAmount : 0);
+        isSettled = netBalance === 0 && (grossRequired > 0 || paidAmount !== 0);
+        effectiveClientType = creditAmount > 0 ? 'دائن' : (remainingDebt > 0 ? 'مدين' : (clientType || 'مدين'));
+      }
+
       return {
         client,
         clientType,
@@ -219,14 +283,16 @@ export default function ClientAccountsView() {
         effectiveMode,
         commissionPercent,
         commissionAmount,
-        finalAmount,
-        grossRequired,
+        finalAmount: activeFinalAmount,
+        grossRequired: activeFinalAmount,
         paidAmount,
         allPaidAmount: clientAllPayments,
-        netBalance,
+        netBalance: isExcessDebtOnly ? remainingDebt : (finalAmount - paidAmount),
         remainingDebt,
         creditAmount,
         isSettled,
+        isExcessDebtOnly,
+        excessDebt: clientExcessDebt,
         payments: clientPayments,
         transactionsCount: clientTxList.length,
         transactions: clientTxList
@@ -261,8 +327,6 @@ export default function ClientAccountsView() {
 
       // 2. Filter active only (> 0)
       if (filterActiveOnly && (item.baseAmount <= 0 && item.paidAmount <= 0)) {
-        return false;
-      }
         return false;
       }
 
@@ -306,13 +370,19 @@ export default function ClientAccountsView() {
     );
   }, [filteredAccounts]);
 
-  // Quick action: Open payment modal for a client
+  // Quick action: Open payment modal for a client (سداد لمدين أو صرف مستحقات لدائن)
   const handleOpenPayment = (item) => {
+    const isCreditor = (item.effectiveClientType || item.clientType) === 'دائن';
+    const activeCredit = item.creditAmount > 0 ? item.creditAmount : (isCreditor ? item.finalAmount : 0);
+    const activeDebt = item.remainingDebt > 0 ? item.remainingDebt : item.finalAmount;
+
     setModalData({
       client: item.client,
-      currentDebt: item.remainingDebt > 0 ? item.remainingDebt : item.finalAmount,
+      currentDebt: isCreditor ? activeCredit : activeDebt,
+      creditAmount: activeCredit,
       currentPaid: item.paidAmount,
-      clientType: item.effectiveClientType || item.clientType
+      clientType: isCreditor ? 'دائن' : 'مدين',
+      isCreditor: isCreditor
     });
     setActiveModal('clientPayment');
   };
@@ -370,9 +440,11 @@ export default function ClientAccountsView() {
 
   // Quick action: Switch Client Type between 'مدين' and 'دائن' immediately
   const handleSetClientType = (client, type) => {
-    updateClient(client.id, { clientType: type });
+    updateClient(client.id, { clientType: type, excessDebt: null, excessDebtDate: null });
     try {
       localStorage.setItem(`elaasar_client_type_${client.id}`, type);
+      localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
+      localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
     } catch (e) {
       console.error(e);
     }
@@ -852,7 +924,7 @@ ${balanceLine}
                                   type="button"
                                   onClick={() => handleSetClientType(client, 'مدين')}
                                   className={`px-2 py-0.5 rounded text-[10px] font-black transition-all ${
-                                    item.clientType === 'مدين'
+                                    (item.effectiveClientType || item.clientType) === 'مدين'
                                       ? 'bg-rose-600 text-white shadow-2xs'
                                       : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                                   }`}
@@ -864,7 +936,7 @@ ${balanceLine}
                                   type="button"
                                   onClick={() => handleSetClientType(client, 'دائن')}
                                   className={`px-2 py-0.5 rounded text-[10px] font-black transition-all ${
-                                    item.clientType === 'دائن'
+                                    (item.effectiveClientType || item.clientType) === 'دائن'
                                       ? 'bg-emerald-600 text-white shadow-2xs'
                                       : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                                   }`}
@@ -921,7 +993,7 @@ ${balanceLine}
 
                       {/* Amount before commission (المبلغ قبل العمولة) */}
                       <td className="py-3.5 px-4 whitespace-nowrap font-mono text-base font-black text-blue-700 dark:text-blue-300" dir="ltr">
-                        {formatCurrency(baseAmount)}
+                        {formatCurrency(item.isExcessDebtOnly ? item.finalAmount : baseAmount)}
                       </td>
 
                       {/* Commission Settings (معامل ونوع العمولة) */}
@@ -973,7 +1045,16 @@ ${balanceLine}
                         accountTypeTab === 'مدين' ? 'bg-rose-50/40 dark:bg-rose-950/20' : 'bg-emerald-50/40 dark:bg-emerald-950/20'
                       }`}>
                         {accountTypeTab === 'مدين' ? (
-                          item.paidAmount > 0 ? (
+                          item.isExcessDebtOnly ? (
+                            <div>
+                              <div className="font-mono text-lg font-black text-rose-700 dark:text-rose-300" dir="ltr">
+                                {formatCurrency(item.remainingDebt)}
+                              </div>
+                              <span className="text-[10px] text-rose-700 dark:text-rose-300 font-bold block mt-0.5">
+                                المبلغ الزائد المصروف من المحل (مطلوب سداده)
+                              </span>
+                            </div>
+                          ) : item.paidAmount > 0 ? (
                             <div>
                               {item.isSettled ? (
                                 <div>
@@ -1223,19 +1304,29 @@ ${balanceLine}
                     {selectedClientForStatement.payments.map((p) => (
                       <div
                         key={p.id}
-                        className="p-2.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between text-xs"
+                        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
+                          p.isCreditorPayout
+                            ? 'bg-blue-50/60 dark:bg-blue-950/30 border-blue-200/80 dark:border-blue-800/60'
+                            : 'bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-200/80 dark:border-emerald-800/60'
+                        }`}
                       >
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-black text-emerald-700 dark:text-emerald-400 font-mono text-sm" dir="ltr">
-                              - {formatCurrency(p.amount)}
+                            <span className={`font-black font-mono text-sm ${
+                              p.isCreditorPayout ? 'text-blue-700 dark:text-blue-400' : 'text-emerald-700 dark:text-emerald-400'
+                            }`} dir="ltr">
+                              {p.isCreditorPayout ? '+ ' : '- '}{formatCurrency(p.amount)}
                             </span>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
-                              {p.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : p.paymentMethod === 'instapay' ? 'إنستاباي' : p.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقدي'}
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              p.isCreditorPayout
+                                ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-750'
+                                : 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700'
+                            }`}>
+                              {p.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من العميل'} ({p.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : p.paymentMethod === 'instapay' ? 'إنستاباي' : p.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقدي'})
                             </span>
                           </div>
                           <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                            {p.notes || 'سداد دفعة من الحساب'}
+                            {p.notes || (p.isCreditorPayout ? 'صرف وسداد مستحقات للعميل الدائن' : 'سداد دفعة من الحساب')}
                           </div>
                         </div>
 

@@ -750,12 +750,16 @@ export function CashProvider({ children }) {
     return newTx;
   };
 
-  // Add client payment (سداد دفعة نقدية أو بنكية من حساب العميل)
+  // Add client payment (سداد دفعة نقدية أو بنكية من حساب العميل أو صرف مستحقات للعميل الدائن)
   const addClientPayment = ({
     clientId,
     amount,
+    rawAmount = null,
+    excessDebt = null,
+    creditBefore = null,
     notes = '',
     paymentMethod = 'cash',
+    isCreditorPayout = false,
     date = null,
     time = null
   }) => {
@@ -781,9 +785,13 @@ export function CashProvider({ children }) {
       customerId: client.id,
       customerName: client.name,
       type: 'client_payment',
+      isCreditorPayout: Boolean(isCreditorPayout),
       amount: numAmount,
+      rawAmount: Number(rawAmount) || numAmount,
+      excessDebt: Number(excessDebt) || 0,
+      creditBefore: Number(creditBefore) || 0,
       paymentMethod: paymentMethod || 'cash',
-      notes: notes.trim() || 'سداد دفعة من الحساب',
+      notes: notes.trim() || (isCreditorPayout ? 'صرف وسداد مستحقات للعميل الدائن' : 'سداد دفعة من الحساب'),
       date: dateObj.toISOString(),
       dateOnly,
       time: timeStr,

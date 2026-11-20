@@ -84,10 +84,12 @@ export default function DailyLogView() {
   }, [dayTransactions, searchDaily]);
 
   // Metrics for the selected day
-  const dayTransferTxs = dayTransactions.filter(t => t.type !== 'recharge');
-  const dayRechargeTxs = dayTransactions.filter(t => t.type === 'recharge');
+  const dayTransferTxs = dayTransactions.filter(t => t.type === 'transfer_out');
+  const dayRechargeTxs = dayTransactions.filter(t => t.type === 'recharge' || t.type === 'limit_reset');
+  const dayPaymentTxs = dayTransactions.filter(t => t.type === 'client_payment');
   const dayTotalAmount = dayTransferTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const dayTotalRechargeAmount = dayRechargeTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const dayTotalPaymentAmount = dayPaymentTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const dayTotalFees = dayTransactions.reduce((sum, t) => sum + (Number(t.fee) || 0), 0);
   const dayTxCount = dayTransactions.length;
   const dayAverage = dayTransferTxs.length > 0 ? Math.round(dayTotalAmount / dayTransferTxs.length) : 0;
@@ -474,8 +476,14 @@ export default function DailyLogView() {
                       {/* Transferred Amount */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         {tx.type === 'recharge' ? (
-                          <span className="font-black text-emerald-600 dark:text-emerald-400 text-base font-mono">
+                          <span className="font-black text-blue-600 dark:text-blue-400 text-base font-mono">
                             + {formatCurrency(tx.amount)}
+                          </span>
+                        ) : tx.type === 'client_payment' ? (
+                          <span className={`font-black text-base font-mono ${
+                            tx.isCreditorPayout ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
+                          }`}>
+                            {tx.isCreditorPayout ? '- ' : '+ '}{formatCurrency(tx.amount)} {tx.isCreditorPayout ? '(صرف لدائن)' : '(سداد)'}
                           </span>
                         ) : (
                           <span className="font-black text-rose-600 dark:text-rose-400 text-base font-mono">
@@ -486,16 +494,28 @@ export default function DailyLogView() {
 
                       {/* Remaining Limit After Transfer */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-mono">
-                          {formatCurrency(tx.limitAfter)}
-                        </span>
+                        {tx.type === 'client_payment' ? (
+                          <span className="text-xs text-slate-400 font-bold">—</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-mono">
+                            {formatCurrency(tx.limitAfter)}
+                          </span>
+                        )}
                       </td>
 
                       {/* Recipient Phone */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         {tx.type === 'recharge' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50">
                             شحن وإيداع رصيد
+                          </span>
+                        ) : tx.type === 'client_payment' ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                            tx.isCreditorPayout
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-900/50'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50'
+                          }`}>
+                            {tx.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من العميل'} ({tx.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : tx.paymentMethod === 'instapay' ? 'إنستاباي' : tx.paymentMethod === 'bank' ? 'بنكي' : 'نقدي'})
                           </span>
                         ) : (
                           <div className="flex items-center gap-1.5">
@@ -592,28 +612,42 @@ export default function DailyLogView() {
 
                     <div className="text-left">
                       {tx.type === 'recharge' ? (
-                        <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                        <div className="text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
                           + {formatCurrency(tx.amount)}
+                        </div>
+                      ) : tx.type === 'client_payment' ? (
+                        <div className={`text-lg font-black font-mono ${
+                          tx.isCreditorPayout ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
+                        }`}>
+                          {tx.isCreditorPayout ? '- ' : '+ '}{formatCurrency(tx.amount)} {tx.isCreditorPayout ? '(صرف لدائن)' : '(سداد)'}
                         </div>
                       ) : (
                         <div className="text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
                           - {formatCurrency(tx.amount)}
                         </div>
                       )}
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block font-mono">
-                        المتبقي: {formatCurrency(tx.limitAfter)}
-                      </span>
+                      {tx.limitAfter !== undefined && (
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block font-mono">
+                          المتبقي: {formatCurrency(tx.limitAfter)}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl">
                     <div>
                       <span className="text-slate-400 block text-[10px]">
-                        {tx.type === 'recharge' ? 'نوع العملية:' : 'المحول إليه:'}
+                        {tx.type === 'recharge' ? 'نوع العملية:' : tx.type === 'client_payment' ? 'طريقة السداد:' : 'المحول إليه:'}
                       </span>
                       {tx.type === 'recharge' ? (
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                        <span className="font-bold text-blue-600 dark:text-blue-400">
                           شحن وإيداع رصيد
+                        </span>
+                      ) : tx.type === 'client_payment' ? (
+                        <span className={`font-bold ${
+                          tx.isCreditorPayout ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
+                        }`}>
+                          {tx.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من العميل'} ({tx.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : tx.paymentMethod === 'instapay' ? 'إنستاباي' : tx.paymentMethod === 'bank' ? 'بنكي' : 'نقدي'})
                         </span>
                       ) : (
                         <span className="font-mono font-bold text-slate-800 dark:text-slate-200" dir="ltr">
