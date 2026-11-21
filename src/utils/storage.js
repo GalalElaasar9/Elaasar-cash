@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   INVENTORY: 'elaasar_cash_inventory_v3',
   TRASH: 'elaasar_cash_trash_v1',
   SHOP_WALLETS: 'elaasar_cash_shop_wallets_v1',
+  CLIENT_ARCHIVES: 'elaasar_cash_client_archives_v1',
 };
 
 // Generates today's date string and some earlier timestamps
@@ -17,6 +18,10 @@ function getRecentDate(daysAgo = 0, hours = 10, minutes = 30) {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
   d.setHours(hours, minutes, 0, 0);
+  // Ensure that demo data for today never has future timestamps
+  if (daysAgo === 0 && d.getTime() > Date.now()) {
+    d.setTime(Date.now() - (Math.max(1, 24 - hours) * 120000));
+  }
   return d.toISOString();
 }
 
@@ -32,6 +37,7 @@ export const INITIAL_DEMO_CLIENTS = [
   {
     id: 'client-1',
     name: 'الحاج إبراهيم الأعصر',
+    clientType: 'مدين',
     notes: 'عميل مميز - تاجر تجزئة وجملة',
     createdAt: getRecentDate(15),
     wallets: [
@@ -61,7 +67,8 @@ export const INITIAL_DEMO_CLIENTS = [
   {
     id: 'client-2',
     name: 'شركة الأمل للتوزيع والتجارة',
-    notes: 'حساب توريدات يومية',
+    clientType: 'عادي',
+    notes: 'حساب توريدات يومية (خالص مسدد)',
     createdAt: getRecentDate(20),
     wallets: [
       {
@@ -83,7 +90,10 @@ export const INITIAL_DEMO_CLIENTS = [
   {
     id: 'client-3',
     name: 'أحمد محمود الصاوي',
-    notes: 'مكتب خدمات شحن ودفع إلكتروني',
+    clientType: 'دائن',
+    excessCredit: 1200,
+    excessCreditDate: getRecentDate(1, 14, 0),
+    notes: 'مكتب خدمات شحن - سدد بزيادة وله رصيد دائن 1,200 ج.م',
     createdAt: getRecentDate(8),
     wallets: [
       {
@@ -92,6 +102,177 @@ export const INITIAL_DEMO_CLIENTS = [
         label: 'محفظة التحويلات الفورية',
         totalLimit: 200000,
         createdAt: getRecentDate(8)
+      }
+    ]
+  },
+  {
+    id: 'client-4',
+    name: 'م / طارق عبد الرحمن (مركز اتصالات)',
+    clientType: 'مدين',
+    notes: 'مركز اتصالات - مديونية شحن نشطة',
+    createdAt: getRecentDate(12),
+    wallets: [
+      {
+        id: 'wallet-4-1',
+        phoneNumber: '01066778899',
+        label: 'محفظة السنترال الرئيسية',
+        totalLimit: 200000,
+        createdAt: getRecentDate(12)
+      }
+    ]
+  },
+  {
+    id: 'client-5',
+    name: 'كابتن حسام حسن',
+    clientType: 'مدين',
+    notes: 'عميل آجل - سدد دفعة جزئية (4,000 ج.م) ومتبقي 3,000 ج.م',
+    createdAt: getRecentDate(7),
+    wallets: [
+      {
+        id: 'wallet-5-1',
+        phoneNumber: '01033445566',
+        label: 'محفظة العمليات الشخصية',
+        totalLimit: 200000,
+        createdAt: getRecentDate(7)
+      }
+    ]
+  },
+  {
+    id: 'client-6',
+    name: 'سنتر النور للخدمات المتكاملة',
+    clientType: 'عادي',
+    notes: 'حساب خدمات سريعة - حساب مسدد خالص',
+    createdAt: getRecentDate(14),
+    wallets: [
+      {
+        id: 'wallet-6-1',
+        phoneNumber: '01077889900',
+        label: 'محفظة الكاش المباشر',
+        totalLimit: 200000,
+        createdAt: getRecentDate(14)
+      }
+    ]
+  },
+  {
+    id: 'client-7',
+    name: 'مؤسسة البركة للتجارة والتوريدات',
+    clientType: 'عادي',
+    notes: 'شركة توريدات كبرى - لديها سجل تسويات وأرشيف مكثف',
+    createdAt: getRecentDate(30),
+    wallets: [
+      {
+        id: 'wallet-7-1',
+        phoneNumber: '01012345670',
+        label: 'محفظة التحويلات البنكية',
+        totalLimit: 300000,
+        createdAt: getRecentDate(30)
+      },
+      {
+        id: 'wallet-7-2',
+        phoneNumber: '01012345671',
+        label: 'محفظة التوريد الميداني',
+        totalLimit: 200000,
+        createdAt: getRecentDate(25)
+      }
+    ]
+  },
+  {
+    id: 'client-8',
+    name: 'سوبر ماركت الفيروز',
+    clientType: 'دائن',
+    excessCredit: 750,
+    excessCreditDate: getRecentDate(2, 11, 0),
+    notes: 'حساب توريد كاش - له رصيد دائن 750 ج.م',
+    createdAt: getRecentDate(18),
+    wallets: [
+      {
+        id: 'wallet-8-1',
+        phoneNumber: '01044556677',
+        label: 'محفظة الكاشير',
+        totalLimit: 200000,
+        createdAt: getRecentDate(18)
+      }
+    ]
+  },
+  {
+    id: 'client-9',
+    name: 'معرض الإيمان للأجهزة الكهربائية',
+    clientType: 'مدين',
+    notes: 'معرض أجهزة - عليه مديونية 6,800 ج.م',
+    createdAt: getRecentDate(10),
+    wallets: [
+      {
+        id: 'wallet-9-1',
+        phoneNumber: '01088990011',
+        label: 'محفظة مبيعات المعرض',
+        totalLimit: 200000,
+        createdAt: getRecentDate(10)
+      }
+    ]
+  },
+  {
+    id: 'client-10',
+    name: 'الأستاذ ياسر جلال',
+    clientType: 'عادي',
+    notes: 'حساب شخصي عادي خالص',
+    createdAt: getRecentDate(16),
+    wallets: [
+      {
+        id: 'wallet-10-1',
+        phoneNumber: '01022334455',
+        label: 'محفظة شخصية',
+        totalLimit: 200000,
+        createdAt: getRecentDate(16)
+      }
+    ]
+  },
+  {
+    id: 'client-11',
+    name: 'محطة القدس للخدمات البترولية',
+    clientType: 'مدين',
+    notes: 'محطة وقود وخدمات - مديونية شحن 2,200 ج.م',
+    createdAt: getRecentDate(9),
+    wallets: [
+      {
+        id: 'wallet-11-1',
+        phoneNumber: '01055443322',
+        label: 'محفظة إدارة المحطة',
+        totalLimit: 200000,
+        createdAt: getRecentDate(9)
+      }
+    ]
+  },
+  {
+    id: 'client-12',
+    name: 'شركة الفتح للشحن السريع',
+    clientType: 'عادي',
+    notes: 'شركة شحن لوجستي - حساب خالص مسدد',
+    createdAt: getRecentDate(22),
+    wallets: [
+      {
+        id: 'wallet-12-1',
+        phoneNumber: '01099112233',
+        label: 'محفظة المناديب الرئيسية',
+        totalLimit: 250000,
+        createdAt: getRecentDate(22)
+      }
+    ]
+  },
+  {
+    id: 'client-13',
+    name: 'صيدلية الدكتور وليد الشناوي',
+    clientType: 'دائن',
+    excessCredit: 500,
+    excessCreditDate: getRecentDate(3, 16, 0),
+    notes: 'صيدلية الشناوي - له رصيد دائن 500 ج.م',
+    createdAt: getRecentDate(11),
+    wallets: [
+      {
+        id: 'wallet-13-1',
+        phoneNumber: '01011335577',
+        label: 'محفظة حسابات الصيدلية',
+        totalLimit: 200000,
+        createdAt: getRecentDate(11)
       }
     ]
   }
@@ -143,90 +324,110 @@ export const INITIAL_SHOP_WALLETS = [
 ];
 
 export const INITIAL_DEMO_TRANSACTIONS = [
-  // Today's transactions
+  // Today's active recharges for debtors
   {
-    id: 'tx-101',
+    id: 'tx-rc-101',
     walletId: 'wallet-1-1',
     walletPhone: '01098765432',
     walletLabel: 'محفظة المبيعات المركزية',
     customerId: 'client-1',
     customerName: 'الحاج إبراهيم الأعصر',
-    type: 'transfer_out',
-    amount: 3500,
-    recipientPhone: '01012344321',
-    transactionCode: 'VF-982341',
+    type: 'recharge',
+    amount: 5000,
     fee: 10,
-    notes: 'تحويل دفعة بضاعة لمورد الأغذية',
+    notes: 'شحن رصيد نقدي لحساب المحفظة',
     date: getRecentDate(0, 9, 15),
     dateOnly: getLocalDateOnly()
   },
   {
-    id: 'tx-102',
-    walletId: 'wallet-1-1',
-    walletPhone: '01098765432',
-    walletLabel: 'محفظة المبيعات المركزية',
-    customerId: 'client-1',
-    customerName: 'الحاج إبراهيم الأعصر',
-    type: 'transfer_out',
-    amount: 8000,
-    recipientPhone: '01088776655',
-    transactionCode: 'VF-982389',
-    fee: 20,
-    notes: 'سداد فاتورة توريدات أجهزة',
-    date: getRecentDate(0, 11, 40),
-    dateOnly: getLocalDateOnly()
-  },
-  {
-    id: 'tx-103',
+    id: 'tx-rc-102',
     walletId: 'wallet-1-2',
     walletPhone: '01011223344',
     walletLabel: 'محفظة فرع المحطة',
     customerId: 'client-1',
     customerName: 'الحاج إبراهيم الأعصر',
-    type: 'transfer_out',
-    amount: 1500,
-    recipientPhone: '01066554433',
-    transactionCode: 'VF-982410',
+    type: 'recharge',
+    amount: 3500,
     fee: 10,
-    notes: 'حوالة سريعة للفرع',
-    date: getRecentDate(0, 13, 20),
+    notes: 'شحن رصيد للفرع',
+    date: getRecentDate(0, 11, 40),
     dateOnly: getLocalDateOnly()
   },
   {
-    id: 'tx-104',
-    walletId: 'wallet-2-1',
-    walletPhone: '01023456789',
-    walletLabel: 'محفظة إدارة الحسابات',
-    customerId: 'client-2',
-    customerName: 'شركة الأمل للتوزيع والتجارة',
-    type: 'transfer_out',
-    amount: 12000,
-    recipientPhone: '01044332211',
-    transactionCode: 'VF-982512',
-    fee: 30,
-    notes: 'دفعة مستحقات شحن',
-    date: getRecentDate(0, 14, 55),
-    dateOnly: getLocalDateOnly()
-  },
-  {
-    id: 'tx-105',
-    walletId: 'wallet-3-1',
-    walletPhone: '01099887766',
-    walletLabel: 'محفظة التحويلات الفورية',
-    customerId: 'client-3',
-    customerName: 'أحمد محمود الصاوي',
-    type: 'transfer_out',
-    amount: 5000,
-    recipientPhone: '01022114455',
-    transactionCode: 'VF-982633',
+    id: 'tx-rc-103',
+    walletId: 'wallet-4-1',
+    walletPhone: '01066778899',
+    walletLabel: 'محفظة السنترال الرئيسية',
+    customerId: 'client-4',
+    customerName: 'م / طارق عبد الرحمن (مركز اتصالات)',
+    type: 'recharge',
+    amount: 4500,
     fee: 15,
-    notes: 'تحويل لتاجر جملة',
-    date: getRecentDate(0, 16, 10),
+    notes: 'شحن رصيد للسنترال',
+    date: getRecentDate(0, 10, 20),
+    dateOnly: getLocalDateOnly()
+  },
+  {
+    id: 'tx-rc-104',
+    walletId: 'wallet-5-1',
+    walletPhone: '01033445566',
+    walletLabel: 'محفظة العمليات الشخصية',
+    customerId: 'client-5',
+    customerName: 'كابتن حسام حسن',
+    type: 'recharge',
+    amount: 7000,
+    fee: 20,
+    notes: 'شحن رصيد على الحساب الآجل',
+    date: getRecentDate(0, 8, 30),
+    dateOnly: getLocalDateOnly()
+  },
+  {
+    id: 'tx-pay-105',
+    walletId: 'wallet-5-1',
+    walletPhone: '01033445566',
+    walletLabel: 'محفظة العمليات الشخصية',
+    clientId: 'client-5',
+    customerId: 'client-5',
+    customerName: 'كابتن حسام حسن',
+    type: 'client_payment',
+    amount: 4000,
+    paymentMethod: 'vodafone_cash',
+    fee: 0,
+    notes: 'سداد دفعة جزئية (4,000 ج.م) من إجمالي 7,000 ج.م',
+    date: getRecentDate(0, 13, 15),
+    dateOnly: getLocalDateOnly()
+  },
+  {
+    id: 'tx-rc-106',
+    walletId: 'wallet-9-1',
+    walletPhone: '01088990011',
+    walletLabel: 'محفظة مبيعات المعرض',
+    customerId: 'client-9',
+    customerName: 'معرض الإيمان للأجهزة الكهربائية',
+    type: 'recharge',
+    amount: 6800,
+    fee: 20,
+    notes: 'شحن رصيد أجهزة وتوريد',
+    date: getRecentDate(0, 12, 45),
+    dateOnly: getLocalDateOnly()
+  },
+  {
+    id: 'tx-rc-107',
+    walletId: 'wallet-11-1',
+    walletPhone: '01055443322',
+    walletLabel: 'محفظة إدارة المحطة',
+    customerId: 'client-11',
+    customerName: 'محطة القدس للخدمات البترولية',
+    type: 'recharge',
+    amount: 2200,
+    fee: 10,
+    notes: 'شحن رصيد فوري للمحطة',
+    date: getRecentDate(0, 14, 10),
     dateOnly: getLocalDateOnly()
   },
   // Yesterday's transactions
   {
-    id: 'tx-106',
+    id: 'tx-108',
     walletId: 'wallet-1-1',
     walletPhone: '01098765432',
     walletLabel: 'محفظة المبيعات المركزية',
@@ -246,10 +447,10 @@ export const INITIAL_DEMO_TRANSACTIONS = [
     })()
   },
   {
-    id: 'tx-107',
-    walletId: 'wallet-2-2',
-    walletPhone: '01034567890',
-    walletLabel: 'محفظة المشتريات الخارجية',
+    id: 'tx-109',
+    walletId: 'wallet-2-1',
+    walletPhone: '01023456789',
+    walletLabel: 'محفظة إدارة الحسابات',
     customerId: 'client-2',
     customerName: 'شركة الأمل للتوزيع والتجارة',
     type: 'transfer_out',
@@ -264,6 +465,521 @@ export const INITIAL_DEMO_TRANSACTIONS = [
       d.setDate(d.getDate() - 1);
       return getLocalDateOnly(d);
     })()
+  }
+];
+
+export const INITIAL_DEMO_ARCHIVES = [
+  // 1. مؤسسة البركة للتجارة والتوريدات (12 تسوية لاختبار Pagination داخل المودال التفصيلي)
+  {
+    id: 'arch-baraka-1',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(1, 14, 30),
+    time: '02:30 م',
+    debtBefore: 28000,
+    amountPaid: 28000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'bank',
+    notes: 'سداد تحويل بنكي لكامل دفعة توريدات الأسبوع'
+  },
+  {
+    id: 'arch-baraka-2',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(2, 11, 15),
+    time: '11:15 ص',
+    debtBefore: 35000,
+    amountPaid: 35000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'instapay',
+    notes: 'تسوية شحنات المحفظة المركزية بالكامل'
+  },
+  {
+    id: 'arch-baraka-3',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية مع فائض (تحول لدائن)',
+    date: getRecentDate(3, 16, 45),
+    time: '04:45 م',
+    debtBefore: 20000,
+    amountPaid: 22000,
+    excessAmount: 2000,
+    finalBalance: 2000,
+    resultingType: 'دائن',
+    paymentMethod: 'bank',
+    notes: 'سداد بزيادة تحويل بنكي لترحيل رصيد دائن'
+  },
+  {
+    id: 'arch-baraka-4',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'صرف مستحقات دائن كاملة',
+    date: getRecentDate(4, 13, 20),
+    time: '01:20 م',
+    creditBefore: 2000,
+    amountPaid: 2000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'cash',
+    notes: 'صرف الرصيد الدائن المستحق كاش وتصفير الحساب'
+  },
+  {
+    id: 'arch-baraka-5',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(5, 10, 0),
+    time: '10:00 ص',
+    debtBefore: 18500,
+    amountPaid: 18500,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'vodafone_cash',
+    notes: 'تسوية مبيعات فودافون كاش'
+  },
+  {
+    id: 'arch-baraka-6',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(6, 17, 30),
+    time: '05:30 م',
+    debtBefore: 42000,
+    amountPaid: 42000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'bank',
+    notes: 'سداد فاتورة التوريد الكبرى'
+  },
+  {
+    id: 'arch-baraka-7',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(7, 12, 10),
+    time: '12:10 م',
+    debtBefore: 15000,
+    amountPaid: 15000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'instapay',
+    notes: 'سداد إنستاباي فوري'
+  },
+  {
+    id: 'arch-baraka-8',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(8, 15, 40),
+    time: '03:40 م',
+    debtBefore: 26000,
+    amountPaid: 26000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'bank',
+    notes: 'تسوية حساب توريد محطات'
+  },
+  {
+    id: 'arch-baraka-9',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(9, 9, 30),
+    time: '09:30 ص',
+    debtBefore: 31000,
+    amountPaid: 31000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'vodafone_cash',
+    notes: 'سداد دفعات كاش'
+  },
+  {
+    id: 'arch-baraka-10',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(10, 18, 15),
+    time: '06:15 م',
+    debtBefore: 24500,
+    amountPaid: 24500,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'instapay',
+    notes: 'تسوية مسائية عبر إنستاباي'
+  },
+  {
+    id: 'arch-baraka-11',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(11, 11, 45),
+    time: '11:45 ص',
+    debtBefore: 19000,
+    amountPaid: 19000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'cash',
+    notes: 'سداد نقدي مباشر بالفرع'
+  },
+  {
+    id: 'arch-baraka-12',
+    clientId: 'client-7',
+    clientName: 'مؤسسة البركة للتجارة والتوريدات',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(12, 14, 0),
+    time: '02:00 م',
+    debtBefore: 27500,
+    amountPaid: 27500,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'bank',
+    notes: 'سداد بنكي لإغلاق دورة سابقة'
+  },
+
+  // 2. الحاج إبراهيم الأعصر (شحنات وتسويات سابقة)
+  {
+    id: 'arch-ibrahim-rc-1',
+    clientId: 'client-1',
+    clientName: 'الحاج إبراهيم الأعصر',
+    cycleType: 'شحن رصيد للخط',
+    operationCategory: 'recharge',
+    date: getRecentDate(2, 9, 15),
+    time: '09:15 ص',
+    rechargeAmount: 15000,
+    amountPaid: 0,
+    debtBefore: 0,
+    excessAmount: 0,
+    finalBalance: 15000,
+    resultingType: 'مدين',
+    paymentMethod: 'recharge',
+    walletPhone: '01098765432',
+    walletLabel: 'فودافون كاش - الخط الرئيسي',
+    notes: 'شحن رصيد للخط الرئيسي 01098765432'
+  },
+  {
+    id: 'arch-ibrahim-1',
+    clientId: 'client-1',
+    clientName: 'الحاج إبراهيم الأعصر',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(2, 10, 30),
+    time: '10:30 ص',
+    debtBefore: 15000,
+    amountPaid: 15000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'vodafone_cash',
+    notes: 'سداد مديونية كاش بالكامل وتصفير الدورة السابقة'
+  },
+  {
+    id: 'arch-ibrahim-rc-2',
+    clientId: 'client-1',
+    clientName: 'الحاج إبراهيم الأعصر',
+    cycleType: 'شحن رصيد للخط',
+    operationCategory: 'recharge',
+    date: getRecentDate(5, 14, 0),
+    time: '02:00 م',
+    rechargeAmount: 8500,
+    amountPaid: 0,
+    debtBefore: 0,
+    excessAmount: 0,
+    finalBalance: 8500,
+    resultingType: 'مدين',
+    paymentMethod: 'recharge',
+    walletPhone: '01011223344',
+    walletLabel: 'فودافون كاش - خط المعاملات',
+    notes: 'شحن رصيد لخط المعاملات 01011223344'
+  },
+  {
+    id: 'arch-ibrahim-2',
+    clientId: 'client-1',
+    clientName: 'الحاج إبراهيم الأعصر',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(5, 15, 45),
+    time: '03:45 م',
+    debtBefore: 8500,
+    amountPaid: 8500,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'cash',
+    notes: 'سداد نقدي في المحل'
+  },
+
+  // 3. شركة الأمل للتوزيع والتجارة (شحنات وتسويات)
+  {
+    id: 'arch-amal-rc-1',
+    clientId: 'client-2',
+    clientName: 'شركة الأمل للتوزيع والتجارة',
+    cycleType: 'شحن رصيد للخط',
+    operationCategory: 'recharge',
+    date: getRecentDate(1, 11, 30),
+    time: '11:30 ص',
+    rechargeAmount: 12000,
+    amountPaid: 0,
+    debtBefore: 0,
+    excessAmount: 0,
+    finalBalance: 12000,
+    resultingType: 'مدين',
+    paymentMethod: 'recharge',
+    walletPhone: '01023456789',
+    walletLabel: 'محفظة التوزيع 1',
+    notes: 'شحن رصيد تجاري لخط التوزيع 01023456789'
+  },
+  {
+    id: 'arch-amal-1',
+    clientId: 'client-2',
+    clientName: 'شركة الأمل للتوزيع والتجارة',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(1, 14, 15),
+    time: '02:15 م',
+    debtBefore: 12000,
+    amountPaid: 12000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'instapay',
+    notes: 'تسوية شحنات الأمس بالكامل وتحويل الحساب لعادي خالص'
+  },
+  {
+    id: 'arch-amal-rc-2',
+    clientId: 'client-2',
+    clientName: 'شركة الأمل للتوزيع والتجارة',
+    cycleType: 'شحن رصيد للخط',
+    operationCategory: 'recharge',
+    date: getRecentDate(4, 9, 0),
+    time: '09:00 ص',
+    rechargeAmount: 6000,
+    amountPaid: 0,
+    debtBefore: 0,
+    excessAmount: 0,
+    finalBalance: 6000,
+    resultingType: 'مدين',
+    paymentMethod: 'recharge',
+    walletPhone: '01034567890',
+    walletLabel: 'محفظة التوزيع 2',
+    notes: 'شحن رصيد لمحفظة التوزيع 2'
+  },
+  {
+    id: 'arch-amal-2',
+    clientId: 'client-2',
+    clientName: 'شركة الأمل للتوزيع والتجارة',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(4, 11, 20),
+    time: '11:20 ص',
+    debtBefore: 6000,
+    amountPaid: 6000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'bank',
+    notes: 'تحويل بنكي مسدد'
+  },
+
+  // 4. أحمد محمود الصاوي (سداد بفائض دائن)
+  {
+    id: 'arch-sawi-1',
+    clientId: 'client-3',
+    clientName: 'أحمد محمود الصاوي',
+    cycleType: 'سداد مديونية مع فائض (تحول لدائن)',
+    date: getRecentDate(1, 16, 45),
+    time: '04:45 م',
+    debtBefore: 7000,
+    amountPaid: 8200,
+    excessAmount: 1200,
+    finalBalance: 1200,
+    resultingType: 'دائن',
+    paymentMethod: 'vodafone_cash',
+    notes: 'سداد مبلغ 8,200 ج.م بزيادة 1,200 ج.م كفائض دائن لصالحه'
+  },
+
+  // 5. م / طارق عبد الرحمن (مركز اتصالات)
+  {
+    id: 'arch-tarek-rc-1',
+    clientId: 'client-4',
+    clientName: 'م / طارق عبد الرحمن (مركز اتصالات)',
+    cycleType: 'شحن رصيد للخط',
+    operationCategory: 'recharge',
+    date: getRecentDate(3, 9, 30),
+    time: '09:30 ص',
+    rechargeAmount: 9000,
+    amountPaid: 0,
+    debtBefore: 0,
+    excessAmount: 0,
+    finalBalance: 9000,
+    resultingType: 'مدين',
+    paymentMethod: 'recharge',
+    walletPhone: '01056789012',
+    walletLabel: 'فودافون كاش - سنترال',
+    notes: 'شحن رصيد سنترال الاتصالات'
+  },
+  {
+    id: 'arch-tarek-1',
+    clientId: 'client-4',
+    clientName: 'م / طارق عبد الرحمن (مركز اتصالات)',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(3, 11, 0),
+    time: '11:00 ص',
+    debtBefore: 9000,
+    amountPaid: 9000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'instapay',
+    notes: 'تسوية حساب السنترال بالكامل'
+  },
+
+  // 6. كابتن حسام حسن (شحن ثم سداد دفعة جزئية وباقي عليه 3,000 ج.م)
+  {
+    id: 'arch-hossam-rc-1',
+    clientId: 'client-5',
+    clientName: 'كابتن حسام حسن',
+    cycleType: 'شحن رصيد للخط',
+    operationCategory: 'recharge',
+    date: getRecentDate(0, 10, 0),
+    time: '10:00 ص',
+    rechargeAmount: 7000,
+    amountPaid: 0,
+    debtBefore: 0,
+    excessAmount: 0,
+    finalBalance: 7000,
+    resultingType: 'مدين',
+    paymentMethod: 'recharge',
+    walletPhone: '01033445566',
+    walletLabel: 'محفظة الكابتن الشخصية',
+    notes: 'شحن رصيد كاش للكابتن'
+  },
+  {
+    id: 'arch-hossam-1',
+    clientId: 'client-5',
+    clientName: 'كابتن حسام حسن',
+    cycleType: 'سداد دفعة من الحساب',
+    date: getRecentDate(0, 13, 15),
+    time: '01:15 م',
+    debtBefore: 7000,
+    amountPaid: 4000,
+    excessAmount: 0,
+    finalBalance: 3000,
+    resultingType: 'مدين',
+    paymentMethod: 'vodafone_cash',
+    notes: 'سداد دفعة جزئية (4,000 ج.م) من الحساب الآجل ومتبقي عليه 3,000 ج.م'
+  },
+
+  // 7. سنتر النور للخدمات المتكاملة
+  {
+    id: 'arch-nour-1',
+    clientId: 'client-6',
+    clientName: 'سنتر النور للخدمات المتكاملة',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(2, 15, 30),
+    time: '03:30 م',
+    debtBefore: 5500,
+    amountPaid: 5500,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'cash',
+    notes: 'تسوية كاش بالكامل'
+  },
+
+  // 8. سوبر ماركت الفيروز (سداد بفائض دائن)
+  {
+    id: 'arch-fairouz-1',
+    clientId: 'client-8',
+    clientName: 'سوبر ماركت الفيروز',
+    cycleType: 'سداد مديونية مع فائض (تحول لدائن)',
+    date: getRecentDate(2, 12, 10),
+    time: '12:10 م',
+    debtBefore: 3000,
+    amountPaid: 3750,
+    excessAmount: 750,
+    finalBalance: 750,
+    resultingType: 'دائن',
+    paymentMethod: 'vodafone_cash',
+    notes: 'سداد بفائض 750 ج.م كرصيد دائن مستحق'
+  },
+
+  // 9. معرض الإيمان للأجهزة الكهربائية
+  {
+    id: 'arch-eiman-1',
+    clientId: 'client-9',
+    clientName: 'معرض الإيمان للأجهزة الكهربائية',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(4, 17, 20),
+    time: '05:20 م',
+    debtBefore: 8000,
+    amountPaid: 8000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'bank',
+    notes: 'تسوية دورة شحنات سابقة'
+  },
+
+  // 10. الأستاذ ياسر جلال
+  {
+    id: 'arch-yasser-1',
+    clientId: 'client-10',
+    clientName: 'الأستاذ ياسر جلال',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(3, 10, 0),
+    time: '10:00 ص',
+    debtBefore: 3200,
+    amountPaid: 3200,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'cash',
+    notes: 'سداد نقدي فوري وتصفير الحساب'
+  },
+
+  // 11. محطة القدس للخدمات البترولية
+  {
+    id: 'arch-quds-1',
+    clientId: 'client-11',
+    clientName: 'محطة القدس للخدمات البترولية',
+    cycleType: 'سداد مديونية كاملة',
+    date: getRecentDate(5, 19, 15),
+    time: '07:15 م',
+    debtBefore: 4000,
+    amountPaid: 4000,
+    excessAmount: 0,
+    finalBalance: 0,
+    resultingType: 'عادي',
+    paymentMethod: 'vodafone_cash',
+    notes: 'تسوية دورة وقود سابقة'
+  },
+
+  // 12. صيدلية الدكتور وليد الشناوي
+  {
+    id: 'arch-walid-1',
+    clientId: 'client-13',
+    clientName: 'صيدلية الدكتور وليد الشناوي',
+    cycleType: 'سداد مديونية مع فائض (تحول لدائن)',
+    date: getRecentDate(3, 9, 40),
+    time: '09:40 ص',
+    debtBefore: 2500,
+    amountPaid: 3000,
+    excessAmount: 500,
+    finalBalance: 500,
+    resultingType: 'دائن',
+    paymentMethod: 'instapay',
+    notes: 'تحويل إنستاباي مع فائض 500 ج.م'
   }
 ];
 
@@ -581,7 +1297,32 @@ export const storage = {
     }
   },
 
-  exportFullBackup(clients, transactions, inventory, trash, shopWallets) {
+  getClientArchives() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.CLIENT_ARCHIVES);
+      if (!data) {
+        localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
+        return INITIAL_DEMO_ARCHIVES;
+      }
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
+      return INITIAL_DEMO_ARCHIVES;
+    } catch (e) {
+      console.error('Error reading client archives from storage:', e);
+      return INITIAL_DEMO_ARCHIVES;
+    }
+  },
+
+  saveClientArchives(archives) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(archives || []));
+    } catch (e) {
+      console.error('Error saving client archives:', e);
+    }
+  },
+
+  exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives = []) {
     const backup = {
       version: '3.4',
       system: 'Elaasar Cash & Mobile Shop Management System',
@@ -590,7 +1331,8 @@ export const storage = {
       transactions,
       inventory: inventory || [],
       trash: trash || { wallets: [], clients: [], products: [] },
-      shopWallets: shopWallets || []
+      shopWallets: shopWallets || [],
+      clientArchives: clientArchives || []
     };
     
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -607,13 +1349,15 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(INITIAL_DEMO_TRANSACTIONS));
     localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(INITIAL_DEMO_INVENTORY));
     localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(INITIAL_SHOP_WALLETS));
+    localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
     localStorage.removeItem(STORAGE_KEYS.TRASH);
     return {
       clients: INITIAL_DEMO_CLIENTS,
       transactions: INITIAL_DEMO_TRANSACTIONS,
       inventory: INITIAL_DEMO_INVENTORY,
       shopWallets: INITIAL_SHOP_WALLETS,
-      trash: { wallets: [], clients: [], products: [] }
+      trash: { wallets: [], clients: [], products: [] },
+      clientArchives: INITIAL_DEMO_ARCHIVES
     };
   },
 
@@ -623,12 +1367,14 @@ export const storage = {
     localStorage.removeItem(STORAGE_KEYS.INVENTORY);
     localStorage.removeItem(STORAGE_KEYS.SHOP_WALLETS);
     localStorage.removeItem(STORAGE_KEYS.TRASH);
+    localStorage.removeItem(STORAGE_KEYS.CLIENT_ARCHIVES);
     return {
       clients: [],
       transactions: [],
       inventory: [],
       shopWallets: [],
-      trash: { wallets: [], clients: [], products: [] }
+      trash: { wallets: [], clients: [], products: [] },
+      clientArchives: []
     };
   }
 };

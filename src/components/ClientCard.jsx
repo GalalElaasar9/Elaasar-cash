@@ -6,6 +6,9 @@ import {
   calculateWalletStats,
   formatTimeArabic,
   formatDateArabic,
+  formatDateTimeArabic,
+  getTodayString,
+  getCurrentMonthKey,
   getEgyptianCarrier
 } from '../utils/formatters';
 import {
@@ -33,7 +36,8 @@ import {
   Calculator,
   Wallet,
   LayoutGrid,
-  Table
+  Table,
+  Archive
 } from 'lucide-react';
 
 export default function ClientCard({ client }) {
@@ -45,13 +49,21 @@ export default function ClientCard({ client }) {
     deleteClient,
     deleteWallet,
     showToast,
-    askConfirm
+    askConfirm,
+    clientArchives,
+    archiveClientCycle
   } = useCash();
 
   const [isExpanded, setIsExpanded] = useState(true);
   const [copiedPhone, setCopiedPhone] = useState(null);
   const [activeHistoryWalletId, setActiveHistoryWalletId] = useState(null);
   const [walletPage, setWalletPage] = useState(1);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+
+  // Client's recorded settlement archives
+  const clientArchiveList = useMemo(() => {
+    return (clientArchives || []).filter(a => a.clientId === client.id);
+  }, [clientArchives, client.id]);
 
   // Wallets Display Mode: 'grid' (كروت) | 'table' (جدول)
   const [walletsViewMode, setWalletsViewMode] = useState(() => {
@@ -150,14 +162,48 @@ export default function ClientCard({ client }) {
       showToast(`لا يمكن التحويل لحساب عادي لوجود مديونية مستحقة غير مسددة (${formatCurrency(remainingDebt)})`, 'warning');
       return;
     }
+    if (type === 'مدين' && remainingDebt <= 0) {
+      showToast('العميل حسابه خالص (0 ج.م) - لا يمكن تحويله إلى مدين إلا إذا كان عليه فلوس أو تم شحن رصيد له', 'warning');
+      return;
+    }
+    const nowIso = new Date().toISOString();
     setClientType(type);
-    updateClient(client.id, { clientType: type, excessDebt: null, excessDebtDate: null, excessCredit: null, excessCreditDate: null });
+
+    if (type === 'عادي') {
+      try {
+        archiveClientCycle({
+          clientId: client.id,
+          clientName: client.name,
+          cycleType: 'تسوية يدوية وتحويل لحساب عادي خالص',
+          settledAt: nowIso,
+          previousDebt: remainingDebt,
+          totalPaid: paidAmount,
+          excessRemaining: 0,
+          resultingStatus: 'عادي',
+          notes: 'تم تصفير الحساب وتحديد العميل كـ عادي من كارت العميل'
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    updateClient(client.id, {
+      clientType: type,
+      excessDebt: null,
+      excessDebtDate: null,
+      excessCredit: null,
+      excessCreditDate: null,
+      settledAt: type === 'عادي' ? nowIso : (client.settledAt || null)
+    });
     try {
       localStorage.setItem(`elaasar_client_type_${client.id}`, type);
       localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
       localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
       localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
       localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
+      if (type === 'عادي') {
+        localStorage.setItem(`elaasar_client_settled_at_${client.id}`, nowIso);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -227,91 +273,16 @@ export default function ClientCard({ client }) {
     }
   }, [client.id, commissionPercent]);
 
-  // Client wallets
-  const wallets = client.wallets || [];
-  const WALLETS_PER_PAGE = walletsViewMode === 'table' ? 6 : 3;
-  const totalWalletPages = Math.ceil(wallets.length / WALLETS_PER_PAGE) || 1;
-  const validWalletPage = Math.min(Math.max(1, walletPage), totalWalletPages);
-
-  const paginatedWallets = useMemo(() => {
-    const startIndex = (validWalletPage - 1) * WALLETS_PER_PAGE;
-    return wallets.slice(startIndex, startIndex + WALLETS_PER_PAGE);
-  }, [wallets, validWalletPage, WALLETS_PER_PAGE]);
-
-  // Calculations for total amounts entered into client lines (recharges)
-  const clientWalletIds = useMemo(() => new Set(wallets.map(w => w.id)), [wallets]);
-
-  const clientStats = useMemo(() => {
-    let today = 0;
-    let month = 0;
-
-    wallets.forEach(w => {
-      const s = calculateWalletStats(w, transactions);
-      today += (s.todayRecharges || 0);
-      month += (s.totalRecharges || 0);
-    });
-
-    const all = transactions
-      .filter(t => clientWalletIds.has(t.walletId) && (t.type === 'recharge' || t.type === 'limit_reset'))
-      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-
-    return { today, month, all };
-  }, [wallets, transactions, clientWalletIds]);
-
-  const baseAmount = useMemo(() => {
-    if (timeRange === 'today') return clientStats.today;
-    if (timeRange === 'month') return clientStats.month;
-    return clientStats.all;
-  }, [timeRange, clientStats]);
-
-  const factorNum = Number(commissionPercent);
-  const isValidFactor = !isNaN(factorNum) && factorNum > 0;
-
-  // الحساب المالي: المبلغ بعد العمولة = المبلغ قبل العمولة مضروب في المعامل مباشرة (ex: 5000 * 0.995 = 4975)
-  let finalAmount = baseAmount;
-  let commissionAmount = 0;
-  let effectiveMode = commissionMode;
-
-  if (isValidFactor && baseAmount > 0) {
-    if (factorNum >= 0.5) {
-      finalAmount = baseAmount * factorNum;
-      effectiveMode = factorNum < 1 ? 'deduct' : 'add';
-      commissionAmount = Math.abs(baseAmount - finalAmount);
-    } else {
-      if (commissionMode === 'deduct') {
-        finalAmount = baseAmount * (1 - factorNum);
-        commissionAmount = baseAmount * factorNum;
-      } else {
-        finalAmount = baseAmount * (1 + factorNum);
-        commissionAmount = baseAmount * factorNum;
-      }
+  // 1. Classification & Cutoff Tracking
+  let settledAt = client.settledAt;
+  if (!settledAt) {
+    try {
+      settledAt = localStorage.getItem(`elaasar_client_settled_at_${client.id}`);
+    } catch {
+      settledAt = null;
     }
   }
-
-  // Payments made by/to this client
-  const clientPayments = useMemo(() => {
-    return transactions.filter(t => 
-      (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment'
-    );
-  }, [transactions, client.id]);
-
-  const paidAmount = useMemo(() => {
-    const todayKey = new Date().toISOString().split('T')[0];
-    const currentMonthKey = todayKey.slice(0, 7);
-    const calcNet = (tx) => tx.isCreditorPayout ? -Number(tx.amount) : Number(tx.amount);
-
-    if (timeRange === 'today') {
-      return clientPayments
-        .filter(t => (t.dateOnly || t.date || '').startsWith(todayKey))
-        .reduce((sum, t) => sum + calcNet(t), 0);
-    }
-    if (timeRange === 'month') {
-      return clientPayments
-        .filter(t => (t.dateOnly || t.date || '').slice(0, 7) === currentMonthKey)
-        .reduce((sum, t) => sum + calcNet(t), 0);
-    }
-    return clientPayments.reduce((sum, t) => sum + calcNet(t), 0);
-  }, [clientPayments, timeRange]);
+  const settledTimestamp = settledAt ? new Date(settledAt).getTime() : 0;
 
   // 1. Check if client has excessDebt from a creditor payout (المحول من دائن إلى مدين)
   let clientExcessDebt = client.excessDebt;
@@ -330,8 +301,8 @@ export default function ClientCard({ client }) {
 
   // Fallback: check recent creditor payout transaction
   if ((clientExcessDebt === undefined || clientExcessDebt === null) && clientType === 'مدين') {
-    const recentPayout = clientPayments
-      .filter(t => t.isCreditorPayout)
+    const recentPayout = (transactions || [])
+      .filter(t => (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment' && t.isCreditorPayout)
       .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
     if (recentPayout) {
       if (recentPayout.excessDebt) {
@@ -365,8 +336,8 @@ export default function ClientCard({ client }) {
 
   // Fallback: check recent overpayment transaction
   if ((clientExcessCredit === undefined || clientExcessCredit === null) && clientType === 'دائن') {
-    const recentOverpayment = clientPayments
-      .filter(t => !t.isCreditorPayout)
+    const recentOverpayment = (transactions || [])
+      .filter(t => (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment' && !t.isCreditorPayout)
       .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
     if (recentOverpayment) {
       if (recentOverpayment.excessCredit) {
@@ -386,6 +357,131 @@ export default function ClientCard({ client }) {
   const hasExcessDebt = clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
   const hasExcessCredit = clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0;
 
+  // Effective Cutoff Timestamp: excludes all transactions from prior settled/closed cycles
+  let effectiveCutoff = settledTimestamp;
+  if (hasExcessCredit && clientExcessCreditDate) {
+    effectiveCutoff = new Date(clientExcessCreditDate).getTime();
+  } else if (hasExcessDebt && clientExcessDate) {
+    effectiveCutoff = new Date(clientExcessDate).getTime();
+  }
+
+  // Find the most recent settlement transaction for this client
+  const lastPaymentIdx = useMemo(() => {
+    return transactions.findIndex(t => 
+      (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment'
+    );
+  }, [transactions, client.id]);
+
+  const isTxInActiveCycle = (t) => {
+    if (t.isSettled) return false;
+    if (effectiveCutoff === 0) return true;
+    if (new Date(t.date).getTime() > effectiveCutoff) return true;
+    if (t.type === 'recharge' || t.type === 'limit_reset') {
+      if (lastPaymentIdx !== -1 && transactions.indexOf(t) < lastPaymentIdx) return true;
+      if (t.id && Number(t.id.replace('tx-rc-', '')) > effectiveCutoff) return true;
+    }
+    return false;
+  };
+
+  // Client wallets
+  const wallets = client.wallets || [];
+  const WALLETS_PER_PAGE = walletsViewMode === 'table' ? 6 : 3;
+  const totalWalletPages = Math.ceil(wallets.length / WALLETS_PER_PAGE) || 1;
+  const validWalletPage = Math.min(Math.max(1, walletPage), totalWalletPages);
+
+  const paginatedWallets = useMemo(() => {
+    const startIndex = (validWalletPage - 1) * WALLETS_PER_PAGE;
+    return wallets.slice(startIndex, startIndex + WALLETS_PER_PAGE);
+  }, [wallets, validWalletPage, WALLETS_PER_PAGE]);
+
+  // Calculations for total amounts entered into client lines (recharges)
+  const clientWalletIds = useMemo(() => new Set(wallets.map(w => w.id)), [wallets]);
+
+  const clientStats = useMemo(() => {
+    let today = 0;
+    let month = 0;
+    const todayKey = getTodayString();
+    const currentMonthKey = getCurrentMonthKey();
+
+    // Only active recharges occurring after effectiveCutoff
+    const activeRecharges = transactions.filter(t => 
+      clientWalletIds.has(t.walletId) && 
+      (t.type === 'recharge' || t.type === 'limit_reset') &&
+      isTxInActiveCycle(t)
+    );
+
+    today = activeRecharges
+      .filter(t => (t.dateOnly || t.date || '').startsWith(todayKey))
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    month = activeRecharges
+      .filter(t => (t.dateOnly || t.date || '').slice(0, 7) === currentMonthKey)
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    const all = activeRecharges
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    return { today, month, all };
+  }, [transactions, clientWalletIds, effectiveCutoff]);
+
+  const baseAmount = useMemo(() => {
+    if (timeRange === 'today') return clientStats.today;
+    if (timeRange === 'month') return clientStats.month;
+    return clientStats.all;
+  }, [timeRange, clientStats]);
+
+  const factorNum = Number(commissionPercent);
+  const isValidFactor = !isNaN(factorNum) && factorNum > 0;
+
+  // الحساب المالي: المبلغ بعد العمولة = المبلغ قبل العمولة مضروب في المعامل مباشرة (ex: 5000 * 0.995 = 4975)
+  let finalAmount = baseAmount;
+  let commissionAmount = 0;
+  let effectiveMode = commissionMode;
+
+  if (isValidFactor && baseAmount > 0) {
+    if (factorNum >= 0.5) {
+      finalAmount = baseAmount * factorNum;
+      effectiveMode = factorNum < 1 ? 'deduct' : 'add';
+      commissionAmount = Math.abs(baseAmount - finalAmount);
+    } else {
+      if (commissionMode === 'deduct') {
+        finalAmount = baseAmount * (1 - factorNum);
+        commissionAmount = baseAmount * factorNum;
+      } else {
+        finalAmount = baseAmount * (1 + factorNum);
+        commissionAmount = baseAmount * factorNum;
+      }
+    }
+  }
+
+  // Active Client Payments (only payments occurring after effectiveCutoff)
+  const clientPayments = useMemo(() => {
+    return transactions.filter(t => 
+      (t.clientId === client.id || t.customerId === client.id) && 
+      t.type === 'client_payment' &&
+      !t.isSettled &&
+      (effectiveCutoff === 0 || new Date(t.date).getTime() > effectiveCutoff)
+    );
+  }, [transactions, client.id, effectiveCutoff]);
+
+  const paidAmount = useMemo(() => {
+    const todayKey = getTodayString();
+    const currentMonthKey = getCurrentMonthKey();
+    const calcNet = (tx) => tx.isCreditorPayout ? -Number(tx.amount) : Number(tx.amount);
+
+    if (timeRange === 'today') {
+      return clientPayments
+        .filter(t => (t.dateOnly || t.date || '').startsWith(todayKey))
+        .reduce((sum, t) => sum + calcNet(t), 0);
+    }
+    if (timeRange === 'month') {
+      return clientPayments
+        .filter(t => (t.dateOnly || t.date || '').slice(0, 7) === currentMonthKey)
+        .reduce((sum, t) => sum + calcNet(t), 0);
+    }
+    return clientPayments.reduce((sum, t) => sum + calcNet(t), 0);
+  }, [clientPayments, timeRange]);
+
   if (hasExcessDebt) {
     commissionAmount = 0;
     effectiveMode = 'none';
@@ -402,48 +498,63 @@ export default function ClientCard({ client }) {
   let effectiveClientType = clientType;
 
   if (hasExcessDebt) {
-    const cutoffTime = clientExcessDate ? new Date(clientExcessDate).getTime() : 0;
     const postPayments = clientPayments
-      .filter(t => !t.isCreditorPayout && new Date(t.date).getTime() > cutoffTime)
+      .filter(t => !t.isCreditorPayout)
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-    const activeExcessDebt = Math.max(0, clientExcessDebt - postPayments);
+    const initialDebt = clientExcessDebt + baseAmount;
+    const activeExcessDebt = Math.max(0, initialDebt - postPayments);
     remainingDebt = activeExcessDebt;
     creditExcess = 0;
     isSettled = activeExcessDebt === 0;
     effectiveClientType = isSettled ? 'عادي' : 'مدين';
+    finalAmount = initialDebt;
   } else if (hasExcessCredit) {
-    const cutoffTime = clientExcessCreditDate ? new Date(clientExcessCreditDate).getTime() : 0;
     const postPayouts = clientPayments
-      .filter(t => t.isCreditorPayout && new Date(t.date).getTime() > cutoffTime)
+      .filter(t => t.isCreditorPayout)
       .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-    const postRecharges = transactions
-      .filter(t => clientWalletIds.has(t.walletId) && (t.type === 'recharge' || t.type === 'limit_reset') && new Date(t.date).getTime() > cutoffTime)
-      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-
-    const activeCredit = clientExcessCredit - postPayouts - postRecharges;
+    const activeCredit = clientExcessCredit - postPayouts - baseAmount;
     if (activeCredit > 0) {
       creditExcess = activeCredit;
       remainingDebt = 0;
       effectiveClientType = 'دائن';
       isSettled = false;
+      finalAmount = clientExcessCredit;
     } else if (activeCredit === 0) {
       creditExcess = 0;
       remainingDebt = 0;
       effectiveClientType = 'عادي';
       isSettled = true;
+      finalAmount = clientExcessCredit;
     } else {
       creditExcess = 0;
       remainingDebt = Math.abs(activeCredit);
       effectiveClientType = 'مدين';
       isSettled = false;
+      finalAmount = Math.abs(activeCredit);
+    }
+  } else if (clientType === 'عادي') {
+    if (baseAmount === 0) {
+      remainingDebt = 0;
+      creditExcess = 0;
+      isSettled = true;
+      effectiveClientType = 'عادي';
+      finalAmount = 0;
+    } else {
+      const net = finalAmount - paidAmount;
+      remainingDebt = net > 0 ? net : 0;
+      creditExcess = net < 0 ? Math.abs(net) : 0;
+      isSettled = net === 0;
+      effectiveClientType = creditExcess > 0 ? 'دائن' : (remainingDebt > 0 ? 'مدين' : 'عادي');
     }
   } else {
-    remainingDebt = finalAmount > paidAmount ? finalAmount - paidAmount : 0;
-    creditExcess = paidAmount > finalAmount ? paidAmount - finalAmount : 0;
-    isSettled = paidAmount > 0 && finalAmount === paidAmount;
-    effectiveClientType = creditExcess > 0 ? 'دائن' : (remainingDebt > 0 ? 'مدين' : clientType);
+    // Standard مدين
+    const net = finalAmount - paidAmount;
+    remainingDebt = net > 0 ? net : 0;
+    creditExcess = net < 0 ? Math.abs(net) : 0;
+    isSettled = net === 0 && (finalAmount > 0 || paidAmount !== 0);
+    effectiveClientType = creditExcess > 0 ? 'دائن' : (remainingDebt > 0 ? 'مدين' : (clientType || 'مدين'));
   }
 
   const handleOpenPayment = () => {
@@ -603,18 +714,36 @@ export default function ClientCard({ client }) {
                     </button>
                     <button
                       type="button"
-                      disabled={effectiveClientType === 'مدين'}
+                      disabled={effectiveClientType === 'مدين' || remainingDebt <= 0}
                       onClick={() => handleSetClientType('مدين')}
                       className={`btn-interactive px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
                         effectiveClientType === 'مدين'
                           ? 'bg-rose-600 text-white shadow-xs cursor-default'
+                          : remainingDebt <= 0
+                          ? 'text-slate-400 dark:text-slate-600 opacity-40 cursor-not-allowed'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                       }`}
-                      title="عميل مدين (عليه مبالغ آجلة)"
+                      title={
+                        remainingDebt <= 0
+                          ? 'العميل حسابه خالص (0 ج.م) - لا يمكن تحويله إلى مدين إلا إذا كان عليه فلوس أو تم شحن رصيد له'
+                          : 'عميل مدين (عليه مبالغ آجلة)'
+                      }
                     >
                       مدين
                     </button>
                   </div>
+                )}
+
+                {clientArchiveList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowArchiveModal(true)}
+                    className="btn-interactive inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800 shadow-2xs transition-colors shrink-0"
+                    title="عرض أرشيف التسويات والدورات السابقة لهذا العميل"
+                  >
+                    <Archive className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>أرشيف التسويات ({clientArchiveList.length})</span>
+                  </button>
                 )}
               </div>
               {client.notes && (
@@ -747,6 +876,11 @@ export default function ClientCard({ client }) {
             {hasExcessDebt ? (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold text-xs">
                 <span>صافي نقدي (بدون عمولة أو خصم)</span>
+              </div>
+            ) : (isSettled || effectiveClientType === 'عادي' || (baseAmount === 0 && remainingDebt <= 0 && creditExcess <= 0)) ? (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700 text-slate-400 dark:text-slate-500 font-bold text-xs">
+                <span>-</span>
+                <span className="text-[11px] font-bold">لا تنطبق عمولة (حساب خالص)</span>
               </div>
             ) : (
               <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border shadow-2xs transition-colors ${
@@ -1477,6 +1611,109 @@ export default function ClientCard({ client }) {
           </div>
         </div>
       </div>
+
+      {/* Archive Modal for this Client */}
+      {showArchiveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-scale-in">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                  <Archive className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                    أرشيف تسويات العميل: {client.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    توثيق لكافة الحسابات والدورات السابقة المغلقة والتسويات المنتهية ({clientArchiveList.length} تسوية)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowArchiveModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-3 divide-y divide-slate-100 dark:divide-slate-800">
+              {clientArchiveList.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 text-sm">
+                  لا توجد تسويات مؤرشفة سابقة لهذا العميل بعد.
+                </div>
+              ) : (
+                clientArchiveList.map((item, idx) => (
+                  <div key={item.id || idx} className="pt-3 first:pt-0 space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                          {item.cycleType || 'تسوية حساب'}
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {formatDateTimeArabic(item.settledAt || item.date)}
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        الحالة الناتجة: {item.resultingStatus || item.resultingType || 'عادي'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">الرصيد قبل التسوية</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                          {formatCurrency(item.previousDebt || item.debtBefore || item.creditBefore || 0)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">المبلغ المدفوع / المصروف</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(item.totalPaid || item.amountPaid || 0)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">الفائض المتبقي</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400">
+                          {formatCurrency(item.excessRemaining || item.excessAmount || 0)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">طريقة السداد</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                          {item.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : item.paymentMethod === 'instapay' ? 'إنستاباي' : item.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقداً'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {item.notes && (
+                      <p className="text-xs text-slate-600 dark:text-slate-400 bg-amber-50/50 dark:bg-amber-950/20 p-2 rounded-lg border border-amber-200/40 dark:border-amber-900/30">
+                        {item.notes}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end bg-slate-50 dark:bg-slate-800/50">
+              <button
+                type="button"
+                onClick={() => setShowArchiveModal(false)}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 transition-colors"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

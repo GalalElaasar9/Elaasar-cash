@@ -196,14 +196,31 @@ export function formatDateArabic(dateStr) {
 export function formatTimeArabic(dateStr) {
   if (!dateStr) return '';
   try {
-    const d = new Date(dateStr);
+    // If it's already in 12-hour format with Arabic or English AM/PM markers
+    if (typeof dateStr === 'string' && (dateStr.includes('ص') || dateStr.includes('م') || dateStr.includes('AM') || dateStr.includes('PM'))) {
+      return dateStr.trim();
+    }
+
+    // If it's a 24-hour time string like "14:35" or "14:35:00" or "09:15"
+    if (typeof dateStr === 'string' && /^\d{1,2}:\d{2}(:\d{2})?$/.test(dateStr.trim())) {
+      const parts = dateStr.trim().split(':');
+      let hours = parseInt(parts[0], 10);
+      const minutes = parts[1];
+      const period = hours >= 12 ? 'م' : 'ص';
+      hours = hours % 12 || 12;
+      const formattedHours = hours < 10 ? `0${hours}` : `${hours}`;
+      return `${formattedHours}:${minutes} ${period}`;
+    }
+
+    const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
+    if (isNaN(d.getTime())) return String(dateStr);
     return new Intl.DateTimeFormat('ar-EG-u-nu-latn', {
-      hour: 'numeric',
-      minute: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
       hour12: true
     }).format(d);
   } catch {
-    return '';
+    return String(dateStr);
   }
 }
 

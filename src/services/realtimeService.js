@@ -11,15 +11,15 @@ class RealtimeService {
     this.listeners = new Set();
     this.statusListeners = new Set();
     this.status = 'disconnected'; // 'connected' | 'connecting' | 'disconnected'
+    this.reconnectAttempts = 0;
     this.serverUrl = this.getWebSocketUrl();
   }
 
   getWebSocketUrl() {
     if (typeof window === 'undefined') return 'ws://localhost:3001/ws';
     const isHttps = window.location.protocol === 'https:';
-    const host = window.location.host; // e.g. localhost:5173 or 192.168.1.12:5173
+    const host = window.location.host;
     const proto = isHttps ? 'wss:' : 'ws:';
-    // When served via Vite proxy or direct
     return `${proto}//${host}/ws`;
   }
 
@@ -36,6 +36,7 @@ class RealtimeService {
       this.ws.onopen = () => {
         console.log('[Realtime] Connected to Elaasar Cash Backend Server!');
         this.setStatus('connected');
+        this.reconnectAttempts = 0;
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = null;
@@ -52,17 +53,14 @@ class RealtimeService {
       };
 
       this.ws.onclose = () => {
-        console.log('[Realtime] Disconnected. Reconnecting in 3s...');
         this.setStatus('disconnected');
         this.scheduleReconnect();
       };
 
-      this.ws.onerror = (err) => {
-        console.warn('[Realtime] WebSocket connection error (will retry):', err);
+      this.ws.onerror = () => {
         this.setStatus('disconnected');
       };
-    } catch (err) {
-      console.warn('[Realtime] Failed to initialize WebSocket:', err);
+    } catch {
       this.setStatus('disconnected');
       this.scheduleReconnect();
     }
@@ -70,10 +68,13 @@ class RealtimeService {
 
   scheduleReconnect() {
     if (!this.reconnectTimer) {
+      this.reconnectAttempts += 1;
+      // Exponential backoff up to 30 seconds to prevent console spam if backend is offline
+      const delay = Math.min(30000, 3000 * Math.pow(1.5, Math.min(this.reconnectAttempts, 6)));
       this.reconnectTimer = setTimeout(() => {
         this.reconnectTimer = null;
         this.connect();
-      }, 3000);
+      }, delay);
     }
   }
 

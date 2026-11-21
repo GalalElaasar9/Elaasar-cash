@@ -50,9 +50,10 @@ export default function CloudSyncModal() {
   const [showConfigEditor, setShowConfigEditor] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  const currentPort = typeof window !== 'undefined' && window.location.port ? window.location.port : '3000';
   const mobileWifiUrl = typeof window !== 'undefined' 
-    ? `http://${window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '192.168.1.12' : window.location.hostname}:5173`
-    : 'http://192.168.1.12:5173';
+    ? `http://${window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '192.168.1.12' : window.location.hostname}:${currentPort}`
+    : `http://192.168.1.12:${currentPort}`;
 
   const handleCopyMobileUrl = () => {
     navigator.clipboard.writeText(mobileWifiUrl);

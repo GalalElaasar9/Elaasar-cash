@@ -5,6 +5,7 @@ import {
   getTodayString, 
   getLocalDateString,
   formatCurrency,
+  formatTimeArabic,
   cleanEgyptianPhone,
   isValidEgyptianPhone,
   getEgyptianPhoneError 
@@ -199,6 +200,9 @@ export function CashProvider({ children }) {
   // Trash & Recycle Bin State
   const [trash, setTrash] = useState(() => storage.getTrash());
 
+  // Client Accounts Archive State (أرشيف حسابات العملاء والتسويات المقفلة)
+  const [clientArchives, setClientArchives] = useState(() => storage.getClientArchives());
+
   // Sync clients to localStorage
   useEffect(() => {
     storage.saveClients(clients);
@@ -223,6 +227,11 @@ export function CashProvider({ children }) {
   useEffect(() => {
     storage.saveTrash(trash);
   }, [trash]);
+
+  // Sync clientArchives to localStorage
+  useEffect(() => {
+    storage.saveClientArchives(clientArchives);
+  }, [clientArchives]);
 
   // Sync theme
   useEffect(() => {
@@ -687,7 +696,19 @@ export function CashProvider({ children }) {
 
     const stats = calculateWalletStats(wallet, transactions);
 
-    const dateObj = date ? new Date(date) : new Date();
+    let clientSettledAt = client?.settledAt;
+    if (!clientSettledAt && client?.id) {
+      try {
+        clientSettledAt = localStorage.getItem(`elaasar_client_settled_at_${client.id}`);
+      } catch (e) {
+        clientSettledAt = null;
+      }
+    }
+    const settledTime = clientSettledAt ? new Date(clientSettledAt).getTime() : 0;
+    const nowTime = Date.now();
+    // Guarantee that this new transaction's timestamp is strictly after any prior settlement cutoff
+    const txTime = Math.max(nowTime, (settledTime || 0) + 1000);
+    const dateObj = date ? new Date(date) : new Date(txTime);
     const dateOnly = getLocalDateString(dateObj);
     const limitAfter = stats.remainingLimit + numAmount;
 
@@ -704,7 +725,9 @@ export function CashProvider({ children }) {
       transactionCode: `RC-${Math.floor(100000 + Math.random() * 900000)}`,
       notes: notes.trim() || 'إضافة وشحن رصيد للمحفظة',
       date: dateObj.toISOString(),
-      dateOnly
+      dateOnly,
+      time: formatTimeArabic(dateObj),
+      isSettled: false
     };
 
     setTransactions(prev => [newTx, ...prev]);
@@ -717,31 +740,54 @@ export function CashProvider({ children }) {
 
     triggerConfetti();
 
-    if (!isShopWallet) {
-      // Auto-transition: If client was 'عادي', convert to 'مدين' upon recharging any of their wallets
-      if (client) {
-        let currentType = client.clientType;
-        if (!currentType) {
-          try {
-            currentType = localStorage.getItem(`elaasar_client_type_${client.id}`) || 'عادي';
-          } catch {
-            currentType = 'عادي';
-          }
-        }
-        if (currentType === 'عادي') {
-          updateClient(client.id, {
-            clientType: 'مدين',
-            excessDebt: null,
-            excessDebtDate: null
-          });
-          try {
-            localStorage.setItem(`elaasar_client_type_${client.id}`, 'مدين');
-            localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
-            localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
-          } catch (e) {
-            console.error(e);
-          }
-        }
+    if (!isShopWallet && client) {
+      // Auto-transition: Any client who receives a recharge automatically becomes 'مدين'
+      updateClient(client.id, {
+        clientType: 'مدين',
+        excessDebt: null,
+        excessDebtDate: null,
+        excessCredit: null,
+        excessCreditDate: null
+      });
+
+      // Automatically document this recharge in the Client Accounts Archive!
+      archiveClientCycle({
+        clientId: client.id,
+        clientName: client.name,
+        cycleType: 'شحن رصيد للخط',
+        operationCategory: 'recharge',
+        rechargeAmount: numAmount,
+        amountPaid: 0,
+        debtBefore: 0,
+        creditBefore: 0,
+        excessAmount: 0,
+        finalBalance: numAmount,
+        resultingType: 'مدين',
+        paymentMethod: 'recharge',
+        notes: notes.trim()
+          ? `${notes.trim()} (شحن لرقم ${wallet.phoneNumber})`
+          : `شحن رصيد للرقم ${wallet.phoneNumber}`,
+        date: dateObj.toISOString(),
+        dateOnly,
+        time: formatTimeArabic(dateObj),
+        walletPhone: wallet.phoneNumber,
+        walletLabel: wallet.label,
+        transactionId: newTx.id,
+        isClosedCycle: false
+      });
+
+      try {
+        localStorage.setItem(`elaasar_client_type_${client.id}`, 'مدين');
+        localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
+        localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+        localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
+        localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
+        // Dispatch event so UI immediately switches tabs to 'مدين'
+        window.dispatchEvent(new CustomEvent('elaasar_client_type_changed', {
+          detail: { resultingType: 'مدين', clientId: client.id }
+        }));
+      } catch (e) {
+        console.error(e);
       }
 
       // Client Wallet Rules Check (60k daily, 200k monthly)
@@ -811,7 +857,7 @@ export function CashProvider({ children }) {
 
     const dateObj = date ? new Date(date) : new Date();
     const dateOnly = getLocalDateString(dateObj);
-    const timeStr = time || dateObj.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = time ? formatTimeArabic(time) : formatTimeArabic(dateObj);
 
     const newTx = {
       id: `tx-pay-${Date.now()}`,
@@ -841,6 +887,83 @@ export function CashProvider({ children }) {
 
     triggerConfetti();
     return newTx;
+  };
+
+  // Archive a completed customer accounting cycle or payment (أرشفة دورة حساب العميل أو الدفعة في الأرشيف)
+  const archiveClientCycle = ({
+    clientId,
+    clientName,
+    cycleType,
+    operationCategory = 'payment',
+    rechargeAmount = 0,
+    debtBefore = 0,
+    creditBefore = 0,
+    amountPaid = 0,
+    rawAmount = null,
+    paymentMethod = 'cash',
+    excessAmount = 0,
+    finalBalance = 0,
+    resultingType = 'عادي',
+    notes = '',
+    date = null,
+    time = null,
+    walletPhone = '',
+    walletLabel = '',
+    transactionId = null,
+    isClosedCycle = false
+  }) => {
+    const dateObj = date ? new Date(date) : new Date();
+    const dateOnly = getLocalDateString(dateObj);
+    const timeStr = time ? formatTimeArabic(time) : formatTimeArabic(dateObj);
+
+    const newArchive = {
+      id: `arch-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      transactionId: transactionId || null,
+      clientId,
+      clientName: clientName || 'عميل',
+      cycleType: cycleType || 'تسوية حساب',
+      operationCategory: operationCategory || (cycleType?.includes('شحن') ? 'recharge' : 'payment'),
+      debtBefore: Number(debtBefore) || 0,
+      creditBefore: Number(creditBefore) || 0,
+      amountPaid: Number(amountPaid) || 0,
+      rechargeAmount: Number(rechargeAmount) || 0,
+      rawAmount: rawAmount !== null ? Number(rawAmount) : Number(amountPaid) || 0,
+      paymentMethod: paymentMethod || 'cash',
+      excessAmount: Number(excessAmount) || 0,
+      finalBalance: Number(finalBalance) || 0,
+      resultingType: resultingType || 'عادي',
+      walletPhone: walletPhone || '',
+      walletLabel: walletLabel || '',
+      notes: notes.trim(),
+      date: dateObj.toISOString(),
+      dateOnly,
+      time: timeStr
+    };
+
+    setClientArchives(prev => [newArchive, ...prev]);
+
+    // Only mark past transactions as settled if this payment explicitly closes the accounting cycle
+    if (isClosedCycle || resultingType === 'عادي') {
+      const targetClient = clients.find(c => c.id === clientId);
+      const targetWalletIds = new Set((targetClient?.wallets || []).map(w => w.id));
+      setTransactions(prev => {
+        const next = prev.map(t => {
+          const isClientTx = t.clientId === clientId || t.customerId === clientId || targetWalletIds.has(t.walletId);
+          if (isClientTx && !t.isSettled) {
+            return { ...t, isSettled: true, settledCycleId: newArchive.id };
+          }
+          return t;
+        });
+        return next;
+      });
+    }
+
+    return newArchive;
+  };
+
+  const deleteClientArchive = (archiveId) => {
+    setClientArchives(prev => prev.filter(a => a.id !== archiveId));
+    showToast('تم حذف سجل الأرشيف بنجاح', 'info');
   };
 
   // Delete transaction (reverts the deduction from limit)
@@ -1127,6 +1250,7 @@ export function CashProvider({ children }) {
     setTransactions(demo.transactions);
     setInventory(demo.inventory);
     setShopWallets(demo.shopWallets || INITIAL_SHOP_WALLETS);
+    setClientArchives(demo.clientArchives || []);
     showToast('تم استعادة البيانات التجريبية الافتراضية بنجاح');
   };
 
@@ -1138,12 +1262,13 @@ export function CashProvider({ children }) {
     setInventory(empty.inventory);
     setTrash(empty.trash);
     setShopWallets([]);
+    setClientArchives([]);
     showToast('تم مسح جميع البيانات بنجاح', 'info');
   };
 
   // Export data
   const handleExport = () => {
-    storage.exportFullBackup(clients, transactions, inventory, trash, shopWallets);
+    storage.exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives);
     showToast('تم تصدير النسخة الاحتياطية بنجاح');
   };
 
@@ -1163,6 +1288,9 @@ export function CashProvider({ children }) {
     }
     if (backupData.trash && typeof backupData.trash === 'object') {
       setTrash(backupData.trash);
+    }
+    if (Array.isArray(backupData.clientArchives)) {
+      setClientArchives(backupData.clientArchives);
     }
     showToast('تم استيراد البيانات بنجاح');
     return true;
@@ -1391,6 +1519,9 @@ export function CashProvider({ children }) {
         addTransaction,
         addRecharge,
         addClientPayment,
+        archiveClientCycle,
+        deleteClientArchive,
+        clientArchives,
         deleteTransaction,
         updateTransaction,
         findWalletAndClient,

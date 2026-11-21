@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 3000,
     host: true, // Listen on all network addresses (0.0.0.0) so phone can connect over Wi-Fi
     open: false,
     proxy: {
