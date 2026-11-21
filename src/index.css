@@ -110,6 +110,65 @@
   }
 }
 
+/* Right Sheet Drawer Smooth Slide Transition */
+@keyframes rightSheetSlideIn {
+  0% {
+    transform: translateX(100%);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rightSheetSlideOut {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes rightSheetBackdropFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes rightSheetBackdropFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-right-sheet {
+  animation: rightSheetSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-right-sheet-out {
+  animation: rightSheetSlideOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-right-sheet-backdrop {
+  animation: rightSheetBackdropFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-right-sheet-backdrop-out {
+  animation: rightSheetBackdropFadeOut 0.25s ease-out forwards;
+}
+
 @keyframes backdropFade {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -149,7 +208,7 @@
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
   }
 }
 

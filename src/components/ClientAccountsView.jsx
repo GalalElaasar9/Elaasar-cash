@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useCash } from '../context/CashContext';
 import {
   formatCurrency,
@@ -41,6 +42,7 @@ import {
   Trash2,
   CheckCircle2,
   ArrowLeft,
+  ArrowUpDown,
   Archive,
   History,
   Receipt
@@ -57,7 +59,9 @@ export default function ClientAccountsView({ onNavigateToClients }) {
     showToast,
     askConfirm,
     clientArchives,
+    dismissedArchiveIds,
     deleteClientArchive,
+    clearClientArchive,
     archiveClientCycle
   } = useCash();
 
@@ -68,14 +72,39 @@ export default function ClientAccountsView({ onNavigateToClients }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterActiveOnly, setFilterActiveOnly] = useState(false);
   const [selectedClientForStatement, setSelectedClientForStatement] = useState(null);
+  const [statementModalTab, setStatementModalTab] = useState('steps'); // 'steps' (خطوات متسلسلة) | 'recharges' (شحنات) | 'payments' (مدفوعات)
+  const [statementModalPage, setStatementModalPage] = useState(1);
   const [copiedClientId, setCopiedClientId] = useState(null);
   const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
   const [archiveFilterType, setArchiveFilterType] = useState('all');
   const [selectedArchiveClient, setSelectedArchiveClient] = useState(null);
+  const [archiveModalTab, setArchiveModalTab] = useState('steps'); // 'steps' | 'recharges' | 'payments'
   const [archivePage, setArchivePage] = useState(1);
   const [accountsPage, setAccountsPage] = useState(1);
   const [archiveDetailPage, setArchiveDetailPage] = useState(1);
+  // Sort order inside client archive modal: 'asc' = متسلسل زمني (من الأقدم للأحدث - خطوات متتالية), 'desc' = الأحدث أولاً
+  const [archiveDetailSortOrder, setArchiveDetailSortOrder] = useState('asc');
+  const [closingStatementSheet, setClosingStatementSheet] = useState(false);
+  const [closingArchiveSheet, setClosingArchiveSheet] = useState(false);
   const ITEMS_PER_PAGE = 10;
+
+  const handleCloseStatementSheet = () => {
+    if (closingStatementSheet) return;
+    setClosingStatementSheet(true);
+    setTimeout(() => {
+      setSelectedClientForStatement(null);
+      setClosingStatementSheet(false);
+    }, 230);
+  };
+
+  const handleCloseArchiveSheet = () => {
+    if (closingArchiveSheet) return;
+    setClosingArchiveSheet(true);
+    setTimeout(() => {
+      setSelectedArchiveClient(null);
+      setClosingArchiveSheet(false);
+    }, 230);
+  };
 
   // Reset pagination when search / filter changes
   useEffect(() => {
@@ -160,8 +189,33 @@ export default function ClientAccountsView({ onNavigateToClients }) {
         }
       }
 
-      const hasExcessDebt = clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
-      const hasExcessCredit = clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0;
+      // Check if net credit remains after post-credit recharges and payouts (فقط للعميل الدائن)
+      let hasExcessCredit = false;
+      if (clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0 && clientExcessCreditDate) {
+        const cDate = new Date(clientExcessCreditDate).getTime();
+        const postRechargesSum = (transactions || []).filter(t =>
+          (walletIds.has(t.walletId) || t.customerId === client.id || t.clientId === client.id) &&
+          (t.type === 'recharge' || t.type === 'limit_reset') &&
+          !t.isSettled &&
+          new Date(t.date).getTime() > cDate
+        ).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const postPayoutsSum = (transactions || []).filter(t =>
+          (t.clientId === client.id || t.customerId === client.id) &&
+          t.type === 'client_payment' &&
+          t.isCreditorPayout &&
+          !t.isSettled &&
+          new Date(t.date).getTime() > cDate
+        ).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        if (clientExcessCredit - postPayoutsSum - postRechargesSum > 0) {
+          hasExcessCredit = true;
+        }
+      } else if (clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0) {
+        hasExcessCredit = true;
+      }
+
+      const hasExcessDebt = !hasExcessCredit && clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
 
       // Effective Cutoff Timestamp: excludes all transactions from prior settled/closed cycles
       let effectiveCutoff = settledTimestamp;
@@ -370,8 +424,8 @@ export default function ClientAccountsView({ onNavigateToClients }) {
           remainingDebt = 0;
           isSettled = false;
           effectiveClientType = 'دائن';
-          activeFinalAmount = clientExcessCredit;
-          effectiveBaseAmount = clientExcessCredit;
+          activeFinalAmount = 0; // العميل الدائن لا يُطلب منه دين
+          effectiveBaseAmount = 0;
           effectiveCommissionAmount = 0;
           effectiveFactorStr = '1';
           effectiveModeResult = 'none';
@@ -536,8 +590,26 @@ export default function ClientAccountsView({ onNavigateToClients }) {
 
   // Unified Archives: Combines explicit archive records + any client recharges / payments from transactions
   const allUnifiedArchives = useMemo(() => {
-    const list = [...(clientArchives || [])];
+    const list = [...(clientArchives || [])].filter(a =>
+      !dismissedArchiveIds?.has(a.id) &&
+      !dismissedArchiveIds?.has(a.transactionId)
+    );
     const archivedTxIds = new Set(list.map(a => a.transactionId || a.id).filter(Boolean));
+
+    // Signatures of already-archived operations to catch past/legacy records without transactionId
+    // Must be strictly matched by clientId + dateOnly + timeKey + category (recharge vs payment) + amount
+    // to never accidentally drop legitimate multiple recharges or confuse recharge with payment!
+    const existingSignatures = new Set();
+    for (const a of list) {
+      if (a.clientId && a.dateOnly) {
+        const amt = Number(a.amountPaid) || Number(a.rechargeAmount) || 0;
+        const timeKey = (a.time || '').trim();
+        const cat = a.operationCategory || (a.cycleType?.includes('شحن') ? 'recharge' : 'payment');
+        if (timeKey) {
+          existingSignatures.add(`${a.clientId}_${a.dateOnly}_${timeKey}_${cat}_${amt}`);
+        }
+      }
+    }
 
     const clientMap = new Map((clients || []).map(c => [c.id, c]));
     const walletToClientMap = new Map();
@@ -548,10 +620,26 @@ export default function ClientAccountsView({ onNavigateToClients }) {
     });
 
     for (const t of (transactions || [])) {
+      if (dismissedArchiveIds?.has(t.id) || dismissedArchiveIds?.has(`tx_${t.id}`)) continue;
       if (archivedTxIds.has(t.id)) continue;
       const mapping = walletToClientMap.get(t.walletId);
       const client = clientMap.get(t.customerId || t.clientId) || mapping?.client;
       if (!client) continue;
+
+      let clearedAt = 0;
+      try {
+        clearedAt = Number(localStorage.getItem(`elaasar_client_archive_cleared_${client.id}`)) || 0;
+      } catch {}
+      if (clearedAt && new Date(t.date).getTime() <= clearedAt) continue;
+
+      const numAmt = Number(t.amount) || 0;
+      const tTimeKey = formatTimeArabic(t.time || t.date);
+      const tCat = (t.type === 'recharge' || t.type === 'limit_reset') ? 'recharge' : 'payment';
+
+      // Check if this legacy transaction is already archived by precise signature
+      if (existingSignatures.has(`${client.id}_${t.dateOnly}_${tTimeKey}_${tCat}_${numAmt}`)) {
+        continue;
+      }
 
       const wallet = mapping?.wallet;
 
@@ -563,11 +651,11 @@ export default function ClientAccountsView({ onNavigateToClients }) {
           clientName: client.name,
           cycleType: 'شحن رصيد للخط',
           operationCategory: 'recharge',
-          rechargeAmount: Number(t.amount) || 0,
+          rechargeAmount: numAmt,
           amountPaid: 0,
           debtBefore: 0,
           excessAmount: 0,
-          finalBalance: Number(t.amount) || 0,
+          finalBalance: numAmt,
           resultingType: 'مدين',
           paymentMethod: 'recharge',
           walletPhone: t.walletPhone || wallet?.phoneNumber || '',
@@ -575,7 +663,7 @@ export default function ClientAccountsView({ onNavigateToClients }) {
           notes: t.notes || (t.walletPhone ? `شحن رصيد لرقم ${formatPhone(t.walletPhone)}` : 'شحن رصيد للخط'),
           date: t.date,
           dateOnly: t.dateOnly,
-          time: formatTimeArabic(t.time || t.date)
+          time: tTimeKey
         });
       } else if (t.type === 'client_payment') {
         list.push({
@@ -586,7 +674,7 @@ export default function ClientAccountsView({ onNavigateToClients }) {
           cycleType: t.isCreditorPayout ? 'صرف مستحقات دائن' : 'سداد دفعة من الحساب',
           operationCategory: t.isCreditorPayout ? 'payout' : 'payment',
           rechargeAmount: 0,
-          amountPaid: Number(t.amount) || 0,
+          amountPaid: numAmt,
           debtBefore: 0,
           excessAmount: 0,
           finalBalance: 0,
@@ -597,13 +685,26 @@ export default function ClientAccountsView({ onNavigateToClients }) {
           notes: t.notes || (t.isCreditorPayout ? 'صرف مستحقات للعميل الدائن' : 'سداد دفعة من الحساب'),
           date: t.date,
           dateOnly: t.dateOnly,
-          time: formatTimeArabic(t.time || t.date)
+          time: tTimeKey
         });
       }
     }
 
-    return list;
-  }, [clientArchives, transactions, clients]);
+    // Final deduplication pass to ensure NO duplicate entries exist, without dropping legitimate identical-amount operations
+    const seen = new Set();
+    const uniqueList = [];
+    for (const item of list) {
+      const key = item.transactionId || item.id;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        uniqueList.push(item);
+      } else if (!key) {
+        uniqueList.push(item);
+      }
+    }
+
+    return uniqueList;
+  }, [clientArchives, transactions, clients, dismissedArchiveIds]);
 
   // Filtered Archive records
   const filteredArchives = useMemo(() => {
@@ -685,9 +786,80 @@ export default function ClientAccountsView({ onNavigateToClients }) {
       }
     }
 
-    // Sort records inside each group by date descending
+    // For each client group:
+    // 1. Sort records chronologically (oldest to newest) to trace the exact sequence of steps
+    // 2. Compute stepNumber (1, 2, 3...) and cumulative running balance after each operation
     for (const group of map.values()) {
-      group.records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const getRecordTs = (item) => {
+        const raw = String(item.transactionId || item.id || '');
+        const m = raw.match(/\d{12,}/);
+        if (m) return Number(m[0]);
+        if (item.date) {
+          const t = new Date(item.date).getTime();
+          if (!isNaN(t) && t > 0) return t;
+        }
+        return 0;
+      };
+
+      group.records.sort((a, b) => {
+        const tsA = getRecordTs(a);
+        const tsB = getRecordTs(b);
+        if (tsA !== tsB) return tsA - tsB;
+        const isRechargeA = a.operationCategory === 'recharge' || a.cycleType?.includes('شحن');
+        const isRechargeB = b.operationCategory === 'recharge' || b.cycleType?.includes('شحن');
+        if (isRechargeA && !isRechargeB) return -1;
+        if (!isRechargeA && isRechargeB) return 1;
+        return 0;
+      });
+
+      let running = 0;
+      group.records = group.records.map((rec, idx) => {
+        const isRecharge = rec.operationCategory === 'recharge' || rec.cycleType?.includes('شحن');
+        const isPayout = rec.operationCategory === 'payout' || rec.cycleType?.includes('صرف مستحقات');
+        const isZeroSettlement = rec.resultingType === 'عادي' || rec.cycleType?.includes('تصفير') || rec.cycleType?.includes('كامل المديونية');
+        const rechargeAmt = Number(rec.rechargeAmount) || (isRecharge ? (Number(rec.amountPaid) || Number(rec.amount) || 0) : 0);
+        const paidAmt = !isRecharge ? (Number(rec.amountPaid) || Number(rec.amount) || 0) : 0;
+
+        const balanceBefore = running;
+        if (isRecharge) {
+          // Recharges always add to debt liability
+          running += rechargeAmt;
+        } else if (isPayout) {
+          // Creditor payout: credit is negative running balance, payout brings it towards 0
+          running += paidAmt;
+        } else {
+          // Debtor payment: reduces debt
+          running -= paidAmt;
+        }
+
+        if (isZeroSettlement) {
+          // Explicit zeroing out of debt/credit
+          running = 0;
+        } else if (rec.excessAmount > 0 && rec.resultingType === 'دائن') {
+          // Overpayment resulting in creditor surplus
+          running = -Number(rec.excessAmount);
+        } else if (!isRecharge && rec.finalBalance !== undefined && rec.finalBalance !== null && !isNaN(Number(rec.finalBalance))) {
+          // Enforce payment snapshot if finalBalance is provided on a payment record
+          if (rec.resultingType === 'مدين') {
+            running = Number(rec.finalBalance);
+          } else if (rec.resultingType === 'دائن') {
+            running = -Number(rec.finalBalance);
+          }
+        }
+
+        return {
+          ...rec,
+          stepNumber: idx + 1,
+          balanceBefore,
+          balanceAfter: running
+        };
+      });
+
+      // The latest record is the last step chronologically
+      if (group.records.length > 0) {
+        group.latestRecord = group.records[group.records.length - 1];
+        group.latestDate = group.latestRecord.date;
+      }
     }
 
     // Sort client groups by latest operation date descending
@@ -719,14 +891,180 @@ export default function ClientAccountsView({ onNavigateToClients }) {
     return filteredAccounts.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredAccounts, safeAccountsPage]);
 
-  // Detail Modal Pagination
-  const selectedClientRecords = activeSelectedArchiveGroup?.records || [];
-  const totalDetailPages = Math.ceil(selectedClientRecords.length / ITEMS_PER_PAGE) || 1;
-  const safeDetailPage = Math.min(Math.max(1, archiveDetailPage), totalDetailPages);
-  const paginatedDetailRecords = useMemo(() => {
-    const start = (safeDetailPage - 1) * ITEMS_PER_PAGE;
-    return selectedClientRecords.slice(start, start + ITEMS_PER_PAGE);
-  }, [selectedClientRecords, safeDetailPage]);
+  // Detail Modal Lists & Pagination for Archive Client
+  const archiveGroupRecharges = useMemo(() => {
+    if (!activeSelectedArchiveGroup) return [];
+    return (activeSelectedArchiveGroup.records || []).filter(
+      r => r.operationCategory === 'recharge' || r.cycleType?.includes('شحن')
+    );
+  }, [activeSelectedArchiveGroup]);
+
+  const archiveGroupPayments = useMemo(() => {
+    if (!activeSelectedArchiveGroup) return [];
+    return (activeSelectedArchiveGroup.records || []).filter(
+      r => r.operationCategory !== 'recharge' && !r.cycleType?.includes('شحن')
+    );
+  }, [activeSelectedArchiveGroup]);
+
+  const activeArchiveModalList = useMemo(() => {
+    if (!activeSelectedArchiveGroup) return [];
+    if (archiveModalTab === 'recharges') return archiveGroupRecharges;
+    if (archiveModalTab === 'payments') return archiveGroupPayments;
+    // 'steps': sequence of operations
+    const raw = activeSelectedArchiveGroup.records || [];
+    if (archiveDetailSortOrder === 'desc') {
+      return [...raw].sort((a, b) => b.stepNumber - a.stepNumber);
+    }
+    return [...raw].sort((a, b) => a.stepNumber - b.stepNumber);
+  }, [activeSelectedArchiveGroup, archiveModalTab, archiveGroupRecharges, archiveGroupPayments, archiveDetailSortOrder]);
+
+  const totalArchiveModalPages = Math.ceil(activeArchiveModalList.length / ITEMS_PER_PAGE) || 1;
+  const safeArchiveModalPage = Math.min(Math.max(1, archiveDetailPage), totalArchiveModalPages);
+  const paginatedArchiveModalList = useMemo(() => {
+    const start = (safeArchiveModalPage - 1) * ITEMS_PER_PAGE;
+    return activeArchiveModalList.slice(start, start + ITEMS_PER_PAGE);
+  }, [activeArchiveModalList, safeArchiveModalPage]);
+
+  // Comprehensive statement data for selectedClientForStatement:
+  // Combines ALL recharges, ALL payments, and chronological steps so NO movements are omitted!
+  const statementClientData = useMemo(() => {
+    if (!selectedClientForStatement) return null;
+    const client = selectedClientForStatement.client;
+    if (!client) return null;
+    const cId = client.id;
+    const walletIds = new Set((client.wallets || []).map(w => w.id));
+
+    // 1. All Recharges
+    const recharges = [];
+    const seenRechargeKeys = new Set();
+
+    for (const t of (transactions || [])) {
+      const isClientWallet = walletIds.has(t.walletId);
+      const isClientDirect = (t.customerId === cId || t.clientId === cId);
+      if ((isClientWallet || isClientDirect) && (t.type === 'recharge' || t.type === 'limit_reset')) {
+        const amt = Number(t.amount) || 0;
+        const key = t.id || `${t.dateOnly}_${t.walletPhone}_${amt}`;
+        if (!seenRechargeKeys.has(key)) {
+          seenRechargeKeys.add(key);
+          recharges.push({
+            id: t.id,
+            transactionId: t.id,
+            amount: amt,
+            walletPhone: t.walletPhone || '',
+            walletLabel: t.walletLabel || '',
+            notes: t.notes || (t.walletPhone ? `شحن رصيد لرقم ${formatPhone(t.walletPhone)}` : 'شحن رصيد للخط'),
+            date: t.date,
+            dateOnly: t.dateOnly,
+            time: formatTimeArabic(t.time || t.date),
+            isSettled: Boolean(t.isSettled)
+          });
+        }
+      }
+    }
+
+    for (const a of (clientArchives || [])) {
+      if (a.clientId === cId && (a.operationCategory === 'recharge' || a.cycleType?.includes('شحن'))) {
+        const amt = Number(a.rechargeAmount) || Number(a.amountPaid) || 0;
+        const key = a.transactionId || a.id || `${a.dateOnly}_${a.walletPhone}_${amt}`;
+        if (!seenRechargeKeys.has(key)) {
+          seenRechargeKeys.add(key);
+          recharges.push({
+            id: a.id,
+            transactionId: a.transactionId || a.id,
+            amount: amt,
+            walletPhone: a.walletPhone || '',
+            walletLabel: a.walletLabel || '',
+            notes: a.notes || 'شحن رصيد للخط',
+            date: a.date,
+            dateOnly: a.dateOnly,
+            time: a.time || formatTimeArabic(a.date),
+            isSettled: true
+          });
+        }
+      }
+    }
+
+    recharges.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // 2. All Payments
+    const payments = [];
+    const seenPaymentKeys = new Set();
+
+    for (const t of (transactions || [])) {
+      if ((t.customerId === cId || t.clientId === cId) && t.type === 'client_payment') {
+        const amt = Number(t.amount) || 0;
+        const key = t.id || `${t.dateOnly}_${t.time}_${amt}`;
+        if (!seenPaymentKeys.has(key)) {
+          seenPaymentKeys.add(key);
+          payments.push({
+            id: t.id,
+            transactionId: t.id,
+            amount: amt,
+            paymentMethod: t.paymentMethod || 'cash',
+            isCreditorPayout: Boolean(t.isCreditorPayout),
+            notes: t.notes || (t.isCreditorPayout ? 'صرف مستحقات للعميل الدائن' : 'سداد دفعة من الحساب'),
+            date: t.date,
+            dateOnly: t.dateOnly,
+            time: formatTimeArabic(t.time || t.date)
+          });
+        }
+      }
+    }
+
+    for (const a of (clientArchives || [])) {
+      const isPaymentArch = a.operationCategory === 'payment' || a.operationCategory === 'payout' || a.cycleType?.includes('سداد') || a.cycleType?.includes('صرف');
+      if (a.clientId === cId && isPaymentArch) {
+        const amt = Number(a.amountPaid) || 0;
+        const key = a.transactionId || a.id || `${a.dateOnly}_${a.time}_${amt}`;
+        if (!seenPaymentKeys.has(key)) {
+          seenPaymentKeys.add(key);
+          payments.push({
+            id: a.id,
+            transactionId: a.transactionId || a.id,
+            amount: amt,
+            paymentMethod: a.paymentMethod || 'cash',
+            isCreditorPayout: a.operationCategory === 'payout' || a.cycleType?.includes('دائن') || a.cycleType?.includes('صرف'),
+            notes: a.notes || a.cycleType || 'سداد دفعة من الحساب',
+            date: a.date,
+            dateOnly: a.dateOnly,
+            time: a.time || formatTimeArabic(a.date)
+          });
+        }
+      }
+    }
+
+    payments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // 3. Chronological steps from groupedArchives
+    const group = groupedArchives.find(g => (g.clientId || g.clientName) === (cId || client.name));
+    const chronologicalSteps = group?.records || [];
+
+    const totalRechargesAmount = recharges.reduce((sum, r) => sum + r.amount, 0);
+    const totalPaymentsAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+
+    return {
+      recharges,
+      payments,
+      chronologicalSteps,
+      totalRechargesAmount,
+      totalPaymentsAmount
+    };
+  }, [selectedClientForStatement, transactions, clientArchives, groupedArchives]);
+
+  // Selected Client for Statement Modal Pagination & Active Tab List
+  const activeStatementList = useMemo(() => {
+    if (!statementClientData) return [];
+    if (statementModalTab === 'recharges') return statementClientData.recharges || [];
+    if (statementModalTab === 'payments') return statementClientData.payments || [];
+    return statementClientData.chronologicalSteps || [];
+  }, [statementClientData, statementModalTab]);
+
+  const totalStatementModalPages = Math.ceil(activeStatementList.length / ITEMS_PER_PAGE) || 1;
+  const safeStatementModalPage = Math.min(Math.max(1, statementModalPage), totalStatementModalPages);
+  const paginatedStatementList = useMemo(() => {
+    const start = (safeStatementModalPage - 1) * ITEMS_PER_PAGE;
+    return activeStatementList.slice(start, start + ITEMS_PER_PAGE);
+  }, [activeStatementList, safeStatementModalPage]);
 
   // Quick action: Open payment modal for a client (سداد لمدين أو صرف مستحقات لدائن)
   const handleOpenPayment = (item) => {
@@ -831,18 +1169,14 @@ export default function ClientAccountsView({ onNavigateToClients }) {
     const confirmed = await askConfirm({
       title: 'حذف أرشيف العميل بالكامل',
       message: `هل أنت متأكد من حذف كافة سجلات الأرشيف (${group.records.length} عملية) للعميل "${group.clientName}"؟`,
-      details: 'سيتم مسح كافة عمليات الشحن والسداد نهائياً من الأرشيف.',
+      details: 'سيتم مسح سجلات الأرشيف فقط نهائياً، مع الحفاظ التام على المبيعات وحركات شحن الخط دون أي تغيير.',
       type: 'warning',
       confirmText: 'نعم، احذف كافة السجلات',
       cancelText: 'إلغاء'
     });
     if (confirmed) {
-      group.records.forEach(r => {
-        if (r.transactionId) {
-          deleteTransaction(r.transactionId);
-        }
-        deleteClientArchive(r.id);
-      });
+      // مسح سجلات الأرشيف فقط دون حذف حركات الشحن الأصلية من على الخطوط أو المساس بالمبيعات
+      clearClientArchive(group.clientId, group.clientName, group.records);
       if (selectedArchiveClient && (selectedArchiveClient.clientId || selectedArchiveClient.clientName) === (group.clientId || group.clientName)) {
         setSelectedArchiveClient(null);
       }
@@ -854,17 +1188,15 @@ export default function ClientAccountsView({ onNavigateToClients }) {
     const isRecharge = arch.operationCategory === 'recharge' || arch.cycleType?.includes('شحن');
     const confirmed = await askConfirm({
       title: isRecharge ? 'حذف حركة الشحن من الأرشيف' : 'حذف سجل الأرشيف',
-      message: `هل أنت متأكد من رغبتك في حذف سجل ${isRecharge ? 'شحن رصيد' : 'تسوية'} العميل "${arch.clientName}"؟`,
-      details: 'سيتم مسح هذا السجل نهائياً من أرشيف الحسابات.',
+      message: `هل أنت متأكد من رغبتك في حذف سجل ${isRecharge ? 'شحن رصيد' : 'تسوية'} العميل "${arch.clientName}" من الأرشيف؟`,
+      details: 'سيتم مسح هذا السجل من الأرشيف فقط، ولن تتأثر المبيعات ولا العمليات المسجلة على الخط نهائياً.',
       type: 'warning',
-      confirmText: 'نعم، احذف السجل',
+      confirmText: 'نعم، احذف من الأرشيف',
       cancelText: 'إلغاء'
     });
     if (confirmed) {
-      if (arch.transactionId) {
-        deleteTransaction(arch.transactionId);
-      }
-      deleteClientArchive(arch.id);
+      // مسح سجل الأرشيف فقط دون حذف حركة الشحن من على المحفظة أو المبيعات
+      deleteClientArchive(arch.id, arch.transactionId);
     }
   };
 
@@ -1476,7 +1808,12 @@ ${balanceLine}
         </div>
 
         <div className="text-xs text-slate-500 dark:text-slate-400 font-bold">
-          {accountTypeTab === 'مدين' ? (
+          {accountTypeTab === 'أرشيف' ? (
+            <span className="text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+              إجمالي عمليات الأرشيف: <strong className="font-mono text-base font-black mr-1">{allUnifiedArchives?.length || 0} عملية</strong>
+            </span>
+          ) : accountTypeTab === 'مدين' ? (
             <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
               إجمالي مستحقات كشف المدينين: <strong className="font-mono text-base font-black mr-1">{formatCurrency(debtorTotalFinal)}</strong>
@@ -1486,15 +1823,10 @@ ${balanceLine}
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               إجمالي أرصدة كشف الدائنين: <strong className="font-mono text-base font-black mr-1">{formatCurrency(creditorTotalFinal)}</strong>
             </span>
-          ) : accountTypeTab === 'عادي' ? (
+          ) : (
             <span className="text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
               عملاء خالصين (مسدد): <strong className="font-mono text-base font-black mr-1">{normalClients.length} عميل</strong>
-            </span>
-          ) : (
-            <span className="text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
-              إجمالي عمليات الأرشيف: <strong className="font-mono text-base font-black mr-1">{allUnifiedArchives?.length || 0} عملية</strong>
             </span>
           )}
         </div>
@@ -2184,296 +2516,1023 @@ ${balanceLine}
       </div>
       )}
 
-      {/* 5. MODAL: Detailed Account Statement for Single Client (كشف حساب تفصيلي) */}
-      {selectedClientForStatement && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
-            
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
-                  <FileSpreadsheet className="w-5 h-5" />
+      {/* 5. Right Sheet Drawer: Detailed Account Statement for Single Client */}
+      {selectedClientForStatement && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-hidden" dir="rtl">
+          {/* Backdrop Overlay */}
+          <div 
+            className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity ${
+              closingStatementSheet ? 'animate-right-sheet-backdrop-out' : 'animate-right-sheet-backdrop'
+            }`}
+            onClick={handleCloseStatementSheet}
+          />
+
+          <div className={`fixed inset-y-0 right-0 z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
+            closingStatementSheet ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          }`}>
+              
+              {/* Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 shrink-0 flex items-center justify-between bg-white dark:bg-slate-900">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center font-bold shadow-xs">
+                    <FileSpreadsheet className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                        كشف حساب العميل: {selectedClientForStatement.client.name}
+                      </h3>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
+                        selectedClientForStatement.creditAmount > 0
+                          ? 'bg-teal-100 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300'
+                          : selectedClientForStatement.remainingDebt > 0
+                          ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300'
+                          : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300'
+                      }`}>
+                        {selectedClientForStatement.creditAmount > 0
+                          ? `دائن (+${formatCurrency(selectedClientForStatement.creditAmount)})`
+                          : selectedClientForStatement.remainingDebt > 0
+                          ? `مدين (${formatCurrency(selectedClientForStatement.remainingDebt)})`
+                          : 'خالص بالكامل (0 ج.م)'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      كشف حساب منظم: تسلسل العمليات زمنيًا، سجل الشحنات، وسجل السداد
+                    </p>
+                  </div>
                 </div>
+
+                <div className="flex items-center gap-2">
+                  {selectedClientForStatement.remainingDebt > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetClient = selectedClientForStatement;
+                        handleCloseStatementSheet();
+                        setTimeout(() => handleOpenPayment(targetClient), 240);
+                      }}
+                      className="btn-interactive hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs"
+                      title="تسجيل سداد دفعة لهذا العميل"
+                    >
+                      <Wallet className="w-3.5 h-3.5" />
+                      <span>تسجيل سداد</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={handleCloseStatementSheet}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    title="إغلاق اللوحة الجانبية"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Sheet Body */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+                {/* Financial Summary: 3 Clean KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
+              {/* 1. Total Recharges */}
+              <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between">
                 <div>
-                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                    كشف حساب العميل: {selectedClientForStatement.client.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    تفاصيل شحنات الرصيد الآجلة وحساب العمولات
-                  </p>
+                  <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 block mb-0.5">إجمالي الشحنات</span>
+                  <strong className="font-mono text-lg font-black text-blue-700 dark:text-blue-300" dir="ltr">
+                    +{formatCurrency(statementClientData?.totalRechargesAmount || selectedClientForStatement.baseAmount)}
+                  </strong>
                 </div>
-              </div>
-
-              <button
-                onClick={() => setSelectedClientForStatement(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Financial Summary Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center shrink-0">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <span className="text-[11px] text-slate-500 block mb-0.5">قبل العمولة</span>
-                <strong className="font-mono text-base text-blue-600 dark:text-blue-400">
-                  {formatCurrency(selectedClientForStatement.baseAmount)}
-                </strong>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <span className="text-[11px] text-slate-500 block mb-0.5">
-                  المطلوب بعد العمولة
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+                  {statementClientData?.recharges?.length || 0} شحنة
                 </span>
-                <strong className="font-mono text-base text-slate-900 dark:text-white">
-                  {formatCurrency(selectedClientForStatement.finalAmount)}
-                </strong>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
-                <span className="text-[11px] text-emerald-700 dark:text-emerald-300 block mb-0.5">إجمالي المسدد</span>
-                <strong className="font-mono text-base text-emerald-600 dark:text-emerald-400 font-black">
-                  {formatCurrency(selectedClientForStatement.paidAmount)}
-                </strong>
+              {/* 2. Total Payments */}
+              <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 block mb-0.5">إجمالي المسدد</span>
+                  <strong className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-300" dir="ltr">
+                    -{formatCurrency(statementClientData?.totalPaymentsAmount || selectedClientForStatement.paidAmount)}
+                  </strong>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                  {statementClientData?.payments?.length || 0} سداد
+                </span>
               </div>
 
-              <div className={`p-3 rounded-xl border ${
+              {/* 3. Final Running Balance */}
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${
                 selectedClientForStatement.creditAmount > 0
-                  ? 'bg-teal-50 dark:bg-teal-950/50 border-teal-300 text-teal-800 dark:text-teal-200'
+                  ? 'bg-teal-50/80 dark:bg-teal-950/40 border-teal-300 text-teal-800 dark:text-teal-200'
                   : selectedClientForStatement.remainingDebt > 0
-                  ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 text-rose-800 dark:text-rose-200'
-                  : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 text-emerald-800 dark:text-emerald-200'
+                  ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-300 text-rose-800 dark:text-rose-200'
+                  : 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-300 text-emerald-800 dark:text-emerald-200'
               }`}>
-                <span className="text-[11px] block mb-0.5 font-bold">
-                  {selectedClientForStatement.creditAmount > 0
-                    ? 'له رصيد دائن'
-                    : selectedClientForStatement.remainingDebt > 0
-                    ? 'الصافي المتبقي مطلوب'
-                    : 'الحساب'}
+                <div>
+                  <span className="text-[11px] font-bold block mb-0.5">
+                    {selectedClientForStatement.creditAmount > 0
+                      ? 'رصيد دائن للعميل'
+                      : selectedClientForStatement.remainingDebt > 0
+                      ? 'الصافي المتبقي مطلوب'
+                      : 'حالة الحساب'}
+                  </span>
+                  <strong className="font-mono text-lg font-black" dir="ltr">
+                    {selectedClientForStatement.creditAmount > 0
+                      ? `+${formatCurrency(selectedClientForStatement.creditAmount)}`
+                      : selectedClientForStatement.remainingDebt > 0
+                      ? formatCurrency(selectedClientForStatement.remainingDebt)
+                      : 'خالص (0 ج.م)'}
+                  </strong>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 shadow-2xs">
+                  {selectedClientForStatement.creditAmount > 0 ? 'له رصيد' : selectedClientForStatement.remainingDebt > 0 ? 'مطلوب سداده' : 'مسدد بالكامل'}
                 </span>
-                <strong className="font-mono text-base font-black">
-                  {selectedClientForStatement.creditAmount > 0
-                    ? formatCurrency(selectedClientForStatement.creditAmount)
-                    : selectedClientForStatement.remainingDebt > 0
-                    ? formatCurrency(selectedClientForStatement.remainingDebt)
-                    : 'خالص (0 ج.م)'}
-                </strong>
               </div>
             </div>
 
-            {/* Quick Action: Register Payment from modal */}
-            <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-200/90 dark:border-emerald-800/80 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
-                  <Wallet className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-xs font-black text-slate-900 dark:text-white block">
-                    تسجيل سداد دفعة لهذا العميل
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    تسجيل المبلغ مع التاريخ والوقت بالدقيقة والتحويل التلقائي لدائن في حال الزيادة
-                  </span>
-                </div>
-              </div>
+            {/* Sub-tab Navigation: 3 Distinct, Mutually-Exclusive Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-bold shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatementModalTab('steps');
+                  setStatementModalPage(1);
+                }}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  statementModalTab === 'steps'
+                    ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-sm border border-purple-200/80 dark:border-purple-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>تسلسل وترتيب العمليات (خطوة بخطوة)</span>
+                <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                  {statementClientData?.chronologicalSteps?.length || 0}
+                </span>
+              </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  const targetClient = selectedClientForStatement;
-                  setSelectedClientForStatement(null);
-                  handleOpenPayment(targetClient);
+                  setStatementModalTab('recharges');
+                  setStatementModalPage(1);
                 }}
-                className="btn-interactive flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-sm"
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  statementModalTab === 'recharges'
+                    ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm border border-blue-200/80 dark:border-blue-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
               >
-                <Wallet className="w-3.5 h-3.5" />
-                <span>تسجيل سداد</span>
+                <ArrowDownToLine className="w-3.5 h-3.5" />
+                <span>شحنات الخطوط</span>
+                <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                  {statementClientData?.recharges?.length || 0}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStatementModalTab('payments');
+                  setStatementModalPage(1);
+                }}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  statementModalTab === 'payments'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-sm border border-emerald-200/80 dark:border-emerald-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>سجل المدفوعات والسداد</span>
+                <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                  {statementClientData?.payments?.length || 0}
+                </span>
               </button>
             </div>
 
-            {/* Scrollable Container with Payments Log & Recharges Log */}
-            <div className="overflow-y-auto flex-1 pr-1 space-y-4 max-h-72">
+            {/* Modal Body: Active Tab Content ONLY (No Duplication!) */}
+            <div className="overflow-y-auto flex-1 min-h-[220px] max-h-[50vh] border border-slate-200 dark:border-slate-800 rounded-2xl">
               
-              {/* Section 1: Payments Log (سجل السداد والتحصيلات) */}
-              <div>
-                <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-black">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>سجل المدفوعات والتحصيلات ({selectedClientForStatement.payments?.length || 0} حركة):</span>
-                  </span>
-                  <span className="text-[11px] text-emerald-600 font-mono font-black">
-                    إجمالي المسدد: {formatCurrency(selectedClientForStatement.paidAmount)}
-                  </span>
-                </div>
-
-                {(!selectedClientForStatement.payments || selectedClientForStatement.payments.length === 0) ? (
-                  <div className="p-3 text-center text-xs text-slate-400 border border-dashed rounded-xl bg-slate-50/50 dark:bg-slate-800/30">
-                    لم يتم تسجيل أي مدفوعات نقدية لهذا العميل حتى الآن.
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {selectedClientForStatement.payments.map((p) => (
-                      <div
-                        key={p.id}
-                        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
-                          p.isCreditorPayout
-                            ? 'bg-blue-50/60 dark:bg-blue-950/30 border-blue-200/80 dark:border-blue-800/60'
-                            : 'bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-200/80 dark:border-emerald-800/60'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className={`font-black font-mono text-sm ${
-                              p.isCreditorPayout ? 'text-blue-700 dark:text-blue-400' : 'text-emerald-700 dark:text-emerald-400'
-                            }`} dir="ltr">
-                              {p.isCreditorPayout ? '+ ' : '- '}{formatCurrency(p.amount)}
-                            </span>
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                              p.isCreditorPayout
-                                ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-750'
-                                : 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700'
-                            }`}>
-                              {p.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من العميل'} ({p.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : p.paymentMethod === 'instapay' ? 'إنستاباي' : p.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقدي'})
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                            {p.notes || (p.isCreditorPayout ? 'صرف وسداد مستحقات للعميل الدائن' : 'سداد دفعة من الحساب')}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-left">
-                          <div className="text-[11px] text-slate-500">
-                            <div>{formatDateArabic(p.date)}</div>
-                            <div className="text-[10px] text-emerald-600 font-mono font-bold flex items-center gap-1 justify-end">
-                              <Clock className="w-3 h-3" />
-                              <span>{formatTimeArabic(p.time || p.date)}</span>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeletePayment(p)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                            title="حذف حركة السداد"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 2: Recharges Log (سجل الشحنات المدخلة للخطوط) */}
-              <div>
-                <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-blue-700 dark:text-blue-400 font-black">
-                    <ArrowDownToLine className="w-3.5 h-3.5" />
-                    <span>سجل شحنات الخطوط ({selectedClientForStatement.transactions.length} حركة):</span>
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    فترة: {timeRange === 'today' ? 'اليوم' : timeRange === 'month' ? 'هذا الشهر' : 'الكل'}
-                  </span>
-                </div>
-
-                {selectedClientForStatement.transactions.length === 0 ? (
-                  <div className="p-3 text-center text-xs text-slate-400 border border-dashed rounded-xl bg-slate-50/50 dark:bg-slate-800/30">
-                    لا توجد عمليات شحن مسجلة لهذا العميل في الفترة المحددة.
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {selectedClientForStatement.transactions.map((tx) => (
-                      <div
-                        key={tx.id}
-                        className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700 flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <div className="font-black text-blue-600 dark:text-blue-400 font-mono text-sm" dir="ltr">
-                            + {formatCurrency(tx.amount)}
-                          </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-2">
-                            <span dir="ltr" className="font-mono font-bold">{formatPhone(tx.walletPhone)}</span>
-                            <span>•</span>
-                            <span>{tx.notes || 'شحن رصيد'}</span>
-                          </div>
-                        </div>
-
-                        <div className="text-left text-[11px] text-slate-400">
-                          <div>{formatDateArabic(tx.date)}</div>
-                          <div className="text-[10px]">{formatTimeArabic(tx.date)}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 3: Client's Historical Settlements Archive */}
-              {(() => {
-                const clientArchs = (clientArchives || []).filter(a => a.clientId === selectedClientForStatement.client.id);
-                if (clientArchs.length === 0) return null;
-                return (
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-purple-700 dark:text-purple-400 font-black">
-                        <Archive className="w-3.5 h-3.5" />
-                        <span>أرشيف الدورات والتسويات السابقة المسواة ({clientArchs.length} تسوية):</span>
-                      </span>
+              {/* TAB 1: Sequential Steps Ledger (تسلسل وترتيب العمليات خطوة بخطوة) */}
+              {statementModalTab === 'steps' && (
+                <div>
+                  {(!activeStatementList || activeStatementList.length === 0) ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      لا توجد خطوات مسجلة لهذا العميل حتى الآن.
                     </div>
+                  ) : (
+                    <table className="w-full text-right text-xs border-collapse">
+                      <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="py-2.5 px-3 w-16 text-center">الخطوة</th>
+                          <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                          <th className="py-2.5 px-3 min-w-[140px]">نوع العملية</th>
+                          <th className="py-2.5 px-3 min-w-[120px] text-blue-700 dark:text-blue-300">المبلغ المشحون (+)</th>
+                          <th className="py-2.5 px-3 min-w-[120px] text-emerald-700 dark:text-emerald-300">المبلغ المسدد (-)</th>
+                          <th className="py-2.5 px-3 min-w-[160px] text-slate-900 dark:text-white bg-slate-200/50 dark:bg-slate-750 font-black">الرصيد بعد الحركة (المتبقي)</th>
+                          <th className="py-2.5 px-3 min-w-[180px]">البيان / طريقة الدفع / الملاحظات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {paginatedStatementList.map((step, idx) => {
+                          const isRec = step.operationCategory === 'recharge' || step.cycleType?.includes('شحن');
+                          const rechargeAmt = isRec ? (Number(step.rechargeAmount) || Number(step.amountPaid) || 0) : 0;
+                          const paidAmt = !isRec ? (Number(step.amountPaid) || 0) : 0;
+                          const isNormal = step.balanceAfter === 0;
+                          const isDebtor = step.balanceAfter > 0;
 
-                    <div className="space-y-1.5">
-                      {clientArchs.map((arch) => (
-                        <div
-                          key={arch.id}
-                          className="p-2.5 rounded-xl bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200/80 dark:border-purple-800/60 flex items-center justify-between text-xs"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-black text-purple-700 dark:text-purple-300 font-mono text-sm" dir="ltr">
-                                {formatCurrency(arch.amountPaid)}
-                              </span>
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white dark:bg-slate-800 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-700">
-                                {arch.cycleType}
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                              {arch.notes || 'تسوية حساب'}
-                            </div>
-                          </div>
+                          return (
+                            <tr key={step.id || idx} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                              <td className="py-2.5 px-3 text-center">
+                                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-mono font-black bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                  #{step.stepNumber || idx + 1}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-slate-900 dark:text-white">{formatDateArabic(step.date)}</div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-purple-500" />
+                                  <span>{step.time || formatTimeArabic(step.date)}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 font-bold">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold ${
+                                  isRec
+                                    ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                    : step.cycleType?.includes('فائض')
+                                    ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                                    : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                }`}>
+                                  {isRec ? <ArrowDownToLine className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+                                  <span>{step.cycleType || (isRec ? 'شحن رصيد للخط' : 'سداد دفعة من الحساب')}</span>
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold">
+                                {rechargeAmt > 0 ? (
+                                  <span className="text-blue-700 dark:text-blue-300 font-black text-xs sm:text-sm" dir="ltr">
+                                    +{formatCurrency(rechargeAmt)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 dark:text-slate-600">-</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold">
+                                {paidAmt > 0 ? (
+                                  <span className="text-emerald-700 dark:text-emerald-300 font-black text-xs sm:text-sm" dir="ltr">
+                                    -{formatCurrency(paidAmt)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 dark:text-slate-600">-</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold bg-slate-50/50 dark:bg-slate-800/30">
+                                {isNormal ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                    <Check className="w-3 h-3" />
+                                    <span>خالص (0 ج.م)</span>
+                                  </span>
+                                ) : isDebtor ? (
+                                  <div>
+                                    <div className="font-mono text-xs sm:text-sm font-black text-rose-700 dark:text-rose-300" dir="ltr">
+                                      {formatCurrency(step.balanceAfter)}
+                                    </div>
+                                    <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold block mt-0.5">
+                                      متبقي مطلوب (مدين)
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <div className="font-mono text-xs sm:text-sm font-black text-teal-700 dark:text-teal-300" dir="ltr">
+                                      +{formatCurrency(Math.abs(step.balanceAfter))}
+                                    </div>
+                                    <span className="text-[10px] text-teal-600 dark:text-teal-400 font-bold block mt-0.5">
+                                      رصيد دائن للعميل
+                                    </span>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300 text-[11px] max-w-xs truncate" title={step.notes}>
+                                {step.notes || (step.walletPhone ? `شحن لرقم ${formatPhone(step.walletPhone)}` : (step.paymentMethod ? `دفع: ${step.paymentMethod}` : '-'))}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
 
-                          <div className="text-left text-[11px] text-slate-400">
-                            <div>{formatDateArabic(arch.date)}</div>
-                            <div className="text-[10px] text-purple-600 font-mono font-bold flex items-center gap-1 justify-end">
-                              <Clock className="w-3 h-3" />
-                              <span>{arch.time || formatTimeArabic(arch.date)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+              {/* TAB 2: Recharges Log ONLY */}
+              {statementModalTab === 'recharges' && (
+                <div>
+                  {(!activeStatementList || activeStatementList.length === 0) ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      لا توجد عمليات شحن مسجلة لهذا العميل.
                     </div>
-                  </div>
-                );
-              })()}
+                  ) : (
+                    <table className="w-full text-right text-xs border-collapse">
+                      <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="py-2.5 px-3 w-12 text-center">#</th>
+                          <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                          <th className="py-2.5 px-3 min-w-[170px]">رقم الخط / المحفظة</th>
+                          <th className="py-2.5 px-3 min-w-[130px] text-blue-700 dark:text-blue-300">مبلغ الشحن (+)</th>
+                          <th className="py-2.5 px-3 min-w-[110px]">حالة الدورة</th>
+                          <th className="py-2.5 px-3 min-w-[180px]">البيان / الملاحظات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {paginatedStatementList.map((tx, idx) => {
+                          const rowNum = (safeStatementModalPage - 1) * ITEMS_PER_PAGE + idx + 1;
+                          return (
+                            <tr key={tx.id || idx} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                              <td className="py-2.5 px-3 text-center font-mono text-slate-400">{rowNum}</td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-slate-900 dark:text-white">{formatDateArabic(tx.date)}</div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-blue-500" />
+                                  <span>{tx.time || formatTimeArabic(tx.date)}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-mono font-bold text-slate-900 dark:text-white flex items-center gap-1.5" dir="ltr">
+                                  <Smartphone className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                  <span>{tx.walletPhone ? formatPhone(tx.walletPhone) : 'خط العميل'}</span>
+                                </div>
+                                {tx.walletLabel && (
+                                  <span className="text-[10px] text-slate-400 block mt-0.5">{tx.walletLabel}</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-black text-blue-700 dark:text-blue-300 text-sm" dir="ltr">
+                                +{formatCurrency(tx.amount)}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  tx.isSettled
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                    : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300'
+                                }`}>
+                                  {tx.isSettled ? 'تمت تسويته' : 'دورة نشطة'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={tx.notes}>
+                                {tx.notes || 'شحن رصيد للخط'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: Payments Log ONLY */}
+              {statementModalTab === 'payments' && (
+                <div>
+                  {(!activeStatementList || activeStatementList.length === 0) ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      لم يتم تسجيل أي مدفوعات نقدية لهذا العميل حتى الآن.
+                    </div>
+                  ) : (
+                    <table className="w-full text-right text-xs border-collapse">
+                      <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="py-2.5 px-3 w-12 text-center">#</th>
+                          <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                          <th className="py-2.5 px-3 min-w-[130px]">طريقة الدفع</th>
+                          <th className="py-2.5 px-3 min-w-[130px] text-emerald-700 dark:text-emerald-300">المبلغ المسدد (-)</th>
+                          <th className="py-2.5 px-3 min-w-[150px]">نوع السداد / البيان</th>
+                          <th className="py-2.5 px-3 min-w-[180px]">الملاحظات</th>
+                          <th className="py-2.5 px-3 w-12 text-center">حذف</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {paginatedStatementList.map((p, idx) => {
+                          const rowNum = (safeStatementModalPage - 1) * ITEMS_PER_PAGE + idx + 1;
+                          return (
+                            <tr key={p.id || idx} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                              <td className="py-2.5 px-3 text-center font-mono text-slate-400">{rowNum}</td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-slate-900 dark:text-white">{formatDateArabic(p.date)}</div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-emerald-500" />
+                                  <span>{p.time || formatTimeArabic(p.date)}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 font-bold text-slate-700 dark:text-slate-300">
+                                {p.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : p.paymentMethod === 'instapay' ? 'إنستاباي' : p.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقدي (كاش)'}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-black text-emerald-700 dark:text-emerald-300 text-sm" dir="ltr">
+                                -{formatCurrency(p.amount)}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  p.isCreditorPayout
+                                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 border-blue-200'
+                                    : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                }`}>
+                                  {p.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد دفعة من الحساب'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={p.notes}>
+                                {p.notes || (p.isCreditorPayout ? 'صرف وسداد مستحقات للعميل الدائن' : 'سداد دفعة من الحساب')}
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePayment(p)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                                  title="حذف حركة السداد"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
 
             </div>
 
-            {/* Footer Buttons */}
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+            {/* Pagination Controls inside Sheet */}
+            <div className="shrink-0 pt-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+              {renderPagination(
+                safeStatementModalPage,
+                totalStatementModalPages,
+                activeStatementList.length,
+                setStatementModalPage,
+                statementModalTab === 'recharges' ? 'شحنة' : statementModalTab === 'payments' ? 'سداد' : 'خطوة'
+              )}
+            </div>
+
+            {/* Fixed Sheet Footer */}
+            <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 backdrop-blur-md flex items-center justify-between shrink-0">
               <button
                 type="button"
                 onClick={() => handleCopyWhatsAppMessage(selectedClientForStatement)}
-                className="btn-interactive flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm"
+                className="btn-interactive flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>نسخ ملخص المطالبة للواتساب</span>
               </button>
 
+              <div className="flex items-center gap-2">
+                {selectedClientForStatement.remainingDebt > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetClient = selectedClientForStatement;
+                      handleCloseStatementSheet();
+                      setTimeout(() => handleOpenPayment(targetClient), 240);
+                    }}
+                    className="btn-interactive flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-sm"
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                    <span>تسجيل سداد</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleCloseStatementSheet}
+                  className="btn-interactive px-5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-colors"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+
+      {/* 6. Right Sheet Drawer: Detailed Archive Statement for a Client */}
+      {activeSelectedArchiveGroup && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-hidden" dir="rtl">
+          {/* Backdrop Overlay */}
+          <div 
+            className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity ${
+              closingArchiveSheet ? 'animate-right-sheet-backdrop-out' : 'animate-right-sheet-backdrop'
+            }`}
+            onClick={handleCloseArchiveSheet}
+          />
+
+          <div className={`fixed inset-y-0 right-0 z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
+            closingArchiveSheet ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          }`}>
+              
+              {/* Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 shrink-0 flex items-center justify-between bg-white dark:bg-slate-900">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center font-bold shadow-xs">
+                    <Archive className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                        أرشيف وتسلسل عمليات: {activeSelectedArchiveGroup.clientName}
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-mono">
+                        {activeSelectedArchiveGroup.records.length} عملية مسجلة
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      خطوات الحساب مسجلة بالترتيب الزمني خطوة بخطوة بالوقت والتاريخ بالدقيقة
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Sort Order Toggle Button: خطوات متسلسلة من الأقدم للأحدث أو الأحدث أولاً */}
+                  <button
+                    type="button"
+                    onClick={() => setArchiveDetailSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-750 transition-colors shadow-2xs"
+                    title="التبديل بين تسلسل الخطوات من البداية حتى الآن أو عرض الأحدث أولاً"
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>
+                      {archiveDetailSortOrder === 'asc' ? 'الترتيب: خطوات متسلسلة (الأقدم للأحدث)' : 'الترتيب: الأحدث أولاً'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCloseArchiveSheet}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    title="إغلاق اللوحة الجانبية"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Sheet Body */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+                {/* Stats Summary: 3 Clean KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
+              <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 block mb-0.5">إجمالي مبالغ الشحن</span>
+                  <strong className="font-mono text-lg font-black text-blue-700 dark:text-blue-300" dir="ltr">
+                    +{formatCurrency(activeSelectedArchiveGroup.totalRecharged)}
+                  </strong>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+                  {archiveGroupRecharges.length} شحنة
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 block mb-0.5">إجمالي المبالغ المسددة</span>
+                  <strong className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-300" dir="ltr">
+                    -{formatCurrency(activeSelectedArchiveGroup.totalPaid)}
+                  </strong>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                  {archiveGroupPayments.length} سداد
+                </span>
+              </div>
+
+              {(() => {
+                const latest = activeSelectedArchiveGroup.latestRecord || {};
+                const isNormal = latest.resultingType === 'عادي' || latest.balanceAfter === 0;
+                const isCreditor = latest.balanceAfter < 0 || latest.resultingType === 'دائن';
+                return (
+                  <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                    isCreditor
+                      ? 'bg-teal-50/80 dark:bg-teal-950/40 border-teal-300 text-teal-800 dark:text-teal-200'
+                      : !isNormal
+                      ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-300 text-rose-800 dark:text-rose-200'
+                      : 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-300 text-emerald-800 dark:text-emerald-200'
+                  }`}>
+                    <div>
+                      <span className="text-[11px] font-bold block mb-0.5">
+                        {isCreditor ? 'رصيد دائن للعميل' : !isNormal ? 'متبقي مطلوب (مدين)' : 'حالة الحساب بعد آخر حركة'}
+                      </span>
+                      <strong className="font-mono text-lg font-black" dir="ltr">
+                        {isNormal ? 'خالص (0 ج.م)' : isCreditor ? `+${formatCurrency(Math.abs(latest.balanceAfter || 0))}` : formatCurrency(latest.balanceAfter || 0)}
+                      </strong>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 shadow-2xs">
+                      {isNormal ? 'مسدد بالكامل' : isCreditor ? 'له رصيد' : 'مطلوب سداده'}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Sub-tab Navigation: 3 Distinct Mutually-Exclusive Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-bold shrink-0">
               <button
                 type="button"
-                onClick={() => setSelectedClientForStatement(null)}
-                className="btn-interactive px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold"
+                onClick={() => {
+                  setArchiveModalTab('steps');
+                  setArchiveDetailPage(1);
+                }}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  archiveModalTab === 'steps'
+                    ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-sm border border-purple-200/80 dark:border-purple-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>تسلسل وترتيب العمليات (خطوة بخطوة)</span>
+                <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                  {activeSelectedArchiveGroup.records.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setArchiveModalTab('recharges');
+                  setArchiveDetailPage(1);
+                }}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  archiveModalTab === 'recharges'
+                    ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm border border-blue-200/80 dark:border-blue-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <ArrowDownToLine className="w-3.5 h-3.5" />
+                <span>شحنات الخطوط</span>
+                <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                  {archiveGroupRecharges.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setArchiveModalTab('payments');
+                  setArchiveDetailPage(1);
+                }}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  archiveModalTab === 'payments'
+                    ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-sm border border-emerald-200/80 dark:border-emerald-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>سجل المدفوعات والسداد</span>
+                <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                  {archiveGroupPayments.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Modal Body: Active Tab Content ONLY (Zero Duplication!) */}
+            <div className="flex-1 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl min-h-[220px] max-h-[50vh]">
+              
+              {/* TAB 1: Sequential Steps */}
+              {archiveModalTab === 'steps' && (
+                <table className="w-full text-right border-collapse text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-750">
+                    <tr>
+                      <th className="py-2.5 px-3 w-16 text-center">الخطوة</th>
+                      <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                      <th className="py-2.5 px-3 min-w-[150px]">نوع العملية</th>
+                      <th className="py-2.5 px-3 min-w-[160px]">البيان / الخط / طريقة الدفع</th>
+                      <th className="py-2.5 px-3 min-w-[120px] text-blue-700 dark:text-blue-300">المبلغ المشحون (+)</th>
+                      <th className="py-2.5 px-3 min-w-[130px] text-emerald-700 dark:text-emerald-300">المبلغ المسدد (-)</th>
+                      <th className="py-2.5 px-3 min-w-[160px] text-slate-900 dark:text-white bg-slate-200/50 dark:bg-slate-750 font-black">الرصيد بعد الحركة (المتبقي)</th>
+                      <th className="py-2.5 px-3 min-w-[90px]">الفائض</th>
+                      <th className="py-2.5 px-3 min-w-[160px]">الملاحظات</th>
+                      <th className="py-2.5 px-3 w-12 text-center">حذف</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {paginatedArchiveModalList.map((arch, idx) => {
+                      const isRecharge = arch.operationCategory === 'recharge' || arch.cycleType?.includes('شحن');
+                      const isPayout = arch.operationCategory === 'payout' || arch.cycleType?.includes('صرف مستحقات');
+                      const rechargeAmt = Number(arch.rechargeAmount) || (isRecharge ? (Number(arch.amountPaid) || Number(arch.amount) || 0) : 0);
+                      const paidAmt = !isRecharge ? (Number(arch.amountPaid) || Number(arch.amount) || 0) : 0;
+                      const isNormal = arch.resultingType === 'عادي' || arch.balanceAfter === 0;
+                      const isCreditor = arch.balanceAfter < 0;
+                      const isDebtor = arch.balanceAfter > 0;
+
+                      return (
+                        <tr key={arch.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="py-2.5 px-3 text-center">
+                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-mono font-black bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                              #{arch.stepNumber || (idx + 1)}
+                            </span>
+                          </td>
+
+                          <td className="py-2.5 px-3">
+                            <div className="font-bold text-slate-900 dark:text-white">
+                              {formatDateArabic(arch.date)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-purple-500" />
+                              <span>{formatTimeArabic(arch.time || arch.date)}</span>
+                            </div>
+                          </td>
+
+                          <td className="py-2.5 px-3">
+                            {isRecharge ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
+                                <ArrowDownToLine className="w-3 h-3 shrink-0" />
+                                <span>شحن رصيد للخط</span>
+                              </span>
+                            ) : arch.cycleType?.includes('فائض') ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                <span>{arch.cycleType}</span>
+                              </span>
+                            ) : isPayout ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-800">
+                                <TrendingDown className="w-3 h-3 shrink-0" />
+                                <span>صرف مستحقات دائن</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                <span>{arch.cycleType || 'سداد دفعة من الحساب'}</span>
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-2.5 px-3">
+                            {isRecharge ? (
+                              <div>
+                                <div className="font-mono font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1" dir="ltr">
+                                  <Smartphone className="w-3 h-3 text-blue-500 shrink-0" />
+                                  <span>{arch.walletPhone ? formatPhone(arch.walletPhone) : 'خط العميل'}</span>
+                                </div>
+                                {arch.walletLabel && (
+                                  <span className="text-[10px] text-slate-400 block mt-0.5 truncate max-w-[140px]">
+                                    {arch.walletLabel}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="font-bold text-slate-700 dark:text-slate-300">
+                                  {arch.paymentMethod === 'vodafone_cash'
+                                    ? 'فودافون كاش'
+                                    : arch.paymentMethod === 'instapay'
+                                    ? 'إنستاباي'
+                                    : arch.paymentMethod === 'bank'
+                                    ? 'تحويل بنكي'
+                                    : 'نقدي (كاش)'}
+                                </span>
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-2.5 px-3 font-mono font-bold">
+                            {rechargeAmt > 0 ? (
+                              <div className="font-black text-blue-700 dark:text-blue-300 text-xs sm:text-sm" dir="ltr">
+                                +{formatCurrency(rechargeAmt)}
+                              </div>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
+                            )}
+                          </td>
+
+                          <td className="py-2.5 px-3 font-mono font-bold">
+                            {paidAmt > 0 ? (
+                              <div className="font-black text-emerald-700 dark:text-emerald-300 text-xs sm:text-sm" dir="ltr">
+                                -{formatCurrency(paidAmt)}
+                              </div>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
+                            )}
+                          </td>
+
+                          <td className="py-2.5 px-3 font-mono font-bold bg-slate-50/50 dark:bg-slate-800/30">
+                            {isNormal ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                <Check className="w-3 h-3" />
+                                <span>خالص (0 ج.م)</span>
+                              </span>
+                            ) : isDebtor ? (
+                              <div>
+                                <div className="font-mono text-xs sm:text-sm font-black text-rose-700 dark:text-rose-300" dir="ltr">
+                                  {formatCurrency(arch.balanceAfter)}
+                                </div>
+                                <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold block mt-0.5">
+                                  متبقي مطلوب (مدين)
+                                </span>
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="font-mono text-xs sm:text-sm font-black text-teal-700 dark:text-teal-300" dir="ltr">
+                                  +{formatCurrency(Math.abs(arch.balanceAfter))}
+                                </div>
+                                <span className="text-[10px] text-teal-600 dark:text-teal-400 font-bold block mt-0.5">
+                                  رصيد دائن للعميل
+                                </span>
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-2.5 px-3 font-mono font-bold" dir="ltr">
+                            {arch.excessAmount > 0 ? (
+                              <span className="text-purple-600 dark:text-purple-400 font-black">
+                                +{formatCurrency(arch.excessAmount)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
+                            )}
+                          </td>
+
+                          <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400 max-w-xs truncate" title={arch.notes}>
+                            {arch.notes || (isRecharge ? 'شحن رصيد للخط' : 'تسوية وتصفير دورة الحساب')}
+                          </td>
+
+                          <td className="py-2.5 px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteArchive(arch)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                              title="حذف هذه العملية من الأرشيف"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              {/* TAB 2: Recharges ONLY */}
+              {archiveModalTab === 'recharges' && (
+                <div>
+                  {archiveGroupRecharges.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      لا توجد عمليات شحن مسجلة لهذا العميل في الأرشيف.
+                    </div>
+                  ) : (
+                    <table className="w-full text-right border-collapse text-xs">
+                      <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-750">
+                        <tr>
+                          <th className="py-2.5 px-3 w-12 text-center">#</th>
+                          <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                          <th className="py-2.5 px-3 min-w-[170px]">رقم الخط / المحفظة</th>
+                          <th className="py-2.5 px-3 min-w-[130px] text-blue-700 dark:text-blue-300">مبلغ الشحن (+)</th>
+                          <th className="py-2.5 px-3 min-w-[180px]">البيان / الملاحظات</th>
+                          <th className="py-2.5 px-3 w-12 text-center">حذف</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {paginatedArchiveModalList.map((rec, idx) => {
+                          const rowNum = (safeArchiveModalPage - 1) * ITEMS_PER_PAGE + idx + 1;
+                          const amt = Number(rec.rechargeAmount) || Number(rec.amountPaid) || Number(rec.amount) || 0;
+                          return (
+                            <tr key={rec.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                              <td className="py-2.5 px-3 text-center font-mono text-slate-400">{rowNum}</td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-slate-900 dark:text-white">{formatDateArabic(rec.date)}</div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-blue-500" />
+                                  <span>{formatTimeArabic(rec.time || rec.date)}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-mono font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1" dir="ltr">
+                                  <Smartphone className="w-3 h-3 text-blue-500 shrink-0" />
+                                  <span>{rec.walletPhone ? formatPhone(rec.walletPhone) : 'خط العميل'}</span>
+                                </div>
+                                {rec.walletLabel && (
+                                  <span className="text-[10px] text-slate-400 block mt-0.5">{rec.walletLabel}</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-black text-blue-700 dark:text-blue-300 text-sm" dir="ltr">
+                                +{formatCurrency(amt)}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={rec.notes}>
+                                {rec.notes || 'شحن رصيد للخط'}
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteArchive(rec)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                                  title="حذف حركة الشحن"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: Payments ONLY */}
+              {archiveModalTab === 'payments' && (
+                <div>
+                  {archiveGroupPayments.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      لا توجد عمليات سداد مسجلة لهذا العميل في الأرشيف.
+                    </div>
+                  ) : (
+                    <table className="w-full text-right border-collapse text-xs">
+                      <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-750">
+                        <tr>
+                          <th className="py-2.5 px-3 w-12 text-center">#</th>
+                          <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                          <th className="py-2.5 px-3 min-w-[130px]">طريقة الدفع</th>
+                          <th className="py-2.5 px-3 min-w-[130px] text-emerald-700 dark:text-emerald-300">المبلغ المسدد (-)</th>
+                          <th className="py-2.5 px-3 min-w-[150px]">نوع السداد / البيان</th>
+                          <th className="py-2.5 px-3 min-w-[100px]">الفائض</th>
+                          <th className="py-2.5 px-3 min-w-[180px]">الملاحظات</th>
+                          <th className="py-2.5 px-3 w-12 text-center">حذف</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {paginatedArchiveModalList.map((p, idx) => {
+                          const rowNum = (safeArchiveModalPage - 1) * ITEMS_PER_PAGE + idx + 1;
+                          const amt = Number(p.amountPaid) || Number(p.amount) || 0;
+                          return (
+                            <tr key={p.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                              <td className="py-2.5 px-3 text-center font-mono text-slate-400">{rowNum}</td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-slate-900 dark:text-white">{formatDateArabic(p.date)}</div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-emerald-500" />
+                                  <span>{formatTimeArabic(p.time || p.date)}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 font-bold text-slate-700 dark:text-slate-300">
+                                {p.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : p.paymentMethod === 'instapay' ? 'إنستاباي' : p.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقدي (كاش)'}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-black text-emerald-700 dark:text-emerald-300 text-sm" dir="ltr">
+                                -{formatCurrency(amt)}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  p.operationCategory === 'payout' || p.cycleType?.includes('صرف')
+                                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 border-blue-200'
+                                    : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                }`}>
+                                  {p.cycleType || 'سداد دفعة من الحساب'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold" dir="ltr">
+                                {p.excessAmount > 0 ? (
+                                  <span className="text-purple-600 dark:text-purple-400 font-black">+{formatCurrency(p.excessAmount)}</span>
+                                ) : (
+                                  <span className="text-slate-300 dark:text-slate-600">-</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={p.notes}>
+                                {p.notes || 'سداد دفعة من الحساب'}
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteArchive(p)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                                  title="حذف حركة السداد"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+            </div>
+
+            {/* Pagination inside Archive Sheet if > 10 records */}
+            <div className="shrink-0 pt-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+              {renderPagination(
+                safeArchiveModalPage,
+                totalArchiveModalPages,
+                activeArchiveModalList.length,
+                setArchiveDetailPage,
+                archiveModalTab === 'recharges' ? 'شحنة' : archiveModalTab === 'payments' ? 'سداد' : 'خطوة'
+              )}
+            </div>
+
+            {/* Fixed Sheet Footer */}
+            <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 backdrop-blur-md flex items-center justify-end shrink-0">
+              <button
+                type="button"
+                onClick={handleCloseArchiveSheet}
+                className="btn-interactive px-6 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-colors"
               >
                 إغلاق
               </button>
@@ -2481,267 +3540,9 @@ ${balanceLine}
 
           </div>
         </div>
-      )}
-
-      {/* 6. MODAL: Detailed Archive Statement for a Client (كشف كافة تسويات العميل المؤرشفة بالتفصيل) */}
-      {activeSelectedArchiveGroup && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-4xl w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
-            
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center">
-                  <Archive className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                      أرشيف عمليات وتسويات العميل: {activeSelectedArchiveGroup.clientName}
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-mono">
-                      {activeSelectedArchiveGroup.records.length} عملية مسجلة
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    كشف كامل بجميع دورات الحساب والتسويات والمبالغ السابقة بالوقت والتاريخ بالدقيقة
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setSelectedArchiveClient(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Stats Summary Cards for this Client */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center shrink-0">
-              <div className="p-3 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60">
-                <span className="text-[11px] text-blue-700 dark:text-blue-300 block mb-0.5 font-bold">إجمالي مبالغ الشحن</span>
-                <strong className="font-mono text-base font-black text-blue-700 dark:text-blue-300" dir="ltr">
-                  {formatCurrency(activeSelectedArchiveGroup.totalRecharged)}
-                </strong>
-                <span className="text-[10px] text-blue-600/70 dark:text-blue-400/70 block mt-0.5">
-                  مجموع شحنات الخطوط
-                </span>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60">
-                <span className="text-[11px] text-emerald-700 dark:text-emerald-300 block mb-0.5 font-bold">إجمالي المبالغ المسددة</span>
-                <strong className="font-mono text-base font-black text-emerald-700 dark:text-emerald-300" dir="ltr">
-                  {formatCurrency(activeSelectedArchiveGroup.totalPaid)}
-                </strong>
-                <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 block mt-0.5">
-                  مجموع المسدد والمصروف
-                </span>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200/80 dark:border-purple-800/60">
-                <span className="text-[11px] text-purple-700 dark:text-purple-300 block mb-0.5 font-bold">إجمالي الفائض المسجل</span>
-                <strong className="font-mono text-base font-black text-purple-700 dark:text-purple-300" dir="ltr">
-                  {formatCurrency(activeSelectedArchiveGroup.totalExcess)}
-                </strong>
-                <span className="text-[10px] text-purple-600/70 dark:text-purple-400/70 block mt-0.5">
-                  فروق المبالغ الزائدة
-                </span>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-0.5 font-bold">إجمالي العمليات المسجلة</span>
-                <strong className="font-mono text-base font-black text-slate-900 dark:text-white">
-                  {activeSelectedArchiveGroup.records.length} عملية
-                </strong>
-                <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
-                  آخرها: {formatDateArabic(activeSelectedArchiveGroup.latestDate)}
-                </span>
-              </div>
-            </div>
-
-            {/* Table of operations with 10 items max per page */}
-            <div className="flex-1 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
-              <table className="w-full text-right border-collapse text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-750">
-                  <tr>
-                    <th className="py-2.5 px-3 w-10 text-center">#</th>
-                    <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
-                    <th className="py-2.5 px-3 min-w-[150px]">نوع العملية</th>
-                    <th className="py-2.5 px-3 min-w-[170px]">البيان / الخط / طريقة الدفع</th>
-                    <th className="py-2.5 px-3 min-w-[130px] text-blue-700 dark:text-blue-300">المبلغ المشحون (+)</th>
-                    <th className="py-2.5 px-3 min-w-[140px] text-emerald-700 dark:text-emerald-300">المبلغ المسدد / المصروف (-)</th>
-                    <th className="py-2.5 px-3 min-w-[90px]">الفائض</th>
-                    <th className="py-2.5 px-3 min-w-[110px]">الحالة الناتجة</th>
-                    <th className="py-2.5 px-3 min-w-[160px]">الملاحظات</th>
-                    <th className="py-2.5 px-3 w-12 text-center">حذف</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {paginatedDetailRecords.map((arch, idx) => {
-                    const isRecharge = arch.operationCategory === 'recharge' || arch.cycleType?.includes('شحن');
-                    const isPayout = arch.operationCategory === 'payout' || arch.cycleType?.includes('صرف مستحقات');
-                    const rechargeAmt = Number(arch.rechargeAmount) || (isRecharge ? (Number(arch.amountPaid) || Number(arch.amount) || 0) : 0);
-                    const paidAmt = !isRecharge ? (Number(arch.amountPaid) || Number(arch.amount) || 0) : 0;
-                    const isNormal = arch.resultingType === 'عادي';
-                    const isCreditor = arch.resultingType === 'دائن';
-                    const isDebtor = arch.resultingType === 'مدين';
-                    const rowNum = (safeDetailPage - 1) * ITEMS_PER_PAGE + idx + 1;
-
-                    return (
-                      <tr key={arch.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
-                        <td className="py-2.5 px-3 text-center font-mono text-slate-400">
-                          {rowNum}
-                        </td>
-
-                        {/* Date and 12-hour Arabic Time */}
-                        <td className="py-2.5 px-3">
-                          <div className="font-bold text-slate-900 dark:text-white">
-                            {formatDateArabic(arch.date)}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-purple-500" />
-                            <span>{formatTimeArabic(arch.time || arch.date)}</span>
-                          </div>
-                        </td>
-
-                        {/* Operation Type Badge */}
-                        <td className="py-2.5 px-3">
-                          {isRecharge ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
-                              <ArrowDownToLine className="w-3 h-3 shrink-0" />
-                              <span>شحن رصيد للخط</span>
-                            </span>
-                          ) : arch.cycleType?.includes('فائض') ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                              <CheckCircle2 className="w-3 h-3 shrink-0" />
-                              <span>{arch.cycleType}</span>
-                            </span>
-                          ) : isPayout ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-800">
-                              <TrendingDown className="w-3 h-3 shrink-0" />
-                              <span>صرف مستحقات دائن</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                              <CheckCircle2 className="w-3 h-3 shrink-0" />
-                              <span>{arch.cycleType || 'سداد دفعة من الحساب'}</span>
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Line / Method / Breakdown */}
-                        <td className="py-2.5 px-3">
-                          {isRecharge ? (
-                            <div>
-                              <div className="font-mono font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1" dir="ltr">
-                                <Smartphone className="w-3 h-3 text-blue-500 shrink-0" />
-                                <span>{arch.walletPhone ? formatPhone(arch.walletPhone) : 'خط العميل'}</span>
-                              </div>
-                              {arch.walletLabel && (
-                                <span className="text-[10px] text-slate-400 block mt-0.5 truncate max-w-[140px]">
-                                  {arch.walletLabel}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="font-bold text-slate-700 dark:text-slate-300">
-                                {arch.paymentMethod === 'vodafone_cash'
-                                  ? 'فودافون كاش'
-                                  : arch.paymentMethod === 'instapay'
-                                  ? 'إنستاباي'
-                                  : arch.paymentMethod === 'bank'
-                                  ? 'تحويل بنكي'
-                                  : 'نقدي (كاش)'}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Recharged Amount (+) in Blue */}
-                        <td className="py-2.5 px-3 font-mono font-bold">
-                          {rechargeAmt > 0 ? (
-                            <div className="font-black text-blue-700 dark:text-blue-300 text-xs sm:text-sm" dir="ltr">
-                              +{formatCurrency(rechargeAmt)}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
-                          )}
-                        </td>
-
-                        {/* Paid Amount (-) in Emerald */}
-                        <td className="py-2.5 px-3 font-mono font-bold">
-                          {paidAmt > 0 ? (
-                            <div className="font-black text-emerald-700 dark:text-emerald-300 text-xs sm:text-sm" dir="ltr">
-                              -{formatCurrency(paidAmt)}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
-                          )}
-                        </td>
-
-                        {/* Excess Amount */}
-                        <td className="py-2.5 px-3 font-mono font-bold" dir="ltr">
-                          {arch.excessAmount > 0 ? (
-                            <span className="text-purple-600 dark:text-purple-400 font-black">
-                              +{formatCurrency(arch.excessAmount)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
-                          )}
-                        </td>
-
-                        {/* Resulting Status */}
-                        <td className="py-2.5 px-3">
-                          {isNormal ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                              <Check className="w-3 h-3" />
-                              <span>خالص (0 ج.م)</span>
-                            </span>
-                          ) : isCreditor ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-teal-100 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-teal-800 font-mono" dir="ltr">
-                              دائن ({formatCurrency(arch.finalBalance || 0)})
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 font-mono" dir="ltr">
-                              مدين ({formatCurrency(arch.finalBalance || rechargeAmt || 0)})
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Notes */}
-                        <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400 max-w-xs truncate" title={arch.notes}>
-                          {arch.notes || (isRecharge ? 'شحن رصيد للخط' : 'تسوية وتصفير دورة الحساب')}
-                        </td>
-
-                        {/* Delete Action */}
-                        <td className="py-2.5 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteArchive(arch)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                            title="حذف هذه العملية من الأرشيف"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination inside Modal if > 10 records */}
-            <div className="shrink-0">
-              {renderPagination(safeDetailPage, totalDetailPages, selectedClientRecords.length, setArchiveDetailPage, 'عملية تسوية')}
-            </div>
-
-          </div>
-        </div>
-      )}
+      </div>,
+      document.body
+    )}
 
     </div>
   );

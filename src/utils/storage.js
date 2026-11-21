@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   TRASH: 'elaasar_cash_trash_v1',
   SHOP_WALLETS: 'elaasar_cash_shop_wallets_v1',
   CLIENT_ARCHIVES: 'elaasar_cash_client_archives_v1',
+  DISMISSED_ARCHIVE_IDS: 'elaasar_cash_dismissed_archive_ids_v1',
 };
 
 // Generates today's date string and some earlier timestamps
@@ -1300,17 +1301,16 @@ export const storage = {
   getClientArchives() {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CLIENT_ARCHIVES);
-      if (!data) {
+      if (data === null) {
         localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
         return INITIAL_DEMO_ARCHIVES;
       }
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
-      return INITIAL_DEMO_ARCHIVES;
+      if (Array.isArray(parsed)) return parsed;
+      return [];
     } catch (e) {
       console.error('Error reading client archives from storage:', e);
-      return INITIAL_DEMO_ARCHIVES;
+      return [];
     }
   },
 
@@ -1319,6 +1319,26 @@ export const storage = {
       localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(archives || []));
     } catch (e) {
       console.error('Error saving client archives:', e);
+    }
+  },
+
+  getDismissedArchiveIds() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error('Error reading dismissed archive ids:', e);
+      return [];
+    }
+  },
+
+  saveDismissedArchiveIds(ids) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS, JSON.stringify(ids || []));
+    } catch (e) {
+      console.error('Error saving dismissed archive ids:', e);
     }
   },
 
@@ -1351,6 +1371,7 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(INITIAL_SHOP_WALLETS));
     localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
     localStorage.removeItem(STORAGE_KEYS.TRASH);
+    localStorage.removeItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
     return {
       clients: INITIAL_DEMO_CLIENTS,
       transactions: INITIAL_DEMO_TRANSACTIONS,
@@ -1368,6 +1389,7 @@ export const storage = {
     localStorage.removeItem(STORAGE_KEYS.SHOP_WALLETS);
     localStorage.removeItem(STORAGE_KEYS.TRASH);
     localStorage.removeItem(STORAGE_KEYS.CLIENT_ARCHIVES);
+    localStorage.removeItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
     return {
       clients: [],
       transactions: [],

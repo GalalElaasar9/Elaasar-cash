@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useCash } from '../context/CashContext';
 import {
   formatCurrency,
@@ -37,7 +38,9 @@ import {
   Wallet,
   LayoutGrid,
   Table,
-  Archive
+  Archive,
+  Clock,
+  ArrowUpDown
 } from 'lucide-react';
 
 export default function ClientCard({ client }) {
@@ -51,6 +54,8 @@ export default function ClientCard({ client }) {
     showToast,
     askConfirm,
     clientArchives,
+    dismissedArchiveIds,
+    deleteClientArchive,
     archiveClientCycle
   } = useCash();
 
@@ -59,11 +64,239 @@ export default function ClientCard({ client }) {
   const [activeHistoryWalletId, setActiveHistoryWalletId] = useState(null);
   const [walletPage, setWalletPage] = useState(1);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [closingArchiveModal, setClosingArchiveModal] = useState(false);
+  const [archiveModalTab, setArchiveModalTab] = useState('steps'); // 'steps' | 'recharges' | 'payments'
+  const [archiveSortOrder, setArchiveSortOrder] = useState('asc'); // 'asc' (chronological steps) | 'desc'
+  const [archivePage, setArchivePage] = useState(1);
 
-  // Client's recorded settlement archives
+  const handleCloseArchiveModal = () => {
+    if (closingArchiveModal) return;
+    setClosingArchiveModal(true);
+    setTimeout(() => {
+      setShowArchiveModal(false);
+      setClosingArchiveModal(false);
+    }, 230);
+  };
+
+  // Client's recorded and unified settlement & recharge operations
   const clientArchiveList = useMemo(() => {
-    return (clientArchives || []).filter(a => a.clientId === client.id);
-  }, [clientArchives, client.id]);
+    let clearedAt = 0;
+    try {
+      clearedAt = Number(localStorage.getItem(`elaasar_client_archive_cleared_${client.id}`)) || 0;
+    } catch {}
+
+    const list = (clientArchives || [])
+      .filter(a => (a.clientId === client.id || a.clientName === client.name) &&
+        !dismissedArchiveIds?.has(a.id) &&
+        !dismissedArchiveIds?.has(a.transactionId)
+      )
+      .map(a => ({ ...a }));
+
+    const archivedTxIds = new Set(list.map(a => a.transactionId || a.id).filter(Boolean));
+    const clientWalletIds = new Set((client.wallets || []).map(w => w.id));
+    const clientWalletPhones = new Set((client.wallets || []).map(w => w.phoneNumber).filter(Boolean));
+
+    (transactions || []).forEach(t => {
+      const isMatch = (
+        t.customerId === client.id ||
+        t.clientId === client.id ||
+        (t.walletId && clientWalletIds.has(t.walletId)) ||
+        (t.walletPhone && clientWalletPhones.has(t.walletPhone))
+      );
+      if (!isMatch) return;
+      if (dismissedArchiveIds?.has(t.id) || dismissedArchiveIds?.has(`tx_${t.id}`)) return;
+      if (clearedAt && new Date(t.date).getTime() <= clearedAt) return;
+      if (archivedTxIds.has(t.id) || archivedTxIds.has(`tx_${t.id}`)) return;
+
+      const numAmt = Number(t.amount) || 0;
+      const wallet = (client.wallets || []).find(w => w.id === t.walletId || w.phoneNumber === t.walletPhone);
+
+      if (t.type === 'recharge' || t.type === 'limit_reset') {
+        list.push({
+          id: `tx_${t.id}`,
+          transactionId: t.id,
+          clientId: client.id,
+          clientName: client.name,
+          cycleType: 'شحن رصيد للخط',
+          operationCategory: 'recharge',
+          rechargeAmount: numAmt,
+          amountPaid: 0,
+          debtBefore: 0,
+          creditBefore: 0,
+          excessAmount: 0,
+          finalBalance: numAmt,
+          resultingType: 'مدين',
+          paymentMethod: 'recharge',
+          walletPhone: t.walletPhone || wallet?.phoneNumber || '',
+          walletLabel: t.walletLabel || wallet?.label || '',
+          notes: t.notes || (t.walletPhone ? `شحن رصيد لرقم ${formatPhone(t.walletPhone)}` : 'شحن رصيد للخط'),
+          date: t.date,
+          dateOnly: t.dateOnly,
+          time: formatTimeArabic(t.time || t.date)
+        });
+      } else if (t.type === 'client_payment') {
+        list.push({
+          id: `tx_${t.id}`,
+          transactionId: t.id,
+          clientId: client.id,
+          clientName: client.name,
+          cycleType: t.isCreditorPayout ? 'صرف مستحقات دائن' : 'سداد دفعة من الحساب',
+          operationCategory: t.isCreditorPayout ? 'payout' : 'payment',
+          rechargeAmount: 0,
+          amountPaid: numAmt,
+          debtBefore: 0,
+          creditBefore: 0,
+          excessAmount: 0,
+          finalBalance: 0,
+          resultingType: t.isCreditorPayout ? 'عادي' : 'مدين',
+          paymentMethod: t.paymentMethod || 'cash',
+          walletPhone: t.walletPhone || '',
+          walletLabel: t.walletLabel || '',
+          notes: t.notes || (t.isCreditorPayout ? 'صرف مستحقات للعميل الدائن' : 'سداد دفعة من الحساب'),
+          date: t.date,
+          dateOnly: t.dateOnly,
+          time: formatTimeArabic(t.time || t.date)
+        });
+      }
+    });
+
+    // Deduplicate
+    const seen = new Set();
+    const unique = [];
+    for (const item of list) {
+      const amt = Number(item.amountPaid) || Number(item.rechargeAmount) || 0;
+      const key = item.transactionId
+        ? `tx_${item.transactionId}`
+        : `${item.clientId}_${item.dateOnly}_${item.time}_${item.cycleType}_${amt}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(item);
+      }
+    }
+
+    // Sort chronologically (oldest to newest) to compute running balances and step numbers
+    unique.sort((a, b) => {
+      const timeA = new Date(a.date).getTime();
+      const timeB = new Date(b.date).getTime();
+      if (Math.abs(timeA - timeB) > 60000) return timeA - timeB;
+      const isRechargeA = a.operationCategory === 'recharge' || a.cycleType?.includes('شحن');
+      const isRechargeB = b.operationCategory === 'recharge' || b.cycleType?.includes('شحن');
+      if (isRechargeA && !isRechargeB) return -1;
+      if (!isRechargeA && isRechargeB) return 1;
+      return timeA - timeB;
+    });
+
+    let running = 0;
+    const computed = unique.map((rec, idx) => {
+      const isRecharge = rec.operationCategory === 'recharge' || rec.cycleType?.includes('شحن');
+      const isPayout = rec.operationCategory === 'payout' || rec.cycleType?.includes('صرف مستحقات');
+      const isZeroSettlement = rec.resultingType === 'عادي' || rec.cycleType?.includes('تصفير') || rec.cycleType?.includes('كامل المديونية');
+      const rechargeAmt = Number(rec.rechargeAmount) || (isRecharge ? (Number(rec.amountPaid) || Number(rec.amount) || Number(rec.finalBalance) || 0) : 0);
+      const paidAmt = !isRecharge ? (Number(rec.amountPaid) || Number(rec.amount) || 0) : 0;
+
+      const balanceBefore = running;
+      if (isRecharge) {
+        running += rechargeAmt;
+      } else if (isPayout) {
+        running += paidAmt;
+      } else {
+        running -= paidAmt;
+      }
+
+      if (isZeroSettlement) {
+        running = 0;
+      } else if (rec.excessAmount > 0 && rec.resultingType === 'دائن') {
+        running = -Number(rec.excessAmount);
+      } else if (!isRecharge && rec.finalBalance !== undefined && rec.finalBalance !== null && !isNaN(Number(rec.finalBalance))) {
+        if (rec.resultingType === 'مدين') running = Number(rec.finalBalance);
+        else if (rec.resultingType === 'دائن') running = -Number(rec.finalBalance);
+      }
+
+      return {
+        ...rec,
+        stepNumber: idx + 1,
+        balanceBefore,
+        balanceAfter: running
+      };
+    });
+
+    return computed;
+  }, [clientArchives, client, transactions, dismissedArchiveIds]);
+
+  // Archive summary stats
+  const clientArchiveSummary = useMemo(() => {
+    let totalRecharged = 0;
+    let totalPaid = 0;
+    let totalExcess = 0;
+    const recharges = [];
+    const payments = [];
+
+    clientArchiveList.forEach(rec => {
+      const isRecharge = rec.operationCategory === 'recharge' || rec.cycleType?.includes('شحن');
+      if (isRecharge) {
+        const amt = Number(rec.rechargeAmount) || (Number(rec.amountPaid) || Number(rec.amount) || Number(rec.finalBalance) || 0);
+        totalRecharged += amt;
+        recharges.push(rec);
+      } else {
+        const amt = Number(rec.amountPaid) || Number(rec.amount) || 0;
+        totalPaid += amt;
+        payments.push(rec);
+      }
+      totalExcess += (Number(rec.excessAmount) || 0);
+    });
+
+    const latestRecord = clientArchiveList.length > 0 ? clientArchiveList[clientArchiveList.length - 1] : null;
+
+    return {
+      totalRecharged,
+      totalPaid,
+      totalExcess,
+      recharges,
+      payments,
+      latestRecord
+    };
+  }, [clientArchiveList]);
+
+  // Display list according to active tab and sort order
+  const activeArchiveDisplayList = useMemo(() => {
+    let list = [];
+    if (archiveModalTab === 'recharges') {
+      list = clientArchiveSummary.recharges;
+    } else if (archiveModalTab === 'payments') {
+      list = clientArchiveSummary.payments;
+    } else {
+      list = clientArchiveList;
+    }
+
+    if (archiveSortOrder === 'desc') {
+      return [...list].reverse();
+    }
+    return list;
+  }, [archiveModalTab, archiveSortOrder, clientArchiveSummary, clientArchiveList]);
+
+  const ARCHIVE_ITEMS_PER_PAGE = 10;
+  const totalArchivePages = Math.ceil(activeArchiveDisplayList.length / ARCHIVE_ITEMS_PER_PAGE) || 1;
+  const safeArchivePage = Math.min(Math.max(1, archivePage), totalArchivePages);
+  const paginatedArchiveList = useMemo(() => {
+    const start = (safeArchivePage - 1) * ARCHIVE_ITEMS_PER_PAGE;
+    return activeArchiveDisplayList.slice(start, start + ARCHIVE_ITEMS_PER_PAGE);
+  }, [activeArchiveDisplayList, safeArchivePage]);
+
+  const handleDeleteArchive = async (item) => {
+    const isRecharge = item.operationCategory === 'recharge' || item.cycleType?.includes('شحن');
+    const confirmed = await askConfirm({
+      title: isRecharge ? 'حذف حركة الشحن من الأرشيف' : 'حذف عملية من الأرشيف',
+      message: `هل أنت متأكد من حذف ${isRecharge ? 'حركة الشحن' : 'حركة التسوية'} (${formatCurrency(item.amountPaid || item.rechargeAmount || item.finalBalance || 0)}) من أرشيف العميل؟`,
+      details: 'سيتم مسح هذه الحركة من سجل الأرشيف فقط، ولن تتأثر المبيعات ولا العمليات المسجلة على الخط نهائياً.',
+      type: 'danger',
+      confirmText: 'نعم، احذف من الأرشيف',
+      cancelText: 'إلغاء'
+    });
+    if (confirmed) {
+      // حذف سجل الأرشيف فقط دون المساس بالمبيعات أو حركات الشحن الأصلية على الخط أو ليميت المحفظة
+      deleteClientArchive(item.id, item.transactionId);
+    }
+  };
 
   // Wallets Display Mode: 'grid' (كروت) | 'table' (جدول)
   const [walletsViewMode, setWalletsViewMode] = useState(() => {
@@ -274,6 +507,9 @@ export default function ClientCard({ client }) {
   }, [client.id, commissionPercent]);
 
   // 1. Classification & Cutoff Tracking
+  const wallets = client.wallets || [];
+  const clientWalletIds = useMemo(() => new Set(wallets.map(w => w.id)), [wallets]);
+
   let settledAt = client.settledAt;
   if (!settledAt) {
     try {
@@ -334,28 +570,33 @@ export default function ClientCard({ client }) {
     }
   }
 
-  // Fallback: check recent overpayment transaction
-  if ((clientExcessCredit === undefined || clientExcessCredit === null) && clientType === 'دائن') {
-    const recentOverpayment = (transactions || [])
-      .filter(t => (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment' && !t.isCreditorPayout)
-      .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-    if (recentOverpayment) {
-      if (recentOverpayment.excessCredit) {
-        clientExcessCredit = Number(recentOverpayment.excessCredit);
-        clientExcessCreditDate = recentOverpayment.date;
-      } else if (recentOverpayment.debtBefore) {
-        const pAmt = Number(recentOverpayment.amount) || 0;
-        const dBefore = Number(recentOverpayment.debtBefore) || 0;
-        if (pAmt > dBefore) {
-          clientExcessCredit = pAmt - dBefore;
-          clientExcessCreditDate = recentOverpayment.date;
-        }
-      }
+  // Calculate active net credit remaining after any subsequent recharges or creditor payouts (فقط للعميل الدائن)
+  let hasExcessCredit = false;
+  if (clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0 && clientExcessCreditDate) {
+    const cDate = new Date(clientExcessCreditDate).getTime();
+    const postRechargesSum = (transactions || []).filter(t =>
+      (clientWalletIds.has(t.walletId) || t.customerId === client.id || t.clientId === client.id) &&
+      (t.type === 'recharge' || t.type === 'limit_reset') &&
+      !t.isSettled &&
+      new Date(t.date).getTime() > cDate
+    ).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    const postPayoutsSum = (transactions || []).filter(t =>
+      (t.clientId === client.id || t.customerId === client.id) &&
+      t.type === 'client_payment' &&
+      t.isCreditorPayout &&
+      !t.isSettled &&
+      new Date(t.date).getTime() > cDate
+    ).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    if (clientExcessCredit - postPayoutsSum - postRechargesSum > 0) {
+      hasExcessCredit = true;
     }
+  } else if (clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0) {
+    hasExcessCredit = true;
   }
 
-  const hasExcessDebt = clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
-  const hasExcessCredit = clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0;
+  const hasExcessDebt = !hasExcessCredit && clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
 
   // Effective Cutoff Timestamp: excludes all transactions from prior settled/closed cycles
   let effectiveCutoff = settledTimestamp;
@@ -384,7 +625,6 @@ export default function ClientCard({ client }) {
   };
 
   // Client wallets
-  const wallets = client.wallets || [];
   const WALLETS_PER_PAGE = walletsViewMode === 'table' ? 6 : 3;
   const totalWalletPages = Math.ceil(wallets.length / WALLETS_PER_PAGE) || 1;
   const validWalletPage = Math.min(Math.max(1, walletPage), totalWalletPages);
@@ -395,8 +635,6 @@ export default function ClientCard({ client }) {
   }, [wallets, validWalletPage, WALLETS_PER_PAGE]);
 
   // Calculations for total amounts entered into client lines (recharges)
-  const clientWalletIds = useMemo(() => new Set(wallets.map(w => w.id)), [wallets]);
-
   const clientStats = useMemo(() => {
     let today = 0;
     let month = 0;
@@ -489,7 +727,7 @@ export default function ClientCard({ client }) {
   } else if (hasExcessCredit) {
     commissionAmount = 0;
     effectiveMode = 'none';
-    finalAmount = clientExcessCredit;
+    finalAmount = 0; // العميل الدائن لا يُطلب منه دين
   }
 
   let remainingDebt = 0;
@@ -520,13 +758,13 @@ export default function ClientCard({ client }) {
       remainingDebt = 0;
       effectiveClientType = 'دائن';
       isSettled = false;
-      finalAmount = clientExcessCredit;
+      finalAmount = 0; // العميل الدائن لا يُطلب منه دين
     } else if (activeCredit === 0) {
       creditExcess = 0;
       remainingDebt = 0;
       effectiveClientType = 'عادي';
       isSettled = true;
-      finalAmount = clientExcessCredit;
+      finalAmount = 0;
     } else {
       creditExcess = 0;
       remainingDebt = Math.abs(activeCredit);
@@ -739,10 +977,10 @@ export default function ClientCard({ client }) {
                     type="button"
                     onClick={() => setShowArchiveModal(true)}
                     className="btn-interactive inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800 shadow-2xs transition-colors shrink-0"
-                    title="عرض أرشيف التسويات والدورات السابقة لهذا العميل"
+                    title="عرض أرشيف وتسلسل العمليات والشحنات والتسويات لهذا العميل"
                   >
                     <Archive className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    <span>أرشيف التسويات ({clientArchiveList.length})</span>
+                    <span>أرشيف وتسلسل العمليات ({clientArchiveList.length})</span>
                   </button>
                 )}
               </div>
@@ -877,7 +1115,7 @@ export default function ClientCard({ client }) {
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold text-xs">
                 <span>صافي نقدي (بدون عمولة أو خصم)</span>
               </div>
-            ) : (isSettled || effectiveClientType === 'عادي' || (baseAmount === 0 && remainingDebt <= 0 && creditExcess <= 0)) ? (
+            ) : (isSettled || (effectiveClientType === 'عادي' && baseAmount === 0)) ? (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700 text-slate-400 dark:text-slate-500 font-bold text-xs">
                 <span>-</span>
                 <span className="text-[11px] font-bold">لا تنطبق عمولة (حساب خالص)</span>
@@ -941,18 +1179,20 @@ export default function ClientCard({ client }) {
             </div>
 
             {/* 2. الصافي المطلوب بعد العمولة */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-white shadow-2xs ${
-              hasExcessDebt
-                ? 'bg-gradient-to-r from-rose-600 to-red-700 shadow-rose-600/20'
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold shadow-2xs ${
+              effectiveClientType === 'دائن' || creditExcess > 0
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                : hasExcessDebt
+                ? 'bg-gradient-to-r from-rose-600 to-red-700 text-white shadow-rose-600/20'
                 : effectiveMode === 'add'
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-700 shadow-emerald-600/20'
-                : 'bg-gradient-to-r from-rose-600 to-red-700 shadow-rose-600/20'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-emerald-600/20'
+                : 'bg-gradient-to-r from-rose-600 to-red-700 text-white shadow-rose-600/20'
             }`}>
-              <span className="text-[11px] text-white/90">
+              <span className={`text-[11px] ${effectiveClientType === 'دائن' || creditExcess > 0 ? 'text-slate-500 dark:text-slate-400' : 'text-white/90'}`}>
                 {hasExcessDebt ? 'المطلوب الأصلي:' : 'المطلوب:'}
               </span>
-              <span className="font-mono text-xs sm:text-sm font-black" dir="ltr">
-                {formatCurrency(hasExcessDebt ? clientExcessDebt : finalAmount)}
+              <span className={`font-mono text-xs sm:text-sm font-black ${effectiveClientType === 'دائن' || creditExcess > 0 ? 'text-slate-800 dark:text-slate-200' : 'text-white'}`} dir="ltr">
+                {formatCurrency(effectiveClientType === 'دائن' || creditExcess > 0 ? 0 : (hasExcessDebt ? clientExcessDebt : finalAmount))}
               </span>
             </div>
 
@@ -1612,107 +1852,557 @@ export default function ClientCard({ client }) {
         </div>
       </div>
 
-      {/* Archive Modal for this Client */}
-      {showArchiveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-scale-in">
-            {/* Modal Header */}
-            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-                  <Archive className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
-                    أرشيف تسويات العميل: {client.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    توثيق لكافة الحسابات والدورات السابقة المغلقة والتسويات المنتهية ({clientArchiveList.length} تسوية)
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowArchiveModal(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Right Sheet Drawer: Detailed Client Operations & Settlements Archive */}
+      {showArchiveModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-hidden" dir="rtl">
+          {/* Backdrop Overlay */}
+          <div 
+            className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity ${
+              closingArchiveModal ? 'animate-right-sheet-backdrop-out' : 'animate-right-sheet-backdrop'
+            }`}
+            onClick={handleCloseArchiveModal}
+          />
 
-            {/* Modal Body */}
-            <div className="p-4 sm:p-5 overflow-y-auto space-y-3 divide-y divide-slate-100 dark:divide-slate-800">
-              {clientArchiveList.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-sm">
-                  لا توجد تسويات مؤرشفة سابقة لهذا العميل بعد.
-                </div>
-              ) : (
-                clientArchiveList.map((item, idx) => (
-                  <div key={item.id || idx} className="pt-3 first:pt-0 space-y-2">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
-                          {item.cycleType || 'تسوية حساب'}
-                        </span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {formatDateTimeArabic(item.settledAt || item.date)}
-                        </span>
-                      </div>
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                        الحالة الناتجة: {item.resultingStatus || item.resultingType || 'عادي'}
+          <div className={`fixed inset-y-0 right-0 z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
+            closingArchiveModal ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          }`}>
+              
+              {/* Sheet Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold shadow-xs">
+                    <Archive className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                        أرشيف وتسلسل عمليات: {client.name}
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-mono">
+                        {clientArchiveList.length} عملية مسجلة
                       </span>
                     </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">الرصيد قبل التسوية</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200">
-                          {formatCurrency(item.previousDebt || item.debtBefore || item.creditBefore || 0)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">المبلغ المدفوع / المصروف</span>
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(item.totalPaid || item.amountPaid || 0)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">الفائض المتبقي</span>
-                        <span className="font-bold text-blue-600 dark:text-blue-400">
-                          {formatCurrency(item.excessRemaining || item.excessAmount || 0)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">طريقة السداد</span>
-                        <span className="font-bold text-slate-700 dark:text-slate-300">
-                          {item.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : item.paymentMethod === 'instapay' ? 'إنستاباي' : item.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقداً'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {item.notes && (
-                      <p className="text-xs text-slate-600 dark:text-slate-400 bg-amber-50/50 dark:bg-amber-950/20 p-2 rounded-lg border border-amber-200/40 dark:border-amber-900/30">
-                        {item.notes}
-                      </p>
-                    )}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      خطوات الحساب مسجلة بالترتيب الزمني خطوة بخطوة بالوقت والتاريخ بالدقيقة
+                    </p>
                   </div>
-                ))
-              )}
-            </div>
+                </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end bg-slate-50 dark:bg-slate-800/50">
-              <button
-                type="button"
-                onClick={() => setShowArchiveModal(false)}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 transition-colors"
-              >
-                إغلاق
-              </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setArchiveSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-750 transition-colors shadow-2xs"
+                    title="التبديل بين تسلسل الخطوات من البداية حتى الآن أو عرض الأحدث أولاً"
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>
+                      {archiveSortOrder === 'asc' ? 'الترتيب: خطوات متسلسلة (الأقدم للأحدث)' : 'الترتيب: الأحدث أولاً'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCloseArchiveModal}
+                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    title="إغلاق اللوحة الجانبية"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Sheet Body */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+                {/* Stats Summary: 3 Clean KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
+                  <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 block mb-0.5">إجمالي مبالغ الشحن</span>
+                      <strong className="font-mono text-lg font-black text-blue-700 dark:text-blue-300" dir="ltr">
+                        +{formatCurrency(clientArchiveSummary.totalRecharged)}
+                      </strong>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+                      {clientArchiveSummary.recharges.length} شحنة
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 block mb-0.5">إجمالي المبالغ المسددة</span>
+                      <strong className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-300" dir="ltr">
+                        -{formatCurrency(clientArchiveSummary.totalPaid)}
+                      </strong>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                      {clientArchiveSummary.payments.length} سداد
+                    </span>
+                  </div>
+
+                  {(() => {
+                    const latest = clientArchiveSummary.latestRecord || {};
+                    const isNormal = latest.resultingType === 'عادي' || latest.balanceAfter === 0;
+                    const isCreditor = latest.balanceAfter < 0 || latest.resultingType === 'دائن';
+                    return (
+                      <div className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                        isCreditor
+                          ? 'bg-teal-50/80 dark:bg-teal-950/40 border-teal-300 text-teal-800 dark:text-teal-200'
+                          : !isNormal
+                          ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-300 text-rose-800 dark:text-rose-200'
+                          : 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-300 text-emerald-800 dark:text-emerald-200'
+                      }`}>
+                        <div>
+                          <span className="text-[11px] font-bold block mb-0.5">
+                            {isCreditor ? 'رصيد دائن للعميل' : !isNormal ? 'متبقي مطلوب (مدين)' : 'حالة الحساب بعد آخر حركة'}
+                          </span>
+                          <strong className="font-mono text-lg font-black" dir="ltr">
+                            {isNormal ? 'خالص (0 ج.م)' : isCreditor ? `+${formatCurrency(Math.abs(latest.balanceAfter || 0))}` : formatCurrency(latest.balanceAfter || 0)}
+                          </strong>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 shadow-2xs">
+                          {isNormal ? 'مسدد بالكامل' : isCreditor ? 'له رصيد' : 'مطلوب سداده'}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Sub-tab Navigation */}
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-bold shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setArchiveModalTab('steps');
+                      setArchivePage(1);
+                    }}
+                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                      archiveModalTab === 'steps'
+                        ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-sm border border-purple-200/80 dark:border-purple-800'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>تسلسل وترتيب العمليات (خطوة بخطوة)</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                      {clientArchiveList.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setArchiveModalTab('recharges');
+                      setArchivePage(1);
+                    }}
+                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                      archiveModalTab === 'recharges'
+                        ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm border border-blue-200/80 dark:border-blue-800'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <ArrowDownToLine className="w-3.5 h-3.5" />
+                    <span>شحنات الخطوط</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                      {clientArchiveSummary.recharges.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setArchiveModalTab('payments');
+                      setArchivePage(1);
+                    }}
+                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                      archiveModalTab === 'payments'
+                        ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-sm border border-emerald-200/80 dark:border-emerald-800'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>سجل المدفوعات والسداد</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                      {clientArchiveSummary.payments.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Body Content: Active Tab Content */}
+                <div className="flex-1 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl min-h-[220px]">
+                  
+                  {/* TAB 1: Sequential Steps */}
+                  {archiveModalTab === 'steps' && (
+                    clientArchiveList.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-400">
+                        لا توجد عمليات مؤرشفة سابقة لهذا العميل بعد.
+                      </div>
+                    ) : (
+                      <table className="w-full text-right border-collapse text-xs">
+                        <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-750">
+                          <tr>
+                            <th className="py-2.5 px-3 w-16 text-center">الخطوة</th>
+                            <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                            <th className="py-2.5 px-3 min-w-[150px]">نوع العملية</th>
+                            <th className="py-2.5 px-3 min-w-[160px]">البيان / الخط / طريقة الدفع</th>
+                            <th className="py-2.5 px-3 min-w-[120px] text-blue-700 dark:text-blue-300">المبلغ المشحون (+)</th>
+                            <th className="py-2.5 px-3 min-w-[130px] text-emerald-700 dark:text-emerald-300">المبلغ المسدد (-)</th>
+                            <th className="py-2.5 px-3 min-w-[160px] text-slate-900 dark:text-white bg-slate-200/50 dark:bg-slate-750 font-black">الرصيد بعد الحركة (المتبقي)</th>
+                            <th className="py-2.5 px-3 min-w-[90px]">الفائض</th>
+                            <th className="py-2.5 px-3 min-w-[160px]">الملاحظات</th>
+                            <th className="py-2.5 px-3 w-12 text-center">حذف</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {paginatedArchiveList.map((arch, idx) => {
+                            const isRecharge = arch.operationCategory === 'recharge' || arch.cycleType?.includes('شحن');
+                            const isPayout = arch.operationCategory === 'payout' || arch.cycleType?.includes('صرف مستحقات');
+                            const rechargeAmt = Number(arch.rechargeAmount) || (isRecharge ? (Number(arch.amountPaid) || Number(arch.amount) || Number(arch.finalBalance) || 0) : 0);
+                            const paidAmt = !isRecharge ? (Number(arch.amountPaid) || Number(arch.amount) || 0) : 0;
+                            const isZeroBalance = arch.balanceAfter === 0;
+                            const isCreditorBalance = arch.balanceAfter < 0;
+
+                            return (
+                              <tr key={arch.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                                <td className="py-2.5 px-3 text-center">
+                                  <span className="inline-block px-2 py-0.5 rounded-full font-mono font-bold text-[11px] bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                                    #{arch.stepNumber || idx + 1}
+                                  </span>
+                                </td>
+
+                                <td className="py-2.5 px-3">
+                                  <div className="font-bold text-slate-900 dark:text-white">
+                                    {formatDateArabic(arch.date)}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-purple-500" />
+                                    <span>{formatTimeArabic(arch.time || arch.date)}</span>
+                                  </div>
+                                </td>
+
+                                <td className="py-2.5 px-3">
+                                  {isRecharge ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                      <ArrowDownToLine className="w-3 h-3 text-blue-600" />
+                                      <span>شحن رصيد للخط</span>
+                                    </span>
+                                  ) : isPayout ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                                      <Wallet className="w-3 h-3 text-teal-600" />
+                                      <span>صرف مستحقات دائن</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      <span>{arch.cycleType || 'سداد دفعة من الحساب'}</span>
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3">
+                                  {arch.walletPhone ? (
+                                    <div className="space-y-0.5">
+                                      <div className="font-mono font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1" dir="ltr">
+                                        <Smartphone className="w-3 h-3 text-slate-400" />
+                                        <span>{formatPhone(arch.walletPhone)}</span>
+                                      </div>
+                                      {arch.walletLabel && (
+                                        <div className="text-[10px] text-slate-400">{arch.walletLabel}</div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                                      {arch.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : arch.paymentMethod === 'instapay' ? 'إنستاباي' : arch.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقدي (كاش)'}
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 font-mono font-bold" dir="ltr">
+                                  {isRecharge ? (
+                                    <span className="text-blue-600 dark:text-blue-400 font-black text-sm">
+                                      +{formatCurrency(rechargeAmt)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 font-mono font-bold" dir="ltr">
+                                  {!isRecharge ? (
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-black text-sm">
+                                      -{formatCurrency(paidAmt)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 bg-slate-50/50 dark:bg-slate-800/40">
+                                  {isZeroBalance ? (
+                                    <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-bold text-xs">
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      <span>خالص (0 ج.م)</span>
+                                    </div>
+                                  ) : !isCreditorBalance ? (
+                                    <div className="space-y-0.5">
+                                      <span className="font-mono font-black text-rose-600 dark:text-rose-400 text-sm" dir="ltr">
+                                        {formatCurrency(arch.balanceAfter)}
+                                      </span>
+                                      <span className="text-[10px] text-rose-500 block font-bold">
+                                        متبقي مطلوب (مدين)
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-0.5">
+                                      <span className="font-mono font-black text-teal-600 dark:text-teal-400 text-sm" dir="ltr">
+                                        +{formatCurrency(Math.abs(arch.balanceAfter))}
+                                      </span>
+                                      <span className="text-[10px] text-teal-600 block font-bold">
+                                        رصيد دائن للعميل
+                                      </span>
+                                    </div>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 font-mono font-bold" dir="ltr">
+                                  {arch.excessAmount > 0 ? (
+                                    <span className="text-purple-600 dark:text-purple-400 font-black">
+                                      +{formatCurrency(arch.excessAmount)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300 dark:text-slate-600 font-normal">-</span>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400 max-w-xs truncate" title={arch.notes}>
+                                  {arch.notes || (isRecharge ? 'شحن رصيد للخط' : 'تسوية وتصفير دورة الحساب')}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteArchive(arch)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                                    title="حذف هذه العملية من الأرشيف"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )
+                  )}
+
+                  {/* TAB 2: Recharges ONLY */}
+                  {archiveModalTab === 'recharges' && (
+                    clientArchiveSummary.recharges.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-400">
+                        لا توجد عمليات شحن مسجلة لهذا العميل في الأرشيف.
+                      </div>
+                    ) : (
+                      <table className="w-full text-right border-collapse text-xs">
+                        <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-750">
+                          <tr>
+                            <th className="py-2.5 px-3 w-12 text-center">#</th>
+                            <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                            <th className="py-2.5 px-3 min-w-[170px]">رقم الخط / المحفظة</th>
+                            <th className="py-2.5 px-3 min-w-[130px] text-blue-700 dark:text-blue-300">مبلغ الشحن (+)</th>
+                            <th className="py-2.5 px-3 min-w-[150px]">الرصيد التراكمي</th>
+                            <th className="py-2.5 px-3 min-w-[180px]">الملاحظات</th>
+                            <th className="py-2.5 px-3 w-12 text-center">حذف</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {paginatedArchiveList.map((rc, idx) => {
+                            const rowNum = (safeArchivePage - 1) * ARCHIVE_ITEMS_PER_PAGE + idx + 1;
+                            const amt = Number(rc.rechargeAmount) || Number(rc.amountPaid) || Number(rc.amount) || Number(rc.finalBalance) || 0;
+                            return (
+                              <tr key={rc.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                                <td className="py-2.5 px-3 text-center font-mono text-slate-400">{rowNum}</td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-bold text-slate-900 dark:text-white">{formatDateArabic(rc.date)}</div>
+                                  <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-blue-500" />
+                                    <span>{formatTimeArabic(rc.time || rc.date)}</span>
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-mono font-bold text-slate-900 dark:text-white flex items-center gap-1" dir="ltr">
+                                    <Smartphone className="w-3.5 h-3.5 text-blue-500" />
+                                    <span>{formatPhone(rc.walletPhone || 'خط مسجل')}</span>
+                                  </div>
+                                  {rc.walletLabel && (
+                                    <div className="text-[10px] text-slate-400 mt-0.5">{rc.walletLabel}</div>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-black text-blue-700 dark:text-blue-300 text-sm" dir="ltr">
+                                  +{formatCurrency(amt)}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-rose-600 dark:text-rose-400" dir="ltr">
+                                  {formatCurrency(rc.balanceAfter || amt)}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={rc.notes}>
+                                  {rc.notes || 'شحن رصيد للخط'}
+                                </td>
+                                <td className="py-2.5 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteArchive(rc)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                                    title="حذف حركة الشحن"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )
+                  )}
+
+                  {/* TAB 3: Payments ONLY */}
+                  {archiveModalTab === 'payments' && (
+                    clientArchiveSummary.payments.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-400">
+                        لا توجد حركات سداد أو تحصيل مسجلة لهذا العميل في الأرشيف.
+                      </div>
+                    ) : (
+                      <table className="w-full text-right border-collapse text-xs">
+                        <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-750">
+                          <tr>
+                            <th className="py-2.5 px-3 w-12 text-center">#</th>
+                            <th className="py-2.5 px-3 min-w-[130px]">التاريخ والوقت</th>
+                            <th className="py-2.5 px-3 min-w-[130px]">طريقة الدفع</th>
+                            <th className="py-2.5 px-3 min-w-[130px] text-emerald-700 dark:text-emerald-300">المبلغ المسدد (-)</th>
+                            <th className="py-2.5 px-3 min-w-[150px]">نوع السداد / البيان</th>
+                            <th className="py-2.5 px-3 min-w-[100px]">الفائض</th>
+                            <th className="py-2.5 px-3 min-w-[180px]">الملاحظات</th>
+                            <th className="py-2.5 px-3 w-12 text-center">حذف</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {paginatedArchiveList.map((p, idx) => {
+                            const rowNum = (safeArchivePage - 1) * ARCHIVE_ITEMS_PER_PAGE + idx + 1;
+                            const amt = Number(p.amountPaid) || Number(p.amount) || 0;
+                            return (
+                              <tr key={p.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                                <td className="py-2.5 px-3 text-center font-mono text-slate-400">{rowNum}</td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-bold text-slate-900 dark:text-white">{formatDateArabic(p.date)}</div>
+                                  <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-emerald-500" />
+                                    <span>{formatTimeArabic(p.time || p.date)}</span>
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-3 font-bold text-slate-700 dark:text-slate-300">
+                                  {p.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : p.paymentMethod === 'instapay' ? 'إنستاباي' : p.paymentMethod === 'bank' ? 'تحويل بنكي' : 'نقدي (كاش)'}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-black text-emerald-700 dark:text-emerald-300 text-sm" dir="ltr">
+                                  -{formatCurrency(amt)}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                    p.operationCategory === 'payout' || p.cycleType?.includes('صرف')
+                                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 border-blue-200'
+                                      : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                  }`}>
+                                    {p.cycleType || 'سداد دفعة من الحساب'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-bold" dir="ltr">
+                                  {p.excessAmount > 0 ? (
+                                    <span className="text-purple-600 dark:text-purple-400 font-black">+{formatCurrency(p.excessAmount)}</span>
+                                  ) : (
+                                    <span className="text-slate-300 dark:text-slate-600">-</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={p.notes}>
+                                  {p.notes || 'سداد دفعة من الحساب'}
+                                </td>
+                                <td className="py-2.5 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteArchive(p)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                                    title="حذف حركة السداد"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )
+                  )}
+
+                </div>
+
+                {/* Pagination inside Archive Sheet if > 10 records */}
+                {totalArchivePages > 1 && (
+                  <div className="shrink-0 pt-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between px-2 py-1">
+                    <span className="text-xs text-slate-500 font-mono">
+                      صفحة {safeArchivePage} من {totalArchivePages} ({activeArchiveDisplayList.length} {archiveModalTab === 'recharges' ? 'شحنة' : archiveModalTab === 'payments' ? 'سداد' : 'خطوة'})
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={safeArchivePage <= 1}
+                        onClick={() => setArchivePage(p => Math.max(1, p - 1))}
+                        className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-750 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="الصفحة السابقة"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                      {Array.from({ length: totalArchivePages }, (_, i) => i + 1).map(p => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setArchivePage(p)}
+                          className={`min-w-[28px] h-7 px-2 rounded-lg font-mono font-bold text-xs transition-colors ${
+                            safeArchivePage === p
+                              ? 'bg-purple-600 text-white shadow-xs'
+                              : 'border border-slate-200 dark:border-slate-750 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-750'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={safeArchivePage >= totalArchivePages}
+                        onClick={() => setArchivePage(p => Math.min(totalArchivePages, p + 1))}
+                        className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-750 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="الصفحة التالية"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end bg-slate-50 dark:bg-slate-900/90 backdrop-blur-md shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCloseArchiveModal}
+                  className="btn-interactive px-6 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-colors"
+                >
+                  إغلاق
+                </button>
+              </div>
+
             </div>
-          </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

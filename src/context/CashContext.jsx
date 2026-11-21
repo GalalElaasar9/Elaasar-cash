@@ -203,6 +203,9 @@ export function CashProvider({ children }) {
   // Client Accounts Archive State (أرشيف حسابات العملاء والتسويات المقفلة)
   const [clientArchives, setClientArchives] = useState(() => storage.getClientArchives());
 
+  // Dismissed Archive IDs (سجلات الأرشيف التي تم حذفها دون حذف المعاملة الأصلية من المبيعات أو الخط)
+  const [dismissedArchiveIds, setDismissedArchiveIds] = useState(() => new Set(storage.getDismissedArchiveIds()));
+
   // Sync clients to localStorage
   useEffect(() => {
     storage.saveClients(clients);
@@ -635,7 +638,11 @@ export function CashProvider({ children }) {
     }
 
     const cleanRecipient = recipientPhone ? cleanEgyptianPhone(recipientPhone) : '';
-    if (cleanRecipient && !isValidEgyptianPhone(cleanRecipient)) {
+    if (!cleanRecipient) {
+      showToast('يرجى إدخال رقم المحول إليه (المستلم)', 'error');
+      return null;
+    }
+    if (!isValidEgyptianPhone(cleanRecipient)) {
       showToast('رقم المحول إليه غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً', 'error');
       return null;
     }
@@ -741,53 +748,247 @@ export function CashProvider({ children }) {
     triggerConfetti();
 
     if (!isShopWallet && client) {
-      // Auto-transition: Any client who receives a recharge automatically becomes 'مدين'
-      updateClient(client.id, {
-        clientType: 'مدين',
-        excessDebt: null,
-        excessDebtDate: null,
-        excessCredit: null,
-        excessCreditDate: null
-      });
+      // 1. Resolve client excess credit (رصيد دائن سابق ناتج عن سداد بزيادة)
+      let currentExcessCredit = client.excessCredit;
+      let currentExcessCreditDate = client.excessCreditDate;
+      if (currentExcessCredit === undefined || currentExcessCredit === null) {
+        try {
+          const saved = localStorage.getItem(`elaasar_client_excess_credit_${client.id}`);
+          if (saved !== null && saved !== '') {
+            currentExcessCredit = Number(saved);
+            currentExcessCreditDate = localStorage.getItem(`elaasar_client_excess_credit_date_${client.id}`);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
 
-      // Automatically document this recharge in the Client Accounts Archive!
-      archiveClientCycle({
-        clientId: client.id,
-        clientName: client.name,
-        cycleType: 'شحن رصيد للخط',
-        operationCategory: 'recharge',
-        rechargeAmount: numAmount,
-        amountPaid: 0,
-        debtBefore: 0,
-        creditBefore: 0,
-        excessAmount: 0,
-        finalBalance: numAmount,
-        resultingType: 'مدين',
-        paymentMethod: 'recharge',
-        notes: notes.trim()
-          ? `${notes.trim()} (شحن لرقم ${wallet.phoneNumber})`
-          : `شحن رصيد للرقم ${wallet.phoneNumber}`,
-        date: dateObj.toISOString(),
-        dateOnly,
-        time: formatTimeArabic(dateObj),
-        walletPhone: wallet.phoneNumber,
-        walletLabel: wallet.label,
-        transactionId: newTx.id,
-        isClosedCycle: false
-      });
+      let currentClientType = client.clientType;
+      if (!currentClientType) {
+        try {
+          currentClientType = localStorage.getItem(`elaasar_client_type_${client.id}`);
+        } catch {
+          currentClientType = 'مدين';
+        }
+      }
 
-      try {
-        localStorage.setItem(`elaasar_client_type_${client.id}`, 'مدين');
-        localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
-        localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
-        localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
-        localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
-        // Dispatch event so UI immediately switches tabs to 'مدين'
-        window.dispatchEvent(new CustomEvent('elaasar_client_type_changed', {
-          detail: { resultingType: 'مدين', clientId: client.id }
-        }));
-      } catch (e) {
-        console.error(e);
+      // Check if client is a creditor and compute active net credit before this recharge
+      const cutoffTime = currentExcessCreditDate ? new Date(currentExcessCreditDate).getTime() : 0;
+      const clientWalletIds = new Set((client.wallets || []).map(w => w.id));
+
+      const priorRecharges = (transactions || []).filter(t =>
+        (clientWalletIds.has(t.walletId) || t.customerId === client.id || t.clientId === client.id) &&
+        (t.type === 'recharge' || t.type === 'limit_reset') &&
+        !t.isSettled &&
+        (cutoffTime === 0 || new Date(t.date).getTime() > cutoffTime)
+      ).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+      const priorPayouts = (transactions || []).filter(t =>
+        (t.clientId === client.id || t.customerId === client.id) &&
+        t.type === 'client_payment' &&
+        t.isCreditorPayout &&
+        !t.isSettled &&
+        (cutoffTime === 0 || new Date(t.date).getTime() > cutoffTime)
+      ).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+      const isCreditorWithActiveCredit = (currentClientType === 'دائن') &&
+        (Number(currentExcessCredit) > 0) &&
+        ((Number(currentExcessCredit) - priorPayouts - priorRecharges) > 0);
+
+      if (isCreditorWithActiveCredit) {
+        const creditBefore = Number(currentExcessCredit) - priorPayouts - priorRecharges;
+        const creditAfter = creditBefore - numAmount;
+
+        if (creditAfter > 0) {
+          // Client is STILL A CREDITOR (له رصيد دائن متبقي)
+          updateClient(client.id, {
+            clientType: 'دائن',
+            excessCredit: currentExcessCredit,
+            excessCreditDate: currentExcessCreditDate,
+            excessDebt: null,
+            excessDebtDate: null
+          });
+
+          try {
+            localStorage.setItem(`elaasar_client_type_${client.id}`, 'دائن');
+            localStorage.setItem(`elaasar_client_excess_credit_${client.id}`, String(currentExcessCredit));
+            localStorage.setItem(`elaasar_client_excess_credit_date_${client.id}`, currentExcessCreditDate);
+            localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+            window.dispatchEvent(new CustomEvent('elaasar_client_type_changed', {
+              detail: { resultingType: 'دائن', clientId: client.id }
+            }));
+          } catch (e) {
+            console.error(e);
+          }
+
+          archiveClientCycle({
+            clientId: client.id,
+            clientName: client.name,
+            cycleType: 'شحن رصيد للخط (خصم من الرصيد الدائن)',
+            operationCategory: 'recharge',
+            rechargeAmount: numAmount,
+            amountPaid: 0,
+            debtBefore: 0,
+            creditBefore,
+            excessAmount: creditAfter,
+            finalBalance: creditAfter,
+            resultingType: 'دائن',
+            paymentMethod: 'recharge',
+            notes: notes.trim()
+              ? `${notes.trim()} (شحن لرقم ${wallet.phoneNumber} - متبقي له رصيد دائن ${formatCurrency(creditAfter)})`
+              : `شحن رصيد للرقم ${wallet.phoneNumber} (تم الخصم من الرصيد الدائن، والمتبقي له ${formatCurrency(creditAfter)} دائن)`,
+            date: dateObj.toISOString(),
+            dateOnly,
+            time: formatTimeArabic(dateObj),
+            walletPhone: wallet.phoneNumber,
+            walletLabel: wallet.label,
+            transactionId: newTx.id,
+            isClosedCycle: false
+          });
+        } else if (creditAfter === 0) {
+          // Client has consumed their entire credit exactly! (حساب خالص 0 ج.م)
+          updateClient(client.id, {
+            clientType: 'عادي',
+            excessCredit: 0,
+            excessCreditDate: null,
+            excessDebt: null,
+            excessDebtDate: null,
+            settledAt: dateObj.toISOString()
+          });
+
+          try {
+            localStorage.setItem(`elaasar_client_type_${client.id}`, 'عادي');
+            localStorage.setItem(`elaasar_client_settled_at_${client.id}`, dateObj.toISOString());
+            localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_debt_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_debt_date_${client.id}`);
+            window.dispatchEvent(new CustomEvent('elaasar_client_type_changed', {
+              detail: { resultingType: 'عادي', clientId: client.id }
+            }));
+          } catch (e) {
+            console.error(e);
+          }
+
+          archiveClientCycle({
+            clientId: client.id,
+            clientName: client.name,
+            cycleType: 'شحن رصيد واستهلاك كامل الرصيد الدائن (تصفير الحساب)',
+            operationCategory: 'recharge',
+            rechargeAmount: numAmount,
+            amountPaid: 0,
+            debtBefore: 0,
+            creditBefore,
+            excessAmount: 0,
+            finalBalance: 0,
+            resultingType: 'عادي',
+            paymentMethod: 'recharge',
+            notes: notes.trim()
+              ? `${notes.trim()} (استهلاك كامل الرصيد الدائن وتصفير الحساب)`
+              : `شحن رصيد للرقم ${wallet.phoneNumber} واستهلاك كامل الرصيد الدائن (${formatCurrency(creditBefore)}) ليصبح حسابه خالص (0 ج.م)`,
+            date: dateObj.toISOString(),
+            dateOnly,
+            time: formatTimeArabic(dateObj),
+            walletPhone: wallet.phoneNumber,
+            walletLabel: wallet.label,
+            transactionId: newTx.id,
+            isClosedCycle: true
+          });
+        } else {
+          // Recharge was greater than credit -> becomes debtor (مدين بالمتبقي)
+          const newDebt = Math.abs(creditAfter);
+          updateClient(client.id, {
+            clientType: 'مدين',
+            excessDebt: newDebt,
+            excessDebtDate: dateObj.toISOString(),
+            excessCredit: null,
+            excessCreditDate: null,
+            settledAt: dateObj.toISOString()
+          });
+
+          try {
+            localStorage.setItem(`elaasar_client_type_${client.id}`, 'مدين');
+            localStorage.setItem(`elaasar_client_excess_debt_${client.id}`, String(newDebt));
+            localStorage.setItem(`elaasar_client_excess_debt_date_${client.id}`, dateObj.toISOString());
+            localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
+            localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
+            window.dispatchEvent(new CustomEvent('elaasar_client_type_changed', {
+              detail: { resultingType: 'مدين', clientId: client.id }
+            }));
+          } catch (e) {
+            console.error(e);
+          }
+
+          archiveClientCycle({
+            clientId: client.id,
+            clientName: client.name,
+            cycleType: 'شحن رصيد بزيادة عن الرصيد الدائن (تحويل لمدين)',
+            operationCategory: 'recharge',
+            rechargeAmount: numAmount,
+            amountPaid: 0,
+            debtBefore: 0,
+            creditBefore,
+            excessAmount: 0,
+            finalBalance: newDebt,
+            resultingType: 'مدين',
+            paymentMethod: 'recharge',
+            notes: notes.trim()
+              ? `${notes.trim()} (شحن تجاوز الرصيد الدائن، وأصبح مدين بمبلغ ${formatCurrency(newDebt)})`
+              : `شحن رصيد للرقم ${wallet.phoneNumber} تجاوز الرصيد الدائن (${formatCurrency(creditBefore)})، وأصبح العميل مدين بمبلغ ${formatCurrency(newDebt)} ج.م`,
+            date: dateObj.toISOString(),
+            dateOnly,
+            time: formatTimeArabic(dateObj),
+            walletPhone: wallet.phoneNumber,
+            walletLabel: wallet.label,
+            transactionId: newTx.id,
+            isClosedCycle: false
+          });
+        }
+      } else {
+        // Standard client (مدين or عادي) receiving a recharge -> becomes 'مدين'
+        updateClient(client.id, {
+          clientType: 'مدين',
+          excessCredit: null,
+          excessCreditDate: null
+        });
+
+        try {
+          localStorage.setItem(`elaasar_client_type_${client.id}`, 'مدين');
+          localStorage.removeItem(`elaasar_client_excess_credit_${client.id}`);
+          localStorage.removeItem(`elaasar_client_excess_credit_date_${client.id}`);
+          window.dispatchEvent(new CustomEvent('elaasar_client_type_changed', {
+            detail: { resultingType: 'مدين', clientId: client.id }
+          }));
+        } catch (e) {
+          console.error(e);
+        }
+
+        // Automatically document this recharge in the Client Accounts Archive!
+        archiveClientCycle({
+          clientId: client.id,
+          clientName: client.name,
+          cycleType: 'شحن رصيد للخط',
+          operationCategory: 'recharge',
+          rechargeAmount: numAmount,
+          amountPaid: 0,
+          debtBefore: 0,
+          creditBefore: 0,
+          excessAmount: 0,
+          finalBalance: numAmount,
+          resultingType: 'مدين',
+          paymentMethod: 'recharge',
+          notes: notes.trim()
+            ? `${notes.trim()} (شحن لرقم ${wallet.phoneNumber})`
+            : `شحن رصيد للرقم ${wallet.phoneNumber}`,
+          date: dateObj.toISOString(),
+          dateOnly,
+          time: formatTimeArabic(dateObj),
+          walletPhone: wallet.phoneNumber,
+          walletLabel: wallet.label,
+          transactionId: newTx.id,
+          isClosedCycle: false
+        });
       }
 
       // Client Wallet Rules Check (60k daily, 200k monthly)
@@ -961,9 +1162,63 @@ export function CashProvider({ children }) {
     return newArchive;
   };
 
-  const deleteClientArchive = (archiveId) => {
+  const deleteClientArchive = (archiveId, transactionId = null) => {
     setClientArchives(prev => prev.filter(a => a.id !== archiveId));
-    showToast('تم حذف سجل الأرشيف بنجاح', 'info');
+    setDismissedArchiveIds(prev => {
+      const next = new Set(prev);
+      if (archiveId) next.add(archiveId);
+      if (transactionId) next.add(transactionId);
+      if (typeof archiveId === 'string' && archiveId.startsWith('tx_')) {
+        next.add(archiveId.replace('tx_', ''));
+      }
+      storage.saveDismissedArchiveIds(Array.from(next));
+      return next;
+    });
+    showToast('تم مسح السجل من الأرشيف مع بقاء المبيعات وحركات الخط كما هي', 'info');
+  };
+
+  // مسح كامل سجلات أرشيف العميل مع الحفاظ التام على المبيعات والشحنات على الخطوط
+  const clearClientArchive = (clientId, clientName, records = []) => {
+    setClientArchives(prev => prev.filter(a => {
+      if (clientId && a.clientId === clientId) return false;
+      if (clientName && a.clientName === clientName) return false;
+      return true;
+    }));
+
+    const nowTimestamp = Date.now();
+    if (clientId) {
+      try {
+        localStorage.setItem(`elaasar_client_archive_cleared_${clientId}`, String(nowTimestamp));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    setDismissedArchiveIds(prev => {
+      const next = new Set(prev);
+      (records || []).forEach(r => {
+        if (r.id) next.add(r.id);
+        if (r.transactionId) next.add(r.transactionId);
+        if (typeof r.id === 'string' && r.id.startsWith('tx_')) {
+          next.add(r.id.replace('tx_', ''));
+        }
+      });
+      const targetClient = clients.find(c => c.id === clientId || c.name === clientName);
+      const targetWalletIds = new Set((targetClient?.wallets || []).map(w => w.id));
+      const targetPhones = new Set((targetClient?.wallets || []).map(w => w.phoneNumber).filter(Boolean));
+      (transactions || []).forEach(t => {
+        const isClientTx = t.clientId === clientId || t.customerId === clientId ||
+          (t.walletId && targetWalletIds.has(t.walletId)) ||
+          (t.walletPhone && targetPhones.has(t.walletPhone));
+        if (isClientTx) {
+          next.add(t.id);
+          next.add(`tx_${t.id}`);
+        }
+      });
+      storage.saveDismissedArchiveIds(Array.from(next));
+      return next;
+    });
+    showToast('تم مسح أرشيف العميل بنجاح دون التأثير على المبيعات أو حركات الخط', 'success');
   };
 
   // Delete transaction (reverts the deduction from limit)
@@ -1521,7 +1776,9 @@ export function CashProvider({ children }) {
         addClientPayment,
         archiveClientCycle,
         deleteClientArchive,
+        clearClientArchive,
         clientArchives,
+        dismissedArchiveIds,
         deleteTransaction,
         updateTransaction,
         findWalletAndClient,

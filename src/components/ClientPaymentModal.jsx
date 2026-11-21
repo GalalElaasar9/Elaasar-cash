@@ -100,8 +100,20 @@ export default function ClientPaymentModal() {
     try {
       // Build ISO Date with custom time
       let paymentDate = new Date();
-      if (date && time) {
+      const todayStr = getTodayISO();
+      const now = new Date();
+      const currentTimeStr = getCurrentTimeStr();
+
+      if (date === todayStr && time === currentTimeStr) {
+        // Real-time payment happening right now: keep full precision timestamp (Date.now())
+        // This guarantees that any payment done after a recharge preserves its exact chronological order
+        paymentDate = now;
+      } else if (date && time) {
         paymentDate = new Date(`${date}T${time}:00`);
+        // If today and within the current minute, ensure it doesn't artificially regress behind now
+        if (date === todayStr && Math.abs(now.getTime() - paymentDate.getTime()) < 60000) {
+          paymentDate = now;
+        }
       } else if (date) {
         paymentDate = new Date(`${date}T12:00:00`);
       }
@@ -171,6 +183,7 @@ export default function ClientPaymentModal() {
           }
 
           archiveClientCycle({
+            transactionId: paymentTx?.id,
             clientId: client.id,
             clientName: client.name,
             cycleType: 'صرف مستحقات دائن بزيادة (تحويل لمدين)',
@@ -217,6 +230,7 @@ export default function ClientPaymentModal() {
           }
 
           archiveClientCycle({
+            transactionId: paymentTx?.id,
             clientId: client.id,
             clientName: client.name,
             cycleType: 'صرف مستحقات دائن وتصفير الحساب',
@@ -243,6 +257,7 @@ export default function ClientPaymentModal() {
         } else {
           // Partial Payout for Creditor
           archiveClientCycle({
+            transactionId: paymentTx?.id,
             clientId: client.id,
             clientName: client.name,
             cycleType: 'صرف دفعة لمستحق دائن',
@@ -298,6 +313,7 @@ export default function ClientPaymentModal() {
           }
 
           archiveClientCycle({
+            transactionId: paymentTx?.id,
             clientId: client.id,
             clientName: client.name,
             cycleType: 'سداد مديونية مع فائض (تحويل لدائن)',
@@ -344,6 +360,7 @@ export default function ClientPaymentModal() {
           }
 
           archiveClientCycle({
+            transactionId: paymentTx?.id,
             clientId: client.id,
             clientName: client.name,
             cycleType: 'سداد كامل المديونية وتصفير الحساب',
@@ -389,6 +406,7 @@ export default function ClientPaymentModal() {
               }
 
               archiveClientCycle({
+                transactionId: paymentTx?.id,
                 clientId: client.id,
                 clientName: client.name,
                 cycleType: 'سداد كامل المبلغ الزائد وتصفير الحساب',
@@ -414,6 +432,7 @@ export default function ClientPaymentModal() {
               }
 
               archiveClientCycle({
+                transactionId: paymentTx?.id,
                 clientId: client.id,
                 clientName: client.name,
                 cycleType: 'سداد دفعة من المبلغ الزائد',
@@ -434,6 +453,7 @@ export default function ClientPaymentModal() {
           } else {
             // Standard debtor paying a partial amount (سداد دفعة جزئية من الحساب الآجل)
             archiveClientCycle({
+              transactionId: paymentTx?.id,
               clientId: client.id,
               clientName: client.name,
               cycleType: 'سداد دفعة من الحساب',

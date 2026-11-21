@@ -197,15 +197,18 @@ export default function NewTransferModal() {
       return;
     }
 
-    if (recipientPhone.trim()) {
-      const cleanRecipient = cleanEgyptianPhone(recipientPhone);
-      if (!isValidEgyptianPhone(cleanRecipient)) {
-        showToast(
-          getEgyptianPhoneError(cleanRecipient) || 'رقم المحول إليه غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً',
-          'error'
-        );
-        return;
-      }
+    if (!recipientPhone.trim()) {
+      showToast('يرجى إدخال رقم المحول إليه (المستلم)', 'error');
+      return;
+    }
+
+    const cleanRecipient = cleanEgyptianPhone(recipientPhone);
+    if (!isValidEgyptianPhone(cleanRecipient)) {
+      showToast(
+        getEgyptianPhoneError(cleanRecipient) || 'رقم المحول إليه غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً',
+        'error'
+      );
+      return;
     }
 
     if (isLocked) {
@@ -518,8 +521,9 @@ export default function NewTransferModal() {
           {/* Recipient Phone */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                رقم المحول إليه (المستلم - 11 رقم مصري)
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <span>رقم المحول إليه (المستلم - 11 رقم مصري)</span>
+                <span className="text-rose-500 font-bold">*</span>
               </label>
               {recipientCarrier ? (
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50">
@@ -534,6 +538,7 @@ export default function NewTransferModal() {
             <div>
               <input
                 type="tel"
+                required
                 maxLength={11}
                 placeholder="010XXXXXXXX"
                 value={recipientPhone}
