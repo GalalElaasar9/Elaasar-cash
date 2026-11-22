@@ -111,6 +111,25 @@ export function getEgyptianCarrier(phone) {
   }
 }
 
+/**
+ * Builds an official direct WhatsApp Web/Mobile link:
+ * - Automatically ensures Egyptian international prefix 20 (e.g. 010... -> 2010...)
+ * - Encodes message text safely
+ */
+export function buildWhatsAppUrl(phone, messageText = '') {
+  if (!phone) return '';
+  const clean = cleanEgyptianPhone(phone);
+  if (!clean) return '';
+  let intlPhone = clean;
+  if (clean.startsWith('0')) {
+    intlPhone = '20' + clean.slice(1);
+  } else if (!clean.startsWith('20')) {
+    intlPhone = '20' + clean;
+  }
+  const encoded = messageText ? `?text=${encodeURIComponent(messageText)}` : '';
+  return `https://wa.me/${intlPhone}${encoded}`;
+}
+
 export function formatPhone(phone) {
   if (!phone) return '';
   const clean = cleanEgyptianPhone(phone);

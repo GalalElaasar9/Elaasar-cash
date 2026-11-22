@@ -351,13 +351,15 @@ export function CashProvider({ children }) {
   };
 
   // Client Management
-  const addClient = ({ name, notes = '', clientType = 'عادي', initialPhoneNumber, initialWalletLabel = 'المحفظة الأساسية', initialLimit = 200000, wallets = [] }) => {
+  const addClient = ({ name, notes = '', clientType = 'عادي', whatsappPhone = '', initialPhoneNumber, initialWalletLabel = 'المحفظة الأساسية', initialLimit = 200000, wallets = [] }) => {
     const finalType = clientType || 'عادي';
+    const cleanWhatsapp = whatsappPhone ? cleanEgyptianPhone(whatsappPhone) : '';
     const newClient = {
       id: `client-${Date.now()}`,
       name: name.trim(),
       notes: notes.trim(),
       clientType: finalType,
+      whatsappPhone: cleanWhatsapp,
       createdAt: new Date().toISOString(),
       wallets: []
     };

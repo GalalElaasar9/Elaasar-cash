@@ -6,18 +6,23 @@ import {
   getEgyptianPhoneError, 
   getEgyptianCarrier 
 } from '../utils/formatters';
-import { UserPlus, X, Plus, Trash2, Smartphone, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UserPlus, X, Plus, Trash2, Smartphone, CheckCircle2, AlertCircle, MessageCircle } from 'lucide-react';
 
 export default function AddClientModal() {
   const { activeModal, setActiveModal, addClient, showToast } = useCash();
   const dialogRef = useRef(null);
 
   const [name, setName] = useState('');
+  const [whatsappPhone, setWhatsappPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [clientType, setClientType] = useState('عادي');
   const [wallets, setWallets] = useState([
     { phoneNumber: '', label: 'محفظة 1', totalLimit: 200000 }
   ]);
+
+  const whatsappCarrier = getEgyptianCarrier(whatsappPhone);
+  const whatsappPhoneError = whatsappPhone.length >= 3 ? getEgyptianPhoneError(whatsappPhone) : null;
+  const isWhatsappValid = isValidEgyptianPhone(whatsappPhone);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -33,6 +38,7 @@ export default function AddClientModal() {
   const handleClose = () => {
     setActiveModal(null);
     setName('');
+    setWhatsappPhone('');
     setNotes('');
     setClientType('عادي');
     setWallets([{ phoneNumber: '', label: 'محفظة 1', totalLimit: 200000 }]);
@@ -76,10 +82,21 @@ export default function AddClientModal() {
       filledWallets[i].phoneNumber = clean;
     }
 
+    // Validate WhatsApp number if entered
+    const cleanWhatsapp = whatsappPhone.trim() ? cleanEgyptianPhone(whatsappPhone) : '';
+    if (cleanWhatsapp && !isValidEgyptianPhone(cleanWhatsapp)) {
+      showToast(
+        getEgyptianPhoneError(cleanWhatsapp) || 'رقم الواتساب غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً',
+        'error'
+      );
+      return;
+    }
+
     addClient({
       name,
       notes,
       clientType,
+      whatsappPhone: cleanWhatsapp,
       wallets: filledWallets
     });
 
@@ -133,6 +150,54 @@ export default function AddClientModal() {
             onChange={(e) => setName(e.target.value)}
             className="w-full px-3.5 py-2.5 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/50"
           />
+        </div>
+
+        {/* WhatsApp Phone */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>رقم الواتساب (للمطالبات والتقارير المباشرة)</span>
+              <span className="text-[10px] text-slate-400 font-normal">(اختياري)</span>
+            </label>
+            {whatsappCarrier ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                {whatsappCarrier.name}
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400 font-mono" dir="ltr">010 / 011 / 012 / 015</span>
+            )}
+          </div>
+          <div className="relative">
+            <input
+              type="tel"
+              maxLength={11}
+              placeholder="010XXXXXXXX (اختياري - لو ترك فارغاً يعتمد أول رقم محفظة)"
+              value={whatsappPhone}
+              onChange={(e) => setWhatsappPhone(cleanEgyptianPhone(e.target.value))}
+              className={`w-full px-3.5 py-2.5 text-sm font-mono font-bold bg-slate-50 dark:bg-slate-800 border rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-colors ${
+                isWhatsappValid
+                  ? 'border-emerald-500 focus:ring-emerald-500/40 bg-emerald-50/10'
+                  : whatsappPhoneError
+                  ? 'border-rose-400 focus:ring-rose-500/40'
+                  : 'border-slate-200 dark:border-slate-700 focus:ring-emerald-500/40'
+              }`}
+              dir="ltr"
+            />
+          </div>
+          {whatsappPhoneError && (
+            <p className="text-[11px] text-rose-500 font-bold mt-1 flex items-center gap-1">
+              <span>{whatsappPhoneError}</span>
+            </p>
+          )}
+          {isWhatsappValid && (
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
+              <span>✓ رقم واتساب مصري صحيح ({whatsappCarrier?.name})</span>
+            </p>
+          )}
+          <p className="text-[11px] text-slate-400 mt-1">
+            يُستخدم هذا الرقم لإرسال كشف الحساب والمطالبات المالية مباشرة إلى شات العميل على الواتساب بضغطة زر واحدة.
+          </p>
         </div>
 
         <div>

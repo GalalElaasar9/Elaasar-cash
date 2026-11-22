@@ -34,9 +34,142 @@
     animation: backdropFade 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
-  /* Desktop Modal Scale-In Animation */
-  dialog[open] {
-    animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  /* Tablet only (Screens between 640px and 1023px): Right Sheet Drawer */
+  @media (min-width: 640px) and (max-width: 1023px) {
+    dialog[open] {
+      position: fixed !important;
+      inset-block-start: 0px !important;
+      inset-block-end: 0px !important;
+      inset-inline-start: auto !important;
+      inset-inline-end: 0px !important;
+      top: 0px !important;
+      bottom: 0px !important;
+      right: 0px !important;
+      left: auto !important;
+      margin: 0 0 0 auto !important;
+      margin-inline-start: auto !important;
+      margin-inline-end: 0 !important;
+      height: 100% !important;
+      height: 100dvh !important;
+      height: 100vh !important;
+      max-height: 100dvh !important;
+      max-height: 100vh !important;
+      border-top-right-radius: 0px !important;
+      border-bottom-right-radius: 0px !important;
+      border-top-left-radius: 1.5rem !important;
+      border-bottom-left-radius: 1.5rem !important;
+      border-right: 0px !important;
+      border-top: 0px !important;
+      border-bottom: 0px !important;
+      border-left: 1px solid rgba(226, 232, 240, 0.8) !important;
+      box-shadow: -12px 0 40px -5px rgba(0, 0, 0, 0.25) !important;
+      animation: rightSheetSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      width: 100% !important;
+      max-width: min(640px, 92vw) !important;
+    }
+
+    .dark dialog[open] {
+      border-left: 1px solid rgba(51, 65, 85, 0.8) !important;
+      box-shadow: -12px 0 40px -5px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    dialog[open].max-w-xs { max-width: min(380px, 90vw) !important; }
+    dialog[open].max-w-sm { max-width: min(440px, 90vw) !important; }
+    dialog[open].max-w-md { max-width: min(520px, 90vw) !important; }
+    dialog[open].max-w-lg { max-width: min(640px, 92vw) !important; }
+    dialog[open].max-w-xl { max-width: min(720px, 92vw) !important; }
+    dialog[open].max-w-2xl { max-width: min(800px, 94vw) !important; }
+    dialog[open].max-w-3xl { max-width: min(880px, 94vw) !important; }
+    dialog[open].max-w-4xl { max-width: min(960px, 96vw) !important; }
+
+    /* Pinned header & footer in right sheet */
+    dialog[open] > *:first-child {
+      flex-shrink: 0 !important;
+    }
+
+    dialog[open] > *:last-child:not(:first-child):not(:nth-child(2)) {
+      flex-shrink: 0 !important;
+      margin-top: auto !important;
+    }
+
+    /* Scrollable form/body inside right sheet on tablet with max-height */
+    dialog[open] form,
+    dialog[open] .modal-scroll-area,
+    dialog[open] > div.overflow-y-auto,
+    dialog[open] form.overflow-y-auto,
+    dialog[open] > div:nth-child(2) {
+      flex: 1 1 auto;
+      max-height: calc(100dvh - 120px) !important;
+      max-height: calc(100vh - 120px) !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+  }
+
+  /* Laptop & Desktop (Screens >= 1024px): Centered Popup Modal as it was before */
+  @media (min-width: 1024px) {
+    dialog[open] {
+      position: fixed !important;
+      inset: 0 !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      margin: auto !important;
+      width: 100% !important;
+      height: fit-content !important;
+      max-height: 90vh !important;
+      max-height: 90dvh !important;
+      border-radius: 1.5rem !important;
+      border: 1px solid rgba(226, 232, 240, 0.9) !important;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35) !important;
+      animation: modalPopupZoom 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+    }
+
+    .dark dialog[open] {
+      border: 1px solid rgba(51, 65, 85, 0.9) !important;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6) !important;
+    }
+
+    dialog[open].max-w-xs { max-width: 24rem !important; }
+    dialog[open].max-w-sm { max-width: 28rem !important; }
+    dialog[open].max-w-md { max-width: 32rem !important; }
+    dialog[open].max-w-lg { max-width: 36rem !important; }
+    dialog[open].max-w-xl { max-width: 42rem !important; }
+    dialog[open].max-w-2xl { max-width: 48rem !important; }
+    dialog[open].max-w-3xl { max-width: 56rem !important; }
+    dialog[open].max-w-4xl { max-width: 64rem !important; }
+
+    /* Pinned header & footer in centered popup */
+    dialog[open] > *:first-child {
+      flex-shrink: 0 !important;
+    }
+
+    dialog[open] > *:last-child:not(:first-child):not(:nth-child(2)) {
+      flex-shrink: 0 !important;
+      margin-top: auto !important;
+    }
+
+    /* Scrollable form/body inside centered popup on laptop with max-height */
+    dialog[open] form,
+    dialog[open] .modal-scroll-area,
+    dialog[open] > div.overflow-y-auto,
+    dialog[open] form.overflow-y-auto,
+    dialog[open] > div:nth-child(2) {
+      flex: 1 1 auto;
+      max-height: calc(90vh - 130px) !important;
+      max-height: calc(90dvh - 130px) !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
   }
 
   /* Mobile Bottom Sheet (Transforms all popups/modals into native bottom sheets on mobile) */
@@ -65,8 +198,26 @@
       border-left: 0 !important;
       border-right: 0 !important;
       border-bottom: 0 !important;
+      border-top: 1px solid rgba(226, 232, 240, 0.8) !important;
       box-shadow: 0 -12px 40px -5px rgba(0, 0, 0, 0.35) !important;
       animation: bottomSheetSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+    }
+
+    .dark dialog[open] {
+      border-top: 1px solid rgba(51, 65, 85, 0.8) !important;
+    }
+
+    /* Pinned header & footer in mobile bottom sheet */
+    dialog[open] > *:first-child {
+      flex-shrink: 0 !important;
+    }
+
+    dialog[open] > *:last-child:not(:first-child):not(:nth-child(2)) {
+      flex-shrink: 0 !important;
+      margin-top: auto !important;
     }
 
     /* Subtle native drag handle indicator at top of bottom sheet */
@@ -84,18 +235,41 @@
       pointer-events: none;
     }
 
-    /* Scrollable form/body inside bottom sheet with iOS touch momentum */
+    /* Scrollable form/body inside bottom sheet with iOS touch momentum & max-height */
     dialog[open] form,
     dialog[open] .modal-scroll-area,
     dialog[open] > div.overflow-y-auto,
     dialog[open] form.overflow-y-auto,
     dialog[open] > div:nth-child(2) {
+      flex: 1 1 auto;
       max-height: calc(90dvh - 85px) !important;
+      max-height: calc(90vh - 85px) !important;
       overflow-y: auto !important;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
       padding-bottom: max(1.5rem, env(safe-area-inset-bottom)) !important;
     }
+  }
+}
+
+.animate-bottom-sheet {
+  animation: bottomSheetSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-bottom-sheet-out {
+  animation: bottomSheetSlideDown 0.25s cubic-bezier(0.4, 0, 1, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes bottomSheetSlideDown {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
   }
 }
 
@@ -106,6 +280,18 @@
   }
   to {
     transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Modal Popup Zoom Transition (Laptop/Desktop) */
+@keyframes modalPopupZoom {
+  0% {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
     opacity: 1;
   }
 }

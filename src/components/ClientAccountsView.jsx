@@ -10,7 +10,8 @@ import {
   getEgyptianCarrier,
   calculateWalletStats,
   getTodayString,
-  getCurrentMonthKey
+  getCurrentMonthKey,
+  buildWhatsAppUrl
 } from '../utils/formatters';
 import {
   Users,
@@ -45,7 +46,8 @@ import {
   ArrowUpDown,
   Archive,
   History,
-  Receipt
+  Receipt,
+  MessageCircle
 } from 'lucide-react';
 
 export default function ClientAccountsView({ onNavigateToClients }) {
@@ -1310,8 +1312,8 @@ export default function ClientAccountsView({ onNavigateToClients }) {
     setActiveModal('rechargeWallet');
   };
 
-  // Quick action: Copy WhatsApp Statement message
-  const handleCopyWhatsAppMessage = (item) => {
+  // Helper: Generate WhatsApp Statement text
+  const generateWhatsAppStatementText = (item) => {
     const isAdd = (item.effectiveMode || item.commissionMode) === 'add';
     const modeText = isAdd ? 'إضافة' : 'خصم';
     const periodLabel = timeRange === 'today' ? 'اليوم' : timeRange === 'month' ? 'هذا الشهر' : 'الإجمالي';
@@ -1329,7 +1331,7 @@ export default function ClientAccountsView({ onNavigateToClients }) {
       balanceLine = `المطلوب سداده بعد العمولة: ${formatNumber(item.finalAmount)} ج.م`;
     }
 
-    const text = `السلام عليكم ورحمة الله،
+    return `السلام عليكم ورحمة الله،
 كشف حساب (${periodLabel}) - محلات الأعصر:
 العميل: ${item.client.name}
 عدد الخطوط: ${item.wallets.filter(w => w.amount > 0).length || item.wallets.length}
@@ -1341,7 +1343,24 @@ ${item.hasExcessDebt ? 'العمولة: بدون عمولة (صافي نقدي �
 ${balanceLine}
 -----------------------------
 شاكرين لحضرتك، نسعد بخدمتك دائماً.`;
+  };
 
+  // Direct action: Open WhatsApp Chat directly with pre-filled statement
+  const handleOpenWhatsAppChat = (item) => {
+    const targetPhone = item.client?.whatsappPhone || item.wallets?.find(w => w.phoneNumber)?.phoneNumber || item.client?.wallets?.[0]?.phoneNumber;
+    if (!targetPhone) {
+      showToast(`لا يوجد رقم واتساب أو رقم محفظة مسجل لحساب ${item.client.name}`, 'warning');
+      return;
+    }
+    const text = generateWhatsAppStatementText(item);
+    const url = buildWhatsAppUrl(targetPhone, text);
+    window.open(url, '_blank');
+    showToast(`جاري فتح محادثة واتساب للعميل "${item.client.name}"`);
+  };
+
+  // Quick action: Copy WhatsApp Statement message
+  const handleCopyWhatsAppMessage = (item) => {
+    const text = generateWhatsAppStatementText(item);
     navigator.clipboard.writeText(text);
     setCopiedClientId(item.client.id);
     showToast(`تم نسخ رسالة المطالبة لحساب ${item.client.name}`);
@@ -2464,11 +2483,20 @@ ${balanceLine}
                             <Eye className="w-4 h-4" />
                           </button>
 
+                          {/* Direct WhatsApp Action Button */}
+                          <button
+                            onClick={() => handleOpenWhatsAppChat(item)}
+                            className="btn-interactive p-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
+                            title={`فتح شات واتساب وإرسال كشف الحساب مباشرة إلى ${item.client.name}`}
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+
                           {/* Copy WhatsApp Statement */}
                           <button
                             onClick={() => handleCopyWhatsAppMessage(item)}
                             className="btn-interactive p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-600 dark:text-emerald-400"
-                            title="نسخ ملخص الحساب لإرساله عبر واتساب"
+                            title="نسخ ملخص الحساب لإرساله يدوياً"
                           >
                             {copiedClientId === client.id ? (
                               <Check className="w-4 h-4 text-emerald-600" />
@@ -2527,9 +2555,11 @@ ${balanceLine}
             onClick={handleCloseStatementSheet}
           />
 
-          <div className={`fixed inset-y-0 right-0 z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
-            closingStatementSheet ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          <div className={`fixed inset-x-0 bottom-0 top-auto max-h-[90dvh] rounded-t-3xl border-t sm:inset-y-0 sm:right-0 sm:left-auto sm:top-0 sm:bottom-0 sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 lg:fixed lg:inset-0 lg:m-auto lg:top-0 lg:bottom-0 lg:left-0 lg:right-0 lg:h-fit lg:max-h-[90vh] lg:rounded-3xl lg:border lg:shadow-2xl z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
+            closingStatementSheet ? 'animate-bottom-sheet-out sm:animate-right-sheet-out lg:opacity-0' : 'animate-bottom-sheet sm:animate-right-sheet lg:animate-in lg:zoom-in-95'
           }`}>
+              {/* Mobile Drag Handle Indicator */}
+              <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
               
               {/* Header */}
               <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 shrink-0 flex items-center justify-between bg-white dark:bg-slate-900">
@@ -2589,8 +2619,8 @@ ${balanceLine}
                 </div>
               </div>
 
-              {/* Scrollable Sheet Body */}
-              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+              {/* Scrollable Sheet Body with Responsive Max-Height */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(90vh-140px)] min-h-0">
                 {/* Financial Summary: 3 Clean KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
               {/* 1. Total Recharges */}
@@ -2971,15 +3001,28 @@ ${balanceLine}
             </div>
 
             {/* Fixed Sheet Footer */}
-            <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 backdrop-blur-md flex items-center justify-between shrink-0">
-              <button
-                type="button"
-                onClick={() => handleCopyWhatsAppMessage(selectedClientForStatement)}
-                className="btn-interactive flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>نسخ ملخص المطالبة للواتساب</span>
-              </button>
+            <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 backdrop-blur-md flex items-center justify-between flex-wrap gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenWhatsAppChat(selectedClientForStatement)}
+                  className="btn-interactive flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-sm"
+                  title="فتح محادثة واتساب العميل وإرسال كشف الحساب مباشرة"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>إرسال المطالبة عبر واتساب مباشرة</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleCopyWhatsAppMessage(selectedClientForStatement)}
+                  className="btn-interactive flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold"
+                  title="نسخ نص المطالبة"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>نسخ النص</span>
+                </button>
+              </div>
 
               <div className="flex items-center gap-2">
                 {selectedClientForStatement.remainingDebt > 0 && (
@@ -3024,9 +3067,11 @@ ${balanceLine}
             onClick={handleCloseArchiveSheet}
           />
 
-          <div className={`fixed inset-y-0 right-0 z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
-            closingArchiveSheet ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          <div className={`fixed inset-x-0 bottom-0 top-auto max-h-[90dvh] rounded-t-3xl border-t sm:inset-y-0 sm:right-0 sm:left-auto sm:top-0 sm:bottom-0 sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 lg:fixed lg:inset-0 lg:m-auto lg:top-0 lg:bottom-0 lg:left-0 lg:right-0 lg:h-fit lg:max-h-[90vh] lg:rounded-3xl lg:border lg:shadow-2xl z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
+            closingArchiveSheet ? 'animate-bottom-sheet-out sm:animate-right-sheet-out lg:opacity-0' : 'animate-bottom-sheet sm:animate-right-sheet lg:animate-in lg:zoom-in-95'
           }`}>
+              {/* Mobile Drag Handle Indicator */}
+              <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
               
               {/* Header */}
               <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 shrink-0 flex items-center justify-between bg-white dark:bg-slate-900">
@@ -3074,8 +3119,8 @@ ${balanceLine}
                 </div>
               </div>
 
-              {/* Scrollable Sheet Body */}
-              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+              {/* Scrollable Sheet Body with Responsive Max-Height */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(90vh-140px)] min-h-0">
                 {/* Stats Summary: 3 Clean KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
               <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between">

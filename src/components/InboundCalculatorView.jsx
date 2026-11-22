@@ -1166,13 +1166,21 @@ export default function InboundCalculatorView() {
 
       </div>
 
-      {/* 6. MODAL: End Day Confirmation (نافذة إغلاق الوردية وتصفير الكشف) */}
+      {/* 6. MODAL: End Day Confirmation (Right Sheet on Tablet/Desktop, Bottom Sheet on Mobile) */}
       {isEndDayModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative space-y-5 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 overflow-hidden" dir="rtl">
+          {/* Backdrop Overlay */}
+          <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-right-sheet-backdrop"
+            onClick={() => setIsEndDayModalOpen(false)}
+          />
+          <div className="fixed inset-x-0 bottom-0 top-auto max-h-[90dvh] rounded-t-3xl border-t sm:inset-y-0 sm:right-0 sm:left-auto sm:top-0 sm:bottom-0 sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 lg:fixed lg:inset-0 lg:m-auto lg:top-0 lg:bottom-0 lg:left-0 lg:right-0 lg:h-fit lg:max-h-[90vh] lg:rounded-3xl lg:border lg:shadow-2xl z-10 w-full max-w-lg bg-white dark:bg-slate-900 shadow-2xl border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-bottom-sheet sm:animate-right-sheet lg:animate-in lg:zoom-in-95">
             
+            {/* Mobile Drag Handle Indicator */}
+            <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
+
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
                   <Square className="w-5 h-5 fill-rose-600" />
@@ -1195,68 +1203,71 @@ export default function InboundCalculatorView() {
               </button>
             </div>
 
-            {/* Business Date Lock Banner */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border border-blue-200 dark:border-blue-900 space-y-1">
-              <div className="flex items-center gap-2 text-xs font-bold text-blue-900 dark:text-blue-200">
-                <Calendar className="w-4 h-4 text-blue-600" />
-                <span>سيتم تسجيل وأرشفة هذه اليومية رسمياً لحساب يوم:</span>
+            {/* Scrollable Body with Responsive Max-Height */}
+            <div className="p-5 sm:p-6 space-y-4 flex-1 overflow-y-auto max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(90vh-140px)] min-h-0">
+              {/* Business Date Lock Banner */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border border-blue-200 dark:border-blue-900 space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-900 dark:text-blue-200">
+                  <Calendar className="w-4 h-4 text-blue-600" />
+                  <span>سيتم تسجيل وأرشفة هذه اليومية رسمياً لحساب يوم:</span>
+                </div>
+                <div className="text-lg font-black text-blue-700 dark:text-blue-300">
+                  {shiftSession?.businessDateLabel}
+                </div>
+                
+                {/* Highlight midnight crossing logic */}
+                {isPastMidnight ? (
+                  <div className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300 font-bold pt-1 bg-amber-500/10 p-2 rounded-xl mt-2 border border-amber-300/40">
+                    <Moon className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>
+                      ملاحظة هامة: على الرغم من أن الساعة الآن تخطت 12:00 منتصف الليل، إلا أن اليومية ستُسجل بالكامل لحساب يوم البدء ({shiftSession?.businessDateLabel}) ولن تختلط بيوم الغد.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    تاريخ البدء: {shiftSession?.startedAtTimeStr} • تاريخ الإغلاق الآن: {formatTimeArabic(new Date())}
+                  </div>
+                )}
               </div>
-              <div className="text-lg font-black text-blue-700 dark:text-blue-300">
-                {shiftSession?.businessDateLabel}
-              </div>
-              
-              {/* Highlight midnight crossing logic */}
-              {isPastMidnight ? (
-                <div className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300 font-bold pt-1 bg-amber-500/10 p-2 rounded-xl mt-2 border border-amber-300/40">
-                  <Moon className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>
-                    ملاحظة هامة: على الرغم من أن الساعة الآن تخطت 12:00 منتصف الليل، إلا أن اليومية ستُسجل بالكامل لحساب يوم البدء ({shiftSession?.businessDateLabel}) ولن تختلط بيوم الغد.
+
+              {/* Financial Summary of the Day */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 block mb-1 font-bold">إجمالي الوارد (له):</span>
+                  <span className="font-mono text-base font-black text-slate-900 dark:text-white">
+                    {formatCurrency(totalAmount)}
+                  </span>
+                  <span className="block text-[10px] text-slate-400 mt-0.5">{items.length} بند مسجل</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 block mb-1 font-bold">قيمة العمولة:</span>
+                  <span className="font-mono text-base font-black text-amber-600 dark:text-amber-400">
+                    {formatCurrency(commissionValue)}
+                  </span>
+                  <span className="block text-[10px] text-slate-400 mt-0.5">
+                    ({config.commissionRate}{config.commissionType === 'percentage' ? '%' : ' ج.م'} {config.commissionMode === 'deduct' ? 'خصم' : 'إضافة'})
                   </span>
                 </div>
-              ) : (
-                <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                  تاريخ البدء: {shiftSession?.startedAtTimeStr} • تاريخ الإغلاق الآن: {formatTimeArabic(new Date())}
+
+                <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900 col-span-2">
+                  <span className="text-indigo-700 dark:text-indigo-300 block mb-1 font-bold">الصافي النهائي بعد العمولة:</span>
+                  <span className="font-mono text-xl font-black text-indigo-700 dark:text-indigo-300">
+                    {formatCurrency(amountAfterCommission)}
+                  </span>
                 </div>
-              )}
-            </div>
-
-            {/* Financial Summary of the Day */}
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                <span className="text-slate-500 block mb-1 font-bold">إجمالي الوارد (له):</span>
-                <span className="font-mono text-base font-black text-slate-900 dark:text-white">
-                  {formatCurrency(totalAmount)}
-                </span>
-                <span className="block text-[10px] text-slate-400 mt-0.5">{items.length} بند مسجل</span>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                <span className="text-slate-500 block mb-1 font-bold">قيمة العمولة:</span>
-                <span className="font-mono text-base font-black text-amber-600 dark:text-amber-400">
-                  {formatCurrency(commissionValue)}
-                </span>
-                <span className="block text-[10px] text-slate-400 mt-0.5">
-                  ({config.commissionRate}{config.commissionType === 'percentage' ? '%' : ' ج.م'} {config.commissionMode === 'deduct' ? 'خصم' : 'إضافة'})
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900 col-span-2">
-                <span className="text-indigo-700 dark:text-indigo-300 block mb-1 font-bold">الصافي النهائي بعد العمولة:</span>
-                <span className="font-mono text-xl font-black text-indigo-700 dark:text-indigo-300">
-                  {formatCurrency(amountAfterCommission)}
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs text-rose-800 dark:text-rose-300 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>
+                  عند التأكيد، سيتم نقل هذه اليومية مع كافة بنودها إلى <strong>"أرشيف الأيام السابقة"</strong> وتصفير الكشف ليصبح جاهزاً لبدء يوم جديد.
                 </span>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs text-rose-800 dark:text-rose-300 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <span>
-                عند التأكيد، سيتم نقل هذه اليومية مع كافة بنودها إلى <strong>"أرشيف الأيام السابقة"</strong> وتصفير الكشف ليصبح جاهزاً لبدء يوم جديد.
-              </span>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-2">
+            {/* Footer Buttons */}
+            <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3 bg-slate-50 dark:bg-slate-900/90 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsEndDayModalOpen(false)}
@@ -1283,13 +1294,24 @@ export default function InboundCalculatorView() {
         </div>
       )}
 
-      {/* 7. MODAL: Archive of Past Closed Days (أرشيف الأيام السابقة) */}
+      {/* 7. MODAL: Archive of Past Closed Days (Right Sheet on Tablet/Desktop, Bottom Sheet on Mobile) */}
       {isArchiveModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-4xl w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative space-y-5 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 overflow-hidden" dir="rtl">
+          {/* Backdrop Overlay */}
+          <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-right-sheet-backdrop"
+            onClick={() => {
+              setIsArchiveModalOpen(false);
+              setSelectedArchiveDay(null);
+            }}
+          />
+          <div className="fixed inset-x-0 bottom-0 top-auto max-h-[90dvh] rounded-t-3xl border-t sm:inset-y-0 sm:right-0 sm:left-auto sm:top-0 sm:bottom-0 sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 lg:fixed lg:inset-0 lg:m-auto lg:top-0 lg:bottom-0 lg:left-0 lg:right-0 lg:h-fit lg:max-h-[90vh] lg:rounded-3xl lg:border lg:shadow-2xl z-10 w-full max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-bottom-sheet sm:animate-right-sheet lg:animate-in lg:zoom-in-95">
             
+            {/* Mobile Drag Handle Indicator */}
+            <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
+
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+            <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
                   <History className="w-5 h-5" />
@@ -1319,7 +1341,7 @@ export default function InboundCalculatorView() {
             </div>
 
             {/* Archive Search Bar */}
-            <div className="shrink-0">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <input
                 type="text"
                 placeholder="بحث في الأرشيف بالتاريخ أو البيان..."
@@ -1330,7 +1352,7 @@ export default function InboundCalculatorView() {
             </div>
 
             {/* Archive Body: List of Days or Day Details */}
-            <div className="overflow-y-auto flex-1 pr-1 space-y-4">
+            <div className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-4 max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(90vh-140px)] min-h-0">
               
               {/* If viewing details of a selected day */}
               {selectedArchiveDay ? (

@@ -181,9 +181,19 @@ export default function NewTransferModal() {
   const isBlocked = isLocked || isDailyTransferExhausted || isOverDailyLimit || isOverLimit;
 
   // Recipient phone validation
-  const recipientCarrier = getEgyptianCarrier(recipientPhone);
-  const recipientPhoneError = recipientPhone.length >= 3 ? getEgyptianPhoneError(recipientPhone) : null;
-  const isRecipientValid = isValidEgyptianPhone(recipientPhone);
+  const cleanRecipient = cleanEgyptianPhone(recipientPhone);
+  const recipientCarrier = getEgyptianCarrier(cleanRecipient);
+  const recipientPhoneError = cleanRecipient.length >= 3 ? getEgyptianPhoneError(cleanRecipient) : null;
+  const isRecipientValid = isValidEgyptianPhone(cleanRecipient);
+
+  // Overall form validity check for submit button
+  const isFormValid = Boolean(
+    selectedWalletId &&
+    numAmount > 0 &&
+    !isBlocked &&
+    cleanRecipient &&
+    isRecipientValid
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -198,11 +208,10 @@ export default function NewTransferModal() {
     }
 
     if (!recipientPhone.trim()) {
-      showToast('يرجى إدخال رقم المحول إليه (المستلم)', 'error');
+      showToast('يرجى إدخال رقم المحول إليه (المستلم) - حقل مطلوب إجباري', 'error');
       return;
     }
 
-    const cleanRecipient = cleanEgyptianPhone(recipientPhone);
     if (!isValidEgyptianPhone(cleanRecipient)) {
       showToast(
         getEgyptianPhoneError(cleanRecipient) || 'رقم المحول إليه غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً',
@@ -481,13 +490,16 @@ export default function NewTransferModal() {
         )}
 
         {/* Step 2: Amount and Recipient Phone */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-start">
           
           {/* Transfer Amount */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              مبلغ التحويل (ج.م) *
-            </label>
+            <div className="flex items-center justify-between mb-1.5 h-6">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <span>مبلغ التحويل (ج.م)</span>
+                <span className="text-rose-500 font-black text-sm">*</span>
+              </label>
+            </div>
             <div className="relative">
               <input
                 type="number"
@@ -497,7 +509,7 @@ export default function NewTransferModal() {
                 placeholder="مثال: 5000"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className={`w-full pl-3 pr-4 py-2.5 text-lg font-black bg-slate-50 dark:bg-slate-800 rounded-xl focus:outline-none transition-all ${
+                className={`w-full h-11 pl-3 pr-4 text-base font-black bg-slate-50 dark:bg-slate-800 rounded-xl focus:outline-none transition-all ${
                   isOverLimit
                     ? 'text-rose-600 border-2 border-rose-500 focus:ring-2 focus:ring-rose-500/50'
                     : 'text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-red-500/50'
@@ -511,7 +523,7 @@ export default function NewTransferModal() {
               </span>
             </div>
             {isOverLimit && (
-              <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 mt-1.5 flex items-center gap-1">
+              <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 <span>المبلغ يتجاوز الليميت المتاح ({formatCurrency(currentRemaining)}). قم بتقليل المبلغ لتفعيل الزر.</span>
               </p>
@@ -520,22 +532,25 @@ export default function NewTransferModal() {
 
           {/* Recipient Phone */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <span>رقم المحول إليه (المستلم - 11 رقم مصري)</span>
-                <span className="text-rose-500 font-bold">*</span>
+            <div className="flex items-center justify-between mb-1.5 h-6">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 whitespace-nowrap">
+                <span>رقم المحول إليه</span>
+                <span className="text-rose-500 font-black text-sm">*</span>
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 px-1.5 py-0.2 rounded">
+                  مطلوب
+                </span>
               </label>
               {recipientCarrier ? (
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50">
-                  {recipientCarrier.name} ({recipientCarrier.code})
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
+                  {recipientCarrier.name}
                 </span>
               ) : (
-                <span className="text-[10px] text-slate-400 font-mono">
-                  010 / 011 / 012 / 015
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0" dir="ltr">
+                  010/011/012/015
                 </span>
               )}
             </div>
-            <div>
+            <div className="relative">
               <input
                 type="tel"
                 required
@@ -543,26 +558,26 @@ export default function NewTransferModal() {
                 placeholder="010XXXXXXXX"
                 value={recipientPhone}
                 onChange={(e) => setRecipientPhone(cleanEgyptianPhone(e.target.value))}
-                className={`w-full px-3.5 py-2.5 text-base font-bold font-mono text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 transition-colors ${
+                className={`w-full h-11 px-3.5 text-base font-bold font-mono text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 transition-all ${
                   isRecipientValid
-                    ? 'border-emerald-500 focus:ring-emerald-500/40'
-                    : recipientPhoneError
-                    ? 'border-rose-400 focus:ring-rose-500/40'
-                    : 'border-slate-200 dark:border-slate-700 focus:ring-red-500/40'
+                    ? 'border-emerald-500 focus:ring-emerald-500/40 bg-emerald-50/10'
+                    : !recipientPhone.trim()
+                    ? 'border-slate-300 dark:border-slate-700 focus:border-rose-500 focus:ring-rose-500/40'
+                    : 'border-rose-500 focus:ring-rose-500/40 bg-rose-50/10'
                 }`}
                 dir="ltr"
               />
             </div>
-            {recipientPhoneError && (
+            {recipientPhoneError ? (
               <p className="text-[11px] text-rose-500 font-bold mt-1 flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 <span>{recipientPhoneError}</span>
               </p>
-            )}
-            {isRecipientValid && (
+            ) : isRecipientValid ? (
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
                 <span>✓ رقم مصري صحيح ({recipientCarrier?.name})</span>
               </p>
-            )}
+            ) : null}
           </div>
 
         </div>
@@ -638,13 +653,23 @@ export default function NewTransferModal() {
 
           <button
             type="submit"
-            disabled={isSubmitting || !numAmount || isBlocked}
+            disabled={isSubmitting || !isFormValid}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all ${
-              isBlocked
-                ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700 shadow-none'
-                : 'btn-interactive bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-md shadow-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed'
+              !isFormValid
+                ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700 shadow-none opacity-60'
+                : 'btn-interactive bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-md shadow-red-600/30'
             }`}
-            title={isBlocked ? 'الزر معطل لتجاوز الحد المسموح' : 'تأكيد وخصم التحويلة'}
+            title={
+              isBlocked
+                ? 'الزر معطل لتجاوز الحد المسموح'
+                : !numAmount
+                ? 'يرجى إدخال مبلغ التحويل'
+                : !recipientPhone.trim()
+                ? 'يرجى إدخال رقم المحول إليه (مطلوب)'
+                : !isRecipientValid
+                ? 'يرجى إدخال 11 رقماً مصرياً صحيحاً للمستلم'
+                : 'تأكيد وخصم التحويلة'
+            }
           >
             {isLocked ? (
               <>
@@ -665,6 +690,20 @@ export default function NewTransferModal() {
               <>
                 <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
                 <span>المبلغ يتجاوز الليميت (معطل)</span>
+              </>
+            ) : !numAmount ? (
+              <>
+                <span>ادخل مبلغ التحويل</span>
+              </>
+            ) : !recipientPhone.trim() ? (
+              <>
+                <Phone className="w-4 h-4 shrink-0 text-amber-500" />
+                <span>ادخل رقم المحول إليه (مطلوب)</span>
+              </>
+            ) : !isRecipientValid ? (
+              <>
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>رقم المستلم غير مكتمل (11 رقم)</span>
               </>
             ) : (
               <>

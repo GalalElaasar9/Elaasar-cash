@@ -10,7 +10,11 @@ import {
   formatDateTimeArabic,
   getTodayString,
   getCurrentMonthKey,
-  getEgyptianCarrier
+  getEgyptianCarrier,
+  buildWhatsAppUrl,
+  cleanEgyptianPhone,
+  isValidEgyptianPhone,
+  getEgyptianPhoneError
 } from '../utils/formatters';
 import {
   Phone,
@@ -40,7 +44,9 @@ import {
   Table,
   Archive,
   Clock,
-  ArrowUpDown
+  ArrowUpDown,
+  MessageCircle,
+  ExternalLink
 } from 'lucide-react';
 
 export default function ClientCard({ client }) {
@@ -68,6 +74,15 @@ export default function ClientCard({ client }) {
   const [archiveModalTab, setArchiveModalTab] = useState('steps'); // 'steps' | 'recharges' | 'payments'
   const [archiveSortOrder, setArchiveSortOrder] = useState('asc'); // 'asc' (chronological steps) | 'desc'
   const [archivePage, setArchivePage] = useState(1);
+  const [isEditingWhatsapp, setIsEditingWhatsapp] = useState(false);
+  const [whatsappInput, setWhatsappInput] = useState(client.whatsappPhone || '');
+  const [whatsappError, setWhatsappError] = useState('');
+
+  useEffect(() => {
+    if (!isEditingWhatsapp) {
+      setWhatsappInput(client.whatsappPhone || '');
+    }
+  }, [client.whatsappPhone, isEditingWhatsapp]);
 
   const handleCloseArchiveModal = () => {
     if (closingArchiveModal) return;
@@ -888,6 +903,85 @@ export default function ClientCard({ client }) {
     }
   };
 
+  const handleSaveWhatsapp = () => {
+    const trimmed = (whatsappInput || '').trim();
+    if (!trimmed) {
+      updateClient(client.id, { whatsappPhone: '' });
+      setIsEditingWhatsapp(false);
+      setWhatsappError('');
+      showToast('تم إزالة رقم الواتساب للعميل');
+      return;
+    }
+
+    const cleaned = cleanEgyptianPhone(trimmed);
+    if (!isValidEgyptianPhone(cleaned)) {
+      const err = getEgyptianPhoneError(cleaned);
+      setWhatsappError(err || 'يرجى إدخال رقم محمول مصري صحيح (11 رقم)');
+      return;
+    }
+
+    updateClient(client.id, { whatsappPhone: cleaned });
+    setIsEditingWhatsapp(false);
+    setWhatsappError('');
+    showToast(`تم حفظ رقم الواتساب: ${cleaned}`);
+  };
+
+  const generateClientWhatsAppReport = () => {
+    const isAdd = effectiveMode === 'add';
+    const modeText = isAdd ? 'إضافة' : 'خصم';
+    const periodLabel = timeRange === 'today' ? 'اليوم' : timeRange === 'month' ? 'هذا الشهر' : 'الإجمالي';
+
+    let balanceLine = '';
+    if (paidAmount > 0) {
+      if (creditExcess > 0) {
+        balanceLine = `المبالغ المسددة: ${formatCurrency(paidAmount)}\nالرصيد الدائن المستحق لحضرتكم: ${formatCurrency(creditExcess)}`;
+      } else if (isSettled) {
+        balanceLine = `المبالغ المسددة: ${formatCurrency(paidAmount)}\nالحساب خالص تماماً (0 ج.م)`;
+      } else {
+        balanceLine = `المبالغ المسددة: ${formatCurrency(paidAmount)}\nالمتبقي المطلوب سداده: ${formatCurrency(remainingDebt)}`;
+      }
+    } else {
+      balanceLine = `المطلوب سداده بعد العمولة: ${formatCurrency(finalAmount)}`;
+    }
+
+    return `السلام عليكم ورحمة الله،
+كشف حساب (${periodLabel}) - محلات الأعصر:
+العميل: ${client.name}
+عدد الخطوط: ${wallets.length}
+-----------------------------
+المبلغ قبل العمولة: ${formatCurrency(baseAmount)}
+${hasExcessDebt ? 'العمولة: بدون عمولة (صافي نقدي مباشر)' : `معامل الحساب: × ${commissionPercent} (${modeText} ${formatCurrency(commissionAmount)})`}
+المبلغ الأساسي المطلوب (قبل السداد): ${formatCurrency(finalAmount)}
+-----------------------------
+${balanceLine}
+-----------------------------
+نسعد دائماً بخدمتكم، شكراً لتعاملكم معنا.`;
+  };
+
+  const handleOpenClientWhatsApp = (e) => {
+    if (e) e.stopPropagation();
+    const targetPhone = client.whatsappPhone || wallets[0]?.phoneNumber;
+    if (!targetPhone) {
+      showToast('لا يوجد رقم هاتف أو واتساب مسجل لهذا العميل', 'warning');
+      return;
+    }
+    const url = buildWhatsAppUrl(targetPhone, '');
+    window.open(url, '_blank');
+  };
+
+  const handleSendWhatsAppReport = (e) => {
+    if (e) e.stopPropagation();
+    const targetPhone = client.whatsappPhone || wallets[0]?.phoneNumber;
+    if (!targetPhone) {
+      showToast('يرجى إضافة رقم واتساب أو رقم محفظة للعميل أولاً', 'warning');
+      return;
+    }
+    const text = generateClientWhatsAppReport();
+    const url = buildWhatsAppUrl(targetPhone, text);
+    window.open(url, '_blank');
+    showToast(`جاري فتح واتساب لإرسال كشف حساب العميل "${client.name}"`);
+  };
+
   const handleDeleteClient = async () => {
     const confirmed = await askConfirm({
       title: 'حذف العميل بالكامل',
@@ -922,6 +1016,88 @@ export default function ClientCard({ client }) {
                 <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
                   {wallets.length} {wallets.length === 1 ? 'رقم مسجل' : 'أرقام مسجلة'}
                 </span>
+
+                {/* WhatsApp Phone Badge & Inline Quick Edit */}
+                {isEditingWhatsapp ? (
+                  <div className="inline-flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-emerald-400 dark:border-emerald-500 rounded-xl px-2 py-0.5 shadow-xs shrink-0">
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <input
+                      type="tel"
+                      dir="ltr"
+                      value={whatsappInput}
+                      onChange={(e) => {
+                        setWhatsappInput(e.target.value);
+                        if (whatsappError) setWhatsappError('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveWhatsapp();
+                        if (e.key === 'Escape') {
+                          setIsEditingWhatsapp(false);
+                          setWhatsappError('');
+                        }
+                      }}
+                      placeholder="010XXXXXXXX"
+                      className="w-28 text-xs font-mono font-bold bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveWhatsapp}
+                      className="p-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg transition-colors"
+                      title="حفظ رقم الواتساب"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingWhatsapp(false);
+                        setWhatsappError('');
+                      }}
+                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                      title="إلغاء"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : client.whatsappPhone ? (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 shadow-2xs shrink-0">
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <button
+                      type="button"
+                      onClick={handleOpenClientWhatsApp}
+                      className="hover:underline flex items-center gap-1 font-mono font-black"
+                      title="فتح شات واتساب مباشرة مع العميل"
+                    >
+                      <span>{client.whatsappPhone}</span>
+                      <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWhatsappInput(client.whatsappPhone || '');
+                        setIsEditingWhatsapp(true);
+                      }}
+                      className="p-0.5 text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-200 rounded transition-colors"
+                      title="تعديل رقم الواتساب"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWhatsappInput(wallets[0]?.phoneNumber || '');
+                      setIsEditingWhatsapp(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-xl bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 transition-colors shrink-0"
+                    title="إضافة رقم واتساب مخصص لهذا العميل"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>+ إضافة واتساب</span>
+                  </button>
+                )}
 
                 {/* Client Classification Badge / Toggle: دائن لا يتم تفعيله يدوياً بل تلقائياً فقط */}
                 {effectiveClientType === 'دائن' ? (
@@ -1001,6 +1177,17 @@ export default function ClientCard({ client }) {
             >
               <Wallet className="w-3.5 h-3.5" />
               <span>تسجيل سداد</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSendWhatsAppReport}
+              className="btn-interactive flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-xs transition-colors"
+              title={client.whatsappPhone ? `إرسال كشف الحساب بالواتساب للرقم (${client.whatsappPhone})` : wallets[0]?.phoneNumber ? `إرسال كشف الحساب بالواتساب للرقم (${wallets[0]?.phoneNumber})` : 'إرسال كشف الحساب بالواتساب'}
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">كشف حساب واتساب</span>
+              <span className="sm:hidden">واتساب</span>
             </button>
 
             <button
@@ -1852,7 +2039,7 @@ export default function ClientCard({ client }) {
         </div>
       </div>
 
-      {/* Right Sheet Drawer: Detailed Client Operations & Settlements Archive */}
+      {/* Right Sheet on Tablet/Desktop & Bottom Sheet on Mobile: Client Operations Archive */}
       {showArchiveModal && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] overflow-hidden" dir="rtl">
           {/* Backdrop Overlay */}
@@ -1863,9 +2050,11 @@ export default function ClientCard({ client }) {
             onClick={handleCloseArchiveModal}
           />
 
-          <div className={`fixed inset-y-0 right-0 z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
-            closingArchiveModal ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          <div className={`fixed inset-x-0 bottom-0 top-auto max-h-[90dvh] rounded-t-3xl border-t sm:inset-y-0 sm:right-0 sm:left-auto sm:top-0 sm:bottom-0 sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
+            closingArchiveModal ? 'animate-bottom-sheet-out sm:animate-right-sheet-out' : 'animate-bottom-sheet sm:animate-right-sheet'
           }`}>
+              {/* Mobile Drag Handle Indicator */}
+              <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
               
               {/* Sheet Header */}
               <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
@@ -1912,8 +2101,8 @@ export default function ClientCard({ client }) {
                 </div>
               </div>
 
-              {/* Scrollable Sheet Body */}
-              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+              {/* Scrollable Sheet Body with Responsive Max-Height */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] min-h-0">
                 {/* Stats Summary: 3 Clean KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
                   <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between">
