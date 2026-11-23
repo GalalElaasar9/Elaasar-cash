@@ -24,7 +24,9 @@ import {
   Lock,
   Calendar,
   Store,
-  Smartphone
+  Smartphone,
+  Search,
+  UserCheck
 } from 'lucide-react';
 
 export default function NewTransferModal() {
@@ -36,6 +38,7 @@ export default function NewTransferModal() {
     setActiveModal, 
     modalData, 
     addTransaction,
+    addRecharge,
     showToast,
     askConfirm 
   } = useCash();
@@ -48,6 +51,11 @@ export default function NewTransferModal() {
   const [selectedWalletId, setSelectedWalletId] = useState('');
   const [amount, setAmount] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
+  const [recipientMode, setRecipientMode] = useState('unregistered'); // 'unregistered' | 'client'
+  const [recipientClientId, setRecipientClientId] = useState('');
+  const [recipientWalletId, setRecipientWalletId] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  const [recordClientRecharge, setRecordClientRecharge] = useState(true);
   const [transactionCode, setTransactionCode] = useState('');
   const [fee, setFee] = useState('');
   const [notes, setNotes] = useState('');
@@ -59,6 +67,13 @@ export default function NewTransferModal() {
     if (activeModal === 'transfer') {
       const randomCode = `VF-${Math.floor(100000 + Math.random() * 900000)}`;
       setTransactionCode(randomCode);
+
+      // Reset recipient selection
+      setRecipientMode('unregistered');
+      setRecipientClientId('');
+      setRecipientWalletId('');
+      setClientSearch('');
+      setRecordClientRecharge(true);
 
       const isShop = Boolean(modalData?.isShopWallet || modalData?.clientId === 'shop');
       if (isShop) {
@@ -145,6 +160,11 @@ export default function NewTransferModal() {
     setActiveModal(null);
     setAmount('');
     setRecipientPhone('');
+    setRecipientMode('unregistered');
+    setRecipientClientId('');
+    setRecipientWalletId('');
+    setClientSearch('');
+    setRecordClientRecharge(true);
     setNotes('');
     setFee('');
   };
@@ -168,6 +188,62 @@ export default function NewTransferModal() {
     return clients.find(c => c.id === selectedClientId);
   }, [isShopMode, clients, selectedClientId]);
 
+  // Recipient client & wallet lookups
+  const selectedRecipientClient = useMemo(() => {
+    if (recipientMode !== 'client' || !recipientClientId) return null;
+    return clients.find(c => c.id === recipientClientId) || null;
+  }, [recipientMode, recipientClientId, clients]);
+
+  const selectedRecipientWallet = useMemo(() => {
+    if (!selectedRecipientClient) return null;
+    return selectedRecipientClient.wallets?.find(w => w.id === recipientWalletId) || null;
+  }, [selectedRecipientClient, recipientWalletId]);
+
+  const filteredRecipientClients = useMemo(() => {
+    if (!clientSearch.trim()) return clients;
+    const q = clientSearch.trim().toLowerCase();
+    return clients.filter(c => 
+      c.name.toLowerCase().includes(q) ||
+      c.wallets?.some(w => w.phoneNumber.includes(q))
+    );
+  }, [clients, clientSearch]);
+
+  const handleSwitchToClientRecipient = (clientToSelect = null, walletToSelect = null) => {
+    setRecipientMode('client');
+    const targetClient = clientToSelect || (clients.length > 0 ? clients[0] : null);
+    if (targetClient) {
+      setRecipientClientId(targetClient.id);
+      const targetWallet = walletToSelect || (targetClient.wallets?.length > 0 ? targetClient.wallets[0] : null);
+      if (targetWallet) {
+        setRecipientWalletId(targetWallet.id);
+        setRecipientPhone(targetWallet.phoneNumber);
+      } else {
+        setRecipientWalletId('');
+        setRecipientPhone('');
+      }
+    }
+  };
+
+  const handleSelectRecipientClient = (clientId) => {
+    setRecipientClientId(clientId);
+    const client = clients.find(c => c.id === clientId);
+    if (client?.wallets?.length > 0) {
+      setRecipientWalletId(client.wallets[0].id);
+      setRecipientPhone(client.wallets[0].phoneNumber);
+    } else {
+      setRecipientWalletId('');
+      setRecipientPhone('');
+    }
+  };
+
+  const handleSelectRecipientWallet = (walletId) => {
+    setRecipientWalletId(walletId);
+    const wallet = selectedRecipientClient?.wallets?.find(w => w.id === walletId);
+    if (wallet) {
+      setRecipientPhone(wallet.phoneNumber);
+    }
+  };
+
   const walletStats = currentWallet ? calculateWalletStats(currentWallet, transactions) : null;
 
   // Real-time limit math
@@ -186,13 +262,26 @@ export default function NewTransferModal() {
   const recipientPhoneError = cleanRecipient.length >= 3 ? getEgyptianPhoneError(cleanRecipient) : null;
   const isRecipientValid = isValidEgyptianPhone(cleanRecipient);
 
+  // Smart match: if user types a number in unregistered mode that belongs to a client
+  const matchedClient = useMemo(() => {
+    if (recipientMode !== 'unregistered' || !cleanRecipient || cleanRecipient.length < 11) return null;
+    for (const c of clients) {
+      const w = c.wallets?.find(w => cleanEgyptianPhone(w.phoneNumber) === cleanRecipient);
+      if (w) {
+        return { client: c, wallet: w };
+      }
+    }
+    return null;
+  }, [recipientMode, cleanRecipient, clients]);
+
   // Overall form validity check for submit button
   const isFormValid = Boolean(
     selectedWalletId &&
     numAmount > 0 &&
     !isBlocked &&
     cleanRecipient &&
-    isRecipientValid
+    isRecipientValid &&
+    (recipientMode === 'unregistered' || (recipientClientId && recipientWalletId))
   );
 
   const handleSubmit = async (e) => {
@@ -204,6 +293,11 @@ export default function NewTransferModal() {
 
     if (numAmount <= 0) {
       showToast('يرجى إدخال مبلغ تحويل صحيح أكبر من 0', 'error');
+      return;
+    }
+
+    if (recipientMode === 'client' && (!recipientClientId || !recipientWalletId)) {
+      showToast('يرجى اختيار العميل ورقم المحفظة المحول إليها', 'error');
       return;
     }
 
@@ -242,15 +336,35 @@ export default function NewTransferModal() {
 
     setIsSubmitting(true);
     try {
-      addTransaction({
+      const isTransferToClient = recipientMode === 'client' && selectedRecipientClient && selectedRecipientWallet;
+
+      const tx = addTransaction({
         walletId: selectedWalletId,
         amount: numAmount,
-        recipientPhone,
+        recipientPhone: cleanRecipient,
+        recipientClientId: isTransferToClient ? selectedRecipientClient.id : null,
+        recipientClientName: isTransferToClient ? selectedRecipientClient.name : null,
+        recipientWalletId: isTransferToClient ? selectedRecipientWallet.id : null,
         transactionCode,
         fee: Number(fee) || 0,
-        notes,
+        notes: notes || (isTransferToClient ? `تحويل للعميل: ${selectedRecipientClient.name} (${selectedRecipientWallet.label || 'محفظة'})` : ''),
         date: customDate ? new Date(customDate).toISOString() : new Date().toISOString()
       });
+
+      // If it's a shop line transferring to a registered client with recharge enabled:
+      if (isShopMode && isTransferToClient && recordClientRecharge) {
+        addRecharge({
+          walletId: selectedRecipientWallet.id,
+          amount: numAmount,
+          notes: `شحن محول من خط المحل (${currentWallet?.phoneNumber || 'خط المحل'}) - كود ${transactionCode || tx?.transactionCode || ''}`.trim(),
+          date: customDate ? new Date(customDate).toISOString() : new Date().toISOString()
+        });
+        showToast(
+          `تم خصم ${formatCurrency(numAmount)} من خط المحل وشحن رصيد العميل "${selectedRecipientClient.name}" بنجاح!`,
+          'success'
+        );
+      }
+
       handleClose();
     } finally {
       setIsSubmitting(false);
@@ -489,97 +603,296 @@ export default function NewTransferModal() {
           </div>
         )}
 
-        {/* Step 2: Amount and Recipient Phone */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-start">
+        {/* Step 2: Destination & Amount */}
+        <div className="space-y-3">
           
-          {/* Transfer Amount */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5 h-6">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <span>مبلغ التحويل (ج.م)</span>
-                <span className="text-rose-500 font-black text-sm">*</span>
-              </label>
-            </div>
-            <div className="relative">
-              <input
-                type="number"
-                min="1"
-                step="any"
-                autoFocus
-                placeholder="مثال: 5000"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className={`w-full h-11 pl-3 pr-4 text-base font-black bg-slate-50 dark:bg-slate-800 rounded-xl focus:outline-none transition-all ${
-                  isOverLimit
-                    ? 'text-rose-600 border-2 border-rose-500 focus:ring-2 focus:ring-rose-500/50'
-                    : 'text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-red-500/50'
+          {/* Recipient Destination Header / Mode Switcher */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 px-1">
+              <Send className="w-3.5 h-3.5 text-red-600 rotate-180" />
+              <span>جهة التحويل (المحول إليه):</span>
+            </span>
+
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setRecipientMode('unregistered');
+                  setRecipientClientId('');
+                  setRecipientWalletId('');
+                  setRecipientPhone('');
+                }}
+                className={`btn-interactive px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                  recipientMode === 'unregistered'
+                    ? 'bg-red-600 text-white shadow-xs font-black'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
-                required
-              />
-              <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${
-                isOverLimit ? 'text-rose-500' : 'text-slate-400'
-              }`}>
-                ج.م
-              </span>
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span>رقم غير مسجل (يدوي)</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={clients.length === 0}
+                onClick={() => handleSwitchToClientRecipient()}
+                className={`btn-interactive px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                  recipientMode === 'client'
+                    ? 'bg-red-600 text-white shadow-xs font-black'
+                    : clients.length === 0
+                    ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title={clients.length === 0 ? 'لا يوجد عملاء مسجلين حالياً' : 'اختيار عميل مسجل من الدليل'}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>عميل مسجل ({clients.length})</span>
+              </button>
             </div>
-            {isOverLimit && (
-              <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 mt-1 flex items-center gap-1">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                <span>المبلغ يتجاوز الليميت المتاح ({formatCurrency(currentRemaining)}). قم بتقليل المبلغ لتفعيل الزر.</span>
-              </p>
-            )}
           </div>
 
-          {/* Recipient Phone */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5 h-6">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 whitespace-nowrap">
-                <span>رقم المحول إليه</span>
-                <span className="text-rose-500 font-black text-sm">*</span>
-                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 px-1.5 py-0.2 rounded">
-                  مطلوب
-                </span>
-              </label>
-              {recipientCarrier ? (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
-                  {recipientCarrier.name}
-                </span>
-              ) : (
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0" dir="ltr">
-                  010/011/012/015
-                </span>
+          {/* If Registered Client Mode: Choose Client and their line */}
+          {recipientMode === 'client' && (
+            <div className="bg-red-50/60 dark:bg-red-950/25 p-3.5 rounded-2xl border border-red-200/70 dark:border-red-900/40 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                
+                {/* 1. Client Select with optional quick filter */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5 h-6">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-red-600" />
+                      <span>اختر العميل المستلم:</span>
+                      <span className="text-rose-500 font-black">*</span>
+                    </label>
+                    {clients.length > 5 && (
+                      <span className="text-[10px] text-slate-400">
+                        {filteredRecipientClients.length} من أصل {clients.length}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {clients.length > 5 && (
+                    <div className="mb-1.5">
+                      <input
+                        type="text"
+                        placeholder="🔍 ابحث عن العميل بالاسم أو الرقم..."
+                        value={clientSearch}
+                        onChange={(e) => setClientSearch(e.target.value)}
+                        className="w-full px-2.5 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-red-500"
+                      />
+                    </div>
+                  )}
+
+                  <select
+                    value={recipientClientId}
+                    onChange={(e) => handleSelectRecipientClient(e.target.value)}
+                    className="w-full h-11 px-3 text-sm font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                    required
+                  >
+                    <option value="" disabled>-- اضغط لاختيار العميل --</option>
+                    {filteredRecipientClients.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.wallets?.length || 0} {c.wallets?.length === 1 ? 'رقم' : 'أرقام'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. Wallet Line Select */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5 h-6">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-red-600" />
+                      <span>اختر رقم المحفظة المستلمة:</span>
+                      <span className="text-rose-500 font-black">*</span>
+                    </label>
+                    {selectedRecipientWallet && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                        {getEgyptianCarrier(selectedRecipientWallet.phoneNumber)?.name || 'شبكة'}
+                      </span>
+                    )}
+                  </div>
+
+                  {clients.length > 5 && <div className="hidden sm:block h-[30px]" />}
+
+                  {selectedRecipientClient ? (
+                    (selectedRecipientClient.wallets || []).length > 0 ? (
+                      <select
+                        value={recipientWalletId}
+                        onChange={(e) => handleSelectRecipientWallet(e.target.value)}
+                        className="w-full h-11 px-3 text-sm font-mono font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                        required
+                      >
+                        {selectedRecipientClient.wallets.map(w => {
+                          const carrier = getEgyptianCarrier(w.phoneNumber);
+                          return (
+                            <option key={w.id} value={w.id}>
+                              {w.phoneNumber} ({carrier?.name || 'محفظة'}) - {w.label || 'محفظة'}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    ) : (
+                      <div className="h-11 px-3 flex items-center text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl">
+                        لا توجد أرقام مسجلة لهذا العميل حالياً.
+                      </div>
+                    )
+                  ) : (
+                    <div className="h-11 px-3 flex items-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl">
+                      اختر العميل أولاً لعرض أرقامه
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Option to automatically record as recharge in client's account */}
+              {isShopMode && selectedRecipientClient && selectedRecipientWallet && (
+                <div className="pt-2 border-t border-red-200/60 dark:border-red-900/30 flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={recordClientRecharge}
+                      onChange={(e) => setRecordClientRecharge(e.target.checked)}
+                      className="w-4 h-4 rounded text-red-600 focus:ring-red-500/30 border-slate-300 dark:border-slate-600 accent-red-600"
+                    />
+                    <div>
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                        تسجيل التحويل كشحن رصيد في حساب ومحفظة العميل
+                      </span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
+                        (يتم خصم التحويل من خط المحل وإيداع المبلغ في كشف حساب العميل "{selectedRecipientClient.name}" وزيادة المديونية تلقائياً)
+                      </span>
+                    </div>
+                  </label>
+                  <span className="hidden sm:inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0">
+                    تحديث كشف الحساب
+                  </span>
+                </div>
               )}
             </div>
-            <div className="relative">
-              <input
-                type="tel"
-                required
-                maxLength={11}
-                placeholder="010XXXXXXXX"
-                value={recipientPhone}
-                onChange={(e) => setRecipientPhone(cleanEgyptianPhone(e.target.value))}
-                className={`w-full h-11 px-3.5 text-base font-bold font-mono text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 transition-all ${
-                  isRecipientValid
-                    ? 'border-emerald-500 focus:ring-emerald-500/40 bg-emerald-50/10'
-                    : !recipientPhone.trim()
-                    ? 'border-slate-300 dark:border-slate-700 focus:border-rose-500 focus:ring-rose-500/40'
-                    : 'border-rose-500 focus:ring-rose-500/40 bg-rose-50/10'
-                }`}
-                dir="ltr"
-              />
-            </div>
-            {recipientPhoneError ? (
-              <p className="text-[11px] text-rose-500 font-bold mt-1 flex items-center gap-1">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                <span>{recipientPhoneError}</span>
-              </p>
-            ) : isRecipientValid ? (
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
-                <span>✓ رقم مصري صحيح ({recipientCarrier?.name})</span>
-              </p>
-            ) : null}
-          </div>
+          )}
 
+          {/* Amount and Recipient Phone Inputs - Perfectly Aligned Side by Side */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-start">
+            
+            {/* Col 1: Transfer Amount */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5 h-6">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <span>مبلغ التحويل (ج.م)</span>
+                  <span className="text-rose-500 font-black text-sm">*</span>
+                </label>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  step="any"
+                  autoFocus
+                  placeholder="مثال: 5000"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className={`w-full h-11 pl-3 pr-4 text-base font-black bg-slate-50 dark:bg-slate-800 rounded-xl focus:outline-none transition-all ${
+                    isOverLimit
+                      ? 'text-rose-600 border-2 border-rose-500 focus:ring-2 focus:ring-rose-500/50'
+                      : 'text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-red-500/50'
+                  }`}
+                  required
+                />
+                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${
+                  isOverLimit ? 'text-rose-500' : 'text-slate-400'
+                }`}>
+                  ج.م
+                </span>
+              </div>
+              {isOverLimit && (
+                <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>المبلغ يتجاوز الليميت المتاح ({formatCurrency(currentRemaining)}). قم بتقليل المبلغ لتفعيل الزر.</span>
+                </p>
+              )}
+            </div>
+
+            {/* Col 2: Recipient Phone */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5 h-6">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 whitespace-nowrap">
+                  <span>رقم المحول إليه</span>
+                  <span className="text-rose-500 font-black text-sm">*</span>
+                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 px-1.5 py-0.2 rounded">
+                    مطلوب
+                  </span>
+                  {recipientMode === 'client' && selectedRecipientClient && (
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-1.5 py-0.2 rounded truncate max-w-[120px]">
+                      {selectedRecipientClient.name}
+                    </span>
+                  )}
+                </label>
+                {recipientCarrier ? (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
+                    {recipientCarrier.name}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0" dir="ltr">
+                    010/011/012/015
+                  </span>
+                )}
+              </div>
+
+              <div className="relative">
+                <input
+                  type="tel"
+                  required
+                  maxLength={11}
+                  placeholder="010XXXXXXXX"
+                  value={recipientPhone}
+                  readOnly={recipientMode === 'client'}
+                  onChange={(e) => {
+                    if (recipientMode === 'unregistered') {
+                      setRecipientPhone(cleanEgyptianPhone(e.target.value));
+                    }
+                  }}
+                  className={`w-full h-11 px-3.5 text-base font-bold font-mono text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 transition-all ${
+                    isRecipientValid
+                      ? 'border-emerald-500 focus:ring-emerald-500/40 bg-emerald-50/10'
+                      : !recipientPhone.trim()
+                      ? 'border-slate-300 dark:border-slate-700 focus:border-rose-500 focus:ring-rose-500/40'
+                      : 'border-rose-500 focus:ring-rose-500/40 bg-rose-50/10'
+                  } ${recipientMode === 'client' ? 'cursor-default bg-slate-100/70 dark:bg-slate-800/80' : ''}`}
+                  dir="ltr"
+                />
+              </div>
+
+              {recipientPhoneError ? (
+                <p className="text-[11px] text-rose-500 font-bold mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{recipientPhoneError}</span>
+                </p>
+              ) : isRecipientValid ? (
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
+                  <span>✓ رقم مصري صحيح ({recipientCarrier?.name}){recipientMode === 'client' && selectedRecipientClient ? ` - العميل: ${selectedRecipientClient.name}` : ''}</span>
+                </p>
+              ) : null}
+
+              {/* Smart hint if manual number matches a registered client */}
+              {matchedClient && (
+                <div className="mt-1.5 p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-between text-xs">
+                  <span className="text-blue-800 dark:text-blue-200 font-bold flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>هذا الرقم مسجل للعميل: <strong>{matchedClient.client.name}</strong></span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchToClientRecipient(matchedClient.client, matchedClient.wallet)}
+                    className="px-2 py-0.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] transition-colors shrink-0"
+                  >
+                    تحديد كعميل مسجل
+                  </button>
+                </div>
+              )}
+            </div>
+
+          </div>
         </div>
 
         {/* Step 3: Transaction Ref Code and Date */}
@@ -664,6 +977,10 @@ export default function NewTransferModal() {
                 ? 'الزر معطل لتجاوز الحد المسموح'
                 : !numAmount
                 ? 'يرجى إدخال مبلغ التحويل'
+                : recipientMode === 'client' && !recipientClientId
+                ? 'يرجى اختيار العميل المستلم'
+                : recipientMode === 'client' && !recipientWalletId
+                ? 'يرجى اختيار رقم المحفظة المستلمة'
                 : !recipientPhone.trim()
                 ? 'يرجى إدخال رقم المحول إليه (مطلوب)'
                 : !isRecipientValid
@@ -694,6 +1011,16 @@ export default function NewTransferModal() {
             ) : !numAmount ? (
               <>
                 <span>ادخل مبلغ التحويل</span>
+              </>
+            ) : recipientMode === 'client' && !recipientClientId ? (
+              <>
+                <User className="w-4 h-4 shrink-0 text-amber-500" />
+                <span>اختر العميل المستلم</span>
+              </>
+            ) : recipientMode === 'client' && !recipientWalletId ? (
+              <>
+                <Smartphone className="w-4 h-4 shrink-0 text-amber-500" />
+                <span>اختر محفظة العميل المستلمة</span>
               </>
             ) : !recipientPhone.trim() ? (
               <>

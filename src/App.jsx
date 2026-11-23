@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { CashProvider, useCash } from './context/CashContext';
-import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
 import StatCards from './components/StatCards';
 import ClientCard from './components/ClientCard';
 import DailyLogView from './components/DailyLogView';
@@ -34,6 +34,25 @@ import { UserPlus, Send, Search, Users, AlertCircle, Sparkles, LayoutGrid, Table
 function MainApp() {
   const [activeTab, setActiveTab] = useState('clients'); // 'clients', 'daily', 'inventory', 'matrix', 'inbound', 'reports'
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('elaasar_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSidebar = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('elaasar_sidebar_collapsed', String(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  };
 
   const { clients, setActiveModal } = useCash();
 
@@ -86,21 +105,28 @@ function MainApp() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 relative selection:bg-red-500 selection:text-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 relative selection:bg-red-500 selection:text-white flex flex-col lg:flex-row">
       
       {/* Subtle top ambient glow */}
       <div className="fixed top-0 inset-x-0 h-96 bg-gradient-to-b from-red-500/5 via-transparent to-transparent pointer-events-none dark:from-red-600/10" />
 
-      {/* Top Sticky Navbar - Decluttered and Streamlined with Mobile Bottom Bar */}
-      <Navbar 
+      {/* Modern Sidebar (Desktop Fixed Sidebar + Mobile Responsive Header & Drawer) */}
+      <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={handleToggleSidebar}
       />
 
-      {/* Main Content Container - 1550px Width with Mobile Bottom Bar Clearance */}
-      <main className="max-w-[1550px] mx-auto px-2.5 sm:px-6 lg:px-8 py-3.5 sm:py-8 pb-28 sm:pb-32 lg:pb-8 relative">
+      {/* Main Content Area - Shifted in Desktop RTL for Sidebar */}
+      <div className={`flex-1 min-w-0 transition-all duration-300 ${
+        isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-64 xl:lg:mr-72'
+      } flex flex-col min-h-screen`}>
+
+        {/* Main Content Container - 1550px Width with Mobile Bottom Bar Clearance */}
+        <main className="flex-1 w-full max-w-[1550px] mx-auto px-2.5 sm:px-6 lg:px-8 pt-16 lg:pt-6 pb-28 sm:pb-32 lg:pb-12 relative">
         
         {/* KPI Stat Cards (Only on clients, daily, matrix tabs) */}
         {activeTab !== 'inventory' && activeTab !== 'inbound' && activeTab !== 'trash' && activeTab !== 'accounts' && (
@@ -260,6 +286,7 @@ function MainApp() {
         )}
 
       </main>
+      </div>
 
       {/* All Dialogs & Modals */}
       <NewTransferModal />

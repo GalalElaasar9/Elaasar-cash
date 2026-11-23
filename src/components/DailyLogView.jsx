@@ -1196,22 +1196,30 @@ export default function DailyLogView({ onNavigateToInbound }) {
                             )}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold font-mono text-slate-800 dark:text-slate-200" dir="ltr">
-                              {formatPhone(tx.recipientPhone) || '—'}
-                            </span>
-                            {tx.recipientPhone && (
-                              <button
-                                onClick={() => handleCopy(tx.recipientPhone, `rec-${tx.id}`)}
-                                className="p-1 text-slate-400 hover:text-slate-600 rounded"
-                                title="نسخ رقم المستلم"
-                              >
-                                {copiedId === `rec-${tx.id}` ? (
-                                  <Check className="w-3 h-3 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3 h-3" />
-                                )}
-                              </button>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold font-mono text-slate-800 dark:text-slate-200" dir="ltr">
+                                {formatPhone(tx.recipientPhone) || '—'}
+                              </span>
+                              {tx.recipientPhone && (
+                                <button
+                                  onClick={() => handleCopy(tx.recipientPhone, `rec-${tx.id}`)}
+                                  className="p-1 text-slate-400 hover:text-slate-600 rounded"
+                                  title="نسخ رقم المستلم"
+                                >
+                                  {copiedId === `rec-${tx.id}` ? (
+                                    <Check className="w-3 h-3 text-emerald-600" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                            {tx.recipientClientName && (
+                              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                                <span>العميل:</span>
+                                <span className="font-black">{tx.recipientClientName}</span>
+                              </span>
                             )}
                           </div>
                         )}
@@ -1359,9 +1367,16 @@ export default function DailyLogView({ onNavigateToInbound }) {
                           {tx.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من العميل'} ({tx.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : tx.paymentMethod === 'instapay' ? 'إنستاباي' : tx.paymentMethod === 'bank' ? 'بنكي' : 'نقدي'})
                         </span>
                       ) : (
-                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200" dir="ltr">
-                          {formatPhone(tx.recipientPhone) || 'غير محدد'}
-                        </span>
+                        <div>
+                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200 block" dir="ltr">
+                            {formatPhone(tx.recipientPhone) || 'غير محدد'}
+                          </span>
+                          {tx.recipientClientName && (
+                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block mt-0.5">
+                              العميل: {tx.recipientClientName}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
 
