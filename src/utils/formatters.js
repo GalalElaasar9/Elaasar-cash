@@ -289,7 +289,7 @@ export function calculateWalletStats(wallet, transactions = [], targetMonth = nu
   });
   
   const totalTransfersOut = walletTx
-    .filter(t => t.type === 'transfer_out')
+    .filter(t => t.type === 'transfer_out' || t.type === 'purchase_payment')
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     
   const totalRecharges = walletTx
@@ -312,7 +312,7 @@ export function calculateWalletStats(wallet, transactions = [], targetMonth = nu
 
   // 1. Daily Transfer OUT tracking (Max 60,000 EGP / day)
   const todayTransfersOut = todayTx
-    .filter(t => t.type === 'transfer_out')
+    .filter(t => t.type === 'transfer_out' || t.type === 'purchase_payment')
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const remainingDailyTransfer = Math.max(0, DAILY_TRANSFER_OUT_LIMIT - todayTransfersOut);
   const isDailyTransferExhausted = remainingDailyTransfer <= 0;

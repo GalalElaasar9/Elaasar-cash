@@ -11,6 +11,8 @@ import InventoryView from './components/InventoryView';
 import ReportsView from './components/ReportsView';
 import TrashView from './components/TrashView';
 import ClientAccountsView from './components/ClientAccountsView';
+import PurchasesView from './components/PurchasesView';
+import CapitalView from './components/CapitalView';
 import Toast from './components/Toast';
 
 // Modals
@@ -28,6 +30,13 @@ import ProductDetailsModal from './components/ProductDetailsModal';
 import CloudSyncModal from './components/CloudSyncModal';
 import RechargeWalletModal from './components/RechargeWalletModal';
 import ClientPaymentModal from './components/ClientPaymentModal';
+import AddPurchaseModal from './components/AddPurchaseModal';
+import SupplierPaymentModal from './components/SupplierPaymentModal';
+import PurchaseDetailsModal from './components/PurchaseDetailsModal';
+import AdjustCapitalModal from './components/AdjustCapitalModal';
+import AddInstapayAccountModal from './components/AddInstapayAccountModal';
+import DailyAuditModal from './components/DailyAuditModal';
+import DailyAuditDetailsModal from './components/DailyAuditDetailsModal';
 
 import { UserPlus, Send, Search, Users, AlertCircle, Sparkles, LayoutGrid, Table, FileSpreadsheet } from 'lucide-react';
 
@@ -129,7 +138,7 @@ function MainApp() {
         <main className="flex-1 w-full max-w-[1550px] mx-auto px-2.5 sm:px-6 lg:px-8 pt-16 lg:pt-6 pb-28 sm:pb-32 lg:pb-12 relative">
         
         {/* KPI Stat Cards (Only on clients, daily, matrix tabs) */}
-        {activeTab !== 'inventory' && activeTab !== 'inbound' && activeTab !== 'trash' && activeTab !== 'accounts' && (
+        {activeTab !== 'inventory' && activeTab !== 'inbound' && activeTab !== 'trash' && activeTab !== 'accounts' && activeTab !== 'purchases' && activeTab !== 'capital' && (
           <StatCards onSelectDailyTab={() => setActiveTab('daily')} />
         )}
 
@@ -257,6 +266,20 @@ function MainApp() {
           </div>
         )}
 
+        {/* Tab: Purchases & Expenses Management (سجل المشتريات والمصروفات والتوريدات) */}
+        {activeTab === 'purchases' && (
+          <div className="animate-view-fade">
+            <PurchasesView />
+          </div>
+        )}
+
+        {/* Tab: Capital & Treasury Management (رأس المال والسيولة والخزينة) */}
+        {activeTab === 'capital' && (
+          <div className="animate-view-fade">
+            <CapitalView onNavigateToTab={setActiveTab} />
+          </div>
+        )}
+
         {/* Tab 4: Wallets Limit Monitor (مراقبة الليميت) */}
         {activeTab === 'matrix' && (
           <div className="animate-view-fade">
@@ -303,6 +326,13 @@ function MainApp() {
       <CloudSyncModal />
       <RechargeWalletModal />
       <ClientPaymentModal />
+      <AddPurchaseModal />
+      <SupplierPaymentModal />
+      <PurchaseDetailsModal />
+      <AdjustCapitalModal />
+      <AddInstapayAccountModal />
+      <DailyAuditModal />
+      <DailyAuditDetailsModal />
 
       {/* Toast Notification */}
       <Toast />

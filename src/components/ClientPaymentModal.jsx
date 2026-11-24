@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCash } from '../context/CashContext';
-import { formatCurrency, formatTimeArabic, formatDateArabic, getTodayString } from '../utils/formatters';
+import { formatCurrency, formatTimeArabic, formatDateArabic, getTodayString, calculateWalletStats } from '../utils/formatters';
 import {
   Wallet,
   X,
@@ -14,7 +14,9 @@ import {
   ArrowDownCircle,
   Sparkles,
   ArrowRight,
-  HandCoins
+  HandCoins,
+  Coins,
+  Store
 } from 'lucide-react';
 
 export default function ClientPaymentModal() {
@@ -26,6 +28,9 @@ export default function ClientPaymentModal() {
     addClientPayment,
     updateClient,
     archiveClientCycle,
+    treasury,
+    shopWallets,
+    instapayAccounts,
     showToast
   } = useCash();
 
@@ -49,6 +54,8 @@ export default function ClientPaymentModal() {
   const [date, setDate] = useState(getTodayISO());
   const [time, setTime] = useState(getCurrentTimeStr());
   const [paymentMethod, setPaymentMethod] = useState('cash'); // 'cash' | 'vodafone_cash' | 'instapay' | 'bank'
+  const [selectedShopWalletId, setSelectedShopWalletId] = useState('');
+  const [selectedInstapayAccountId, setSelectedInstapayAccountId] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -62,11 +69,13 @@ export default function ClientPaymentModal() {
       setDate(getTodayISO());
       setTime(getCurrentTimeStr());
       setPaymentMethod('cash');
+      setSelectedShopWalletId('');
+      setSelectedInstapayAccountId(instapayAccounts?.find(a => a.isDefault)?.id || instapayAccounts?.[0]?.id || '');
       setNotes('');
     } else {
       if (dialog.open) dialog.close();
     }
-  }, [activeModal, client]);
+  }, [activeModal, client, instapayAccounts]);
 
   const handleClose = () => {
     setActiveModal(null);
@@ -132,6 +141,8 @@ export default function ClientPaymentModal() {
         amount: effectiveAmount,
         rawAmount: rawInputAmount,
         paymentMethod,
+        shopWalletId: paymentMethod === 'vodafone_cash' && selectedShopWalletId ? selectedShopWalletId : null,
+        instapayAccountId: paymentMethod === 'instapay' && selectedInstapayAccountId ? selectedInstapayAccountId : null,
         isCreditorPayout: isCreditor,
         excessDebt: (isCreditor && isPayingMore) ? excess : 0,
         excessCredit: (!isCreditor && isPayingMore) ? excess : 0,
@@ -707,73 +718,228 @@ export default function ClientPaymentModal() {
           </div>
         </div>
 
-        {/* Payment Method Selector */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-            طريقة الدفع / التحويل
-          </label>
+        {/* Payment Method Selector & Treasury Integration */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              طريقة الدفع / التحويل (مرتبطة مباشرة برأس المال)
+            </label>
+            <span className="text-[10px] text-slate-400 font-bold">
+              تأثير لحظي في الخزائن
+            </span>
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <button
               type="button"
               onClick={() => setPaymentMethod('cash')}
-              className={`p-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+              className={`p-2.5 rounded-xl text-xs font-bold border flex flex-col items-center justify-center gap-1 transition-all ${
                 paymentMethod === 'cash'
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
               }`}
             >
-              <Banknote className="w-3.5 h-3.5" />
-              <span>نقدي (كاش)</span>
+              <div className="flex items-center gap-1.5">
+                <Banknote className="w-3.5 h-3.5" />
+                <span>نقدي (كاش)</span>
+              </div>
+              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                paymentMethod === 'cash' ? 'bg-black/20 text-white' : 'text-slate-500 dark:text-slate-400 bg-slate-200/60 dark:bg-slate-700'
+              }`}>
+                {formatCurrency(treasury?.drawerCash || 0)}
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => setPaymentMethod('vodafone_cash')}
-              className={`p-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all relative ${
+              className={`p-2.5 rounded-xl text-xs font-bold border flex flex-col items-center justify-center gap-1 transition-all relative ${
                 paymentMethod === 'vodafone_cash'
                   ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
               }`}
             >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>فودافون كاش</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-black ${
-                  paymentMethod === 'vodafone_cash'
-                    ? 'bg-black/20 text-white'
-                    : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
-                }`}
-                dir="ltr"
-              >
-                ×0.99
+              <div className="flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>فودافون كاش</span>
+                <span
+                  className={`text-[9px] px-1 py-0.2 rounded font-mono font-black ${
+                    paymentMethod === 'vodafone_cash'
+                      ? 'bg-black/20 text-white'
+                      : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                  }`}
+                  dir="ltr"
+                >
+                  ×0.99
+                </span>
+              </div>
+              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                paymentMethod === 'vodafone_cash' ? 'bg-black/20 text-white' : 'text-slate-500 dark:text-slate-400 bg-slate-200/60 dark:bg-slate-700'
+              }`}>
+                {formatCurrency(treasury?.vodafoneCash || 0)}
               </span>
             </button>
 
             <button
               type="button"
               onClick={() => setPaymentMethod('instapay')}
-              className={`p-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+              className={`p-2.5 rounded-xl text-xs font-bold border flex flex-col items-center justify-center gap-1 transition-all ${
                 paymentMethod === 'instapay'
                   ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
               }`}
             >
-              <CreditCard className="w-3.5 h-3.5" />
-              <span>إنستاباي</span>
+              <div className="flex items-center gap-1.5">
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>إنستاباي</span>
+              </div>
+              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                paymentMethod === 'instapay' ? 'bg-black/20 text-white' : 'text-slate-500 dark:text-slate-400 bg-slate-200/60 dark:bg-slate-700'
+              }`}>
+                {formatCurrency(treasury?.instapay || 0)}
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => setPaymentMethod('bank')}
-              className={`p-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+              className={`p-2.5 rounded-xl text-xs font-bold border flex flex-col items-center justify-center gap-1 transition-all ${
                 paymentMethod === 'bank'
                   ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
               }`}
             >
-              <span>تحويل بنكي</span>
+              <div className="flex items-center gap-1.5">
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>تحويل بنكي</span>
+              </div>
+              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                paymentMethod === 'bank' ? 'bg-black/20 text-white' : 'text-slate-500 dark:text-slate-400 bg-slate-200/60 dark:bg-slate-700'
+              }`}>
+                {formatCurrency(treasury?.bankAccounts || 0)}
+              </span>
             </button>
           </div>
+
+          {/* Shop Line Selector if Vodafone Cash */}
+          {paymentMethod === 'vodafone_cash' && (
+            <div className="p-3 rounded-2xl bg-rose-50/70 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                  <Store className="w-3.5 h-3.5 text-rose-600" />
+                  <span>
+                    {isCreditor ? 'اختر خط المحل المحول منه (لتحديث ليميت الخط أيضاً):' : 'اختر خط المحل المستلم (لتحديث ليميت الخط أيضاً):'}
+                  </span>
+                </label>
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                  {shopWallets?.length || 0} خط مسجل
+                </span>
+              </div>
+              <select
+                value={selectedShopWalletId}
+                onChange={(e) => setSelectedShopWalletId(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-bold font-mono bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+              >
+                <option value="">-- اختياري: بدون تحديد خط محدد (خصم/إيداع بخزينة رأس المال فقط) --</option>
+                {(shopWallets || []).map(w => {
+                  const stats = calculateWalletStats(w, transactions);
+                  return (
+                    <option key={w.id} value={w.id}>
+                      {w.phoneNumber} - {w.label || 'خط المحل'} (المتاح بالخط: {formatCurrency(stats.remainingLimit)})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
+          {/* InstaPay Account Selector if InstaPay */}
+          {paymentMethod === 'instapay' && (
+            <div className="p-3 rounded-2xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-purple-600" />
+                  <span>
+                    {isCreditor ? 'اختر حساب إنستاباي المحول منه لمستحقات العميل:' : 'اختر حساب إنستاباي المستلم لتحصيل المديونية:'}
+                  </span>
+                </label>
+                <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                  {instapayAccounts?.length || 0} حساب مسجل
+                </span>
+              </div>
+              <select
+                value={selectedInstapayAccountId}
+                onChange={(e) => setSelectedInstapayAccountId(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-bold font-mono bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+              >
+                {(instapayAccounts || []).map(acc => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.accountName} - ({acc.handle}) [المتاح: {formatCurrency(acc.balance || 0)}] {acc.isDefault ? '★ افتراضي' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Treasury Impact Live Banner */}
+          {(() => {
+            const channelNamesMap = {
+              cash: 'كاش الدرج',
+              vodafone_cash: 'فودافون كاش',
+              instapay: 'إنستاباي',
+              bank: 'الحسابات البنكية'
+            };
+            const channelBalMap = {
+              cash: Number(treasury?.drawerCash) || 0,
+              vodafone_cash: Number(treasury?.vodafoneCash) || 0,
+              instapay: Number(treasury?.instapay) || 0,
+              bank: Number(treasury?.bankAccounts) || 0
+            };
+            const chName = channelNamesMap[paymentMethod] || 'الخزينة';
+            const chBal = channelBalMap[paymentMethod] || 0;
+            const inputVal = Number(amount) || 0;
+            const isShort = isCreditor && inputVal > chBal;
+
+            return (
+              <div className="space-y-1.5">
+                <div className={`p-3 rounded-2xl border flex items-center justify-between text-xs transition-colors ${
+                  isCreditor
+                    ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200/80 dark:border-rose-900/40'
+                    : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-900/40'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Coins className={`w-4 h-4 shrink-0 ${isCreditor ? 'text-rose-600' : 'text-emerald-600'}`} />
+                    <span className="text-slate-700 dark:text-slate-300">
+                      {isCreditor ? (
+                        <>
+                          سيتم صرف <b className="text-rose-600 font-mono font-black">{inputVal > 0 ? formatCurrency(inputVal) : '0 ج.م'}</b> وخصمها تلقائياً من رصيد <b>{chName}</b> برأس المال
+                        </>
+                      ) : (
+                        <>
+                          سيتم تحصيل <b className="text-emerald-600 font-mono font-black">{inputVal > 0 ? formatCurrency(inputVal) : '0 ج.م'}</b> وإيداعها مباشرة في رصيد <b>{chName}</b> برأس المال
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-[10px] text-slate-400 block">رصيد {chName}</span>
+                    <span className="text-xs font-mono font-black text-slate-800 dark:text-slate-200">
+                      {formatCurrency(chBal)}
+                    </span>
+                  </div>
+                </div>
+
+                {isShort && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-[11px] font-bold text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>
+                      تنبيه سيولة: الرصيد المسجل في {chName} ({formatCurrency(chBal)}) أقل من المبلغ المطلوب صرفه ({formatCurrency(inputVal)}). سيتم إتمام العملية وتحديث الخزينة.
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Notes */}

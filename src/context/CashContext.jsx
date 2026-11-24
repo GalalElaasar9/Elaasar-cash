@@ -1,9 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { storage, INITIAL_DEMO_INVENTORY, INITIAL_SHOP_WALLETS } from '../utils/storage';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { 
+  storage, 
+  INITIAL_DEMO_INVENTORY, 
+  INITIAL_SHOP_WALLETS, 
+  INITIAL_DEMO_PURCHASES, 
+  INITIAL_DEMO_TREASURY,
+  INITIAL_INSTAPAY_ACCOUNTS,
+  INITIAL_DEMO_DAILY_AUDITS 
+} from '../utils/storage';
 import { 
   calculateWalletStats, 
   getTodayString, 
   getLocalDateString,
+  getCurrentMonthKey,
   formatCurrency,
   formatTimeArabic,
   cleanEgyptianPhone,
@@ -34,7 +43,17 @@ export function CashProvider({ children }) {
   const [clients, setClients] = useState(() => storage.getClients());
   const [transactions, setTransactions] = useState(() => storage.getTransactions());
   const [inventory, setInventory] = useState(() => storage.getInventory());
-  const [shopWallets, setShopWallets] = useState(() => storage.getShopWallets());
+  const [shopWallets, setShopWallets] = useState(() => {
+    const loaded = storage.getShopWallets();
+    return (loaded || []).map((w, idx) => ({
+      ...w,
+      balance: w.balance !== undefined ? Number(w.balance) || 0 : (idx === 0 ? 30000 : idx === 1 ? 20000 : idx === 2 ? 15000 : 5000)
+    }));
+  });
+  const [purchases, setPurchases] = useState(() => storage.getPurchases());
+  const [treasury, setTreasury] = useState(() => storage.getTreasury());
+  const [instapayAccounts, setInstapayAccounts] = useState(() => storage.getInstapayAccounts());
+  const [dailyAudits, setDailyAudits] = useState(() => storage.getDailyAudits());
   const [theme, setTheme] = useState(() => storage.getTheme());
   const [selectedDate, setSelectedDate] = useState(getTodayString());
   const [toast, setToast] = useState(null);
@@ -597,6 +616,210 @@ export function CashProvider({ children }) {
 
     setShopWallets(prev => prev.filter(w => w.id !== walletId));
     showToast(`تم نقل خط المحل (${wallet.phoneNumber}) إلى سلة المحذوفات`, 'info');
+  };
+
+  // ==========================================
+  // SHOP INSTAPAY ACCOUNTS MANAGEMENT (حسابات إنستاباي المحل)
+  // ==========================================
+  const addInstapayAccount = ({
+    accountName,
+    handle,
+    phone = '',
+    bankName = '',
+    initialBalance = 0,
+    notes = '',
+    isDefault = false
+  }) => {
+    const cleanHandle = (handle || '').trim();
+    if (!cleanHandle) {
+      showToast('يرجى إدخال عنوان الدفع أو رقم الهاتف الخاص بحساب إنستاباي', 'error');
+      return null;
+    }
+
+    const initBal = Math.max(0, Number(initialBalance) || 0);
+
+    const newAccount = {
+      id: `insta-${Date.now()}`,
+      accountName: accountName?.trim() || `حساب إنستاباي (${cleanHandle})`,
+      handle: cleanHandle,
+      phone: phone?.trim() || (cleanEgyptianPhone(cleanHandle) || ''),
+      bankName: bankName?.trim() || 'إنستاباي',
+      balance: initBal,
+      isDefault: Boolean(isDefault),
+      notes: notes?.trim() || '',
+      createdAt: new Date().toISOString()
+    };
+
+    setInstapayAccounts(prev => {
+      let updated = prev;
+      if (newAccount.isDefault) {
+        updated = prev.map(a => ({ ...a, isDefault: false }));
+      }
+      return [newAccount, ...updated];
+    });
+
+    if (initBal > 0) {
+      setTreasury(prev => ({
+        ...prev,
+        instapay: (Number(prev.instapay) || 0) + initBal,
+        lastUpdated: new Date().toISOString(),
+        history: [
+          {
+            id: `mov-${Date.now()}-init-insta`,
+            date: new Date().toISOString(),
+            type: 'deposit',
+            channel: 'instapay',
+            amount: initBal,
+            notes: `رصيد افتتاحي عند إضافة حساب إنستاباي: ${newAccount.accountName}`
+          },
+          ...(prev.history || [])
+        ]
+      }));
+    }
+
+    showToast(`تمت إضافة حساب إنستاباي (${newAccount.accountName}) بنجاح!`, 'success');
+    return newAccount;
+  };
+
+  const updateInstapayAccount = (id, updatedFields) => {
+    setInstapayAccounts(prev => {
+      return prev.map(a => {
+        if (a.id === id) {
+          return { ...a, ...updatedFields };
+        }
+        if (updatedFields.isDefault && a.id !== id) {
+          return { ...a, isDefault: false };
+        }
+        return a;
+      });
+    });
+    showToast('تم تحديث بيانات حساب إنستاباي بنجاح');
+  };
+
+  const deleteInstapayAccount = (id) => {
+    const acc = instapayAccounts.find(a => a.id === id);
+    if (!acc) return;
+
+    setInstapayAccounts(prev => prev.filter(a => a.id !== id));
+    showToast(`تم حذف حساب إنستاباي (${acc.accountName})`, 'info');
+  };
+
+  // تحويل مباشر من حسابات إنستاباي المحل
+  const transferFromInstapay = ({
+    instapayAccountId,
+    amount,
+    recipient,
+    recipientClientId = null,
+    recipientClientName = null,
+    recipientWalletId = null,
+    recordClientRecharge = false,
+    transactionCode,
+    notes = '',
+    date = null
+  }) => {
+    const acc = instapayAccounts.find(a => a.id === instapayAccountId);
+    if (!acc) {
+      showToast('حساب إنستاباي غير موجود أو تم حذفه', 'error');
+      return null;
+    }
+
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      showToast('يرجى إدخال مبلغ تحويل صحيح أكبر من 0', 'error');
+      return null;
+    }
+
+    const curBal = Number(acc.balance) || 0;
+    if (numAmount > curBal) {
+      showToast(`الرصيد المتاح في حساب (${acc.accountName}) هو (${formatCurrency(curBal)}) وهو أقل من المبلغ المطلوب تحويله!`, 'error');
+      return null;
+    }
+
+    const dateObj = date ? new Date(date) : new Date();
+    const dateOnly = getLocalDateString(dateObj);
+    const timeStr = formatTimeArabic(dateObj);
+    const code = (transactionCode || `INSTA-${Math.floor(100000 + Math.random() * 900000)}`).trim();
+
+    // 1. Update InstaPay Account Balance
+    setInstapayAccounts(prev => prev.map(a => 
+      a.id === instapayAccountId 
+        ? { ...a, balance: Math.max(0, curBal - numAmount) } 
+        : a
+    ));
+
+    // 2. Deduct from Treasury InstaPay
+    setTreasury(prev => ({
+      ...prev,
+      instapay: Math.max(0, (Number(prev.instapay) || 0) - numAmount),
+      lastUpdated: new Date().toISOString(),
+      history: [
+        {
+          id: `mov-${Date.now()}-insta-out`,
+          date: dateObj.toISOString(),
+          type: 'withdraw',
+          channel: 'instapay',
+          amount: numAmount,
+          notes: notes.trim()
+            ? `تحويل إنستاباي: ${notes.trim()} (من ${acc.accountName})`
+            : `تحويل إنستاباي من ${acc.accountName} إلى ${recipientClientName ? `العميل: ${recipientClientName}` : recipient}`
+        },
+        ...(prev.history || [])
+      ]
+    }));
+
+    // 3. Record in Transactions Ledger
+    const newTx = {
+      id: `tx-insta-${Date.now()}`,
+      type: 'transfer_out',
+      paymentMethod: 'instapay',
+      instapayAccountId: acc.id,
+      instapayAccountName: acc.accountName,
+      instapayHandle: acc.handle,
+      walletPhone: acc.handle || acc.phone,
+      walletLabel: acc.accountName,
+      amount: numAmount,
+      limitAfter: Math.max(0, curBal - numAmount),
+      recipientPhone: recipient,
+      recipientClientId: recipientClientId || null,
+      recipientClientName: recipientClientName || null,
+      recipientWalletId: recipientWalletId || null,
+      transactionCode: code,
+      fee: 0,
+      notes: notes.trim() || `تحويل إنستاباي من ${acc.accountName} إلى ${recipientClientName ? `العميل: ${recipientClientName}` : recipient}`,
+      date: dateObj.toISOString(),
+      dateOnly,
+      time: timeStr
+    };
+
+    setTransactions(prev => [newTx, ...prev]);
+    realtime.addTransaction(newTx);
+    if (currentUser && shopId) syncTransactionToCloud(shopId, newTx);
+
+    // 4. If recorded as Client Recharge
+    if (recordClientRecharge && recipientClientId && recipientWalletId) {
+      addRecharge({
+        walletId: recipientWalletId,
+        amount: numAmount,
+        notes: `شحن رصيد آجل محول من إنستاباي المحل (${acc.accountName}) - كود ${code}`,
+        date: dateObj.toISOString()
+      });
+      showToast(`تم خصم ${formatCurrency(numAmount)} من حساب إنستاباي وشحن رصيد العميل "${recipientClientName}" بنجاح!`, 'success');
+    } else if (recordClientRecharge && recipientClientId && !recipientWalletId) {
+      const client = clients.find(c => c.id === recipientClientId);
+      if (client) {
+        updateClient(client.id, {
+          clientType: 'مدين',
+          excessDebt: (Number(client.excessDebt) || 0) + numAmount,
+          excessDebtDate: dateObj.toISOString()
+        });
+        showToast(`تم خصم ${formatCurrency(numAmount)} من إنستاباي وزيادة مديونية العميل "${client.name}" آجل!`, 'success');
+      }
+    } else {
+      showToast(`تم إتمام تحويل إنستاباي بقيمة ${formatCurrency(numAmount)} بنجاح!`, 'success');
+    }
+
+    triggerConfetti();
+    return newTx;
   };
 
   // Transaction Management
@@ -1506,6 +1729,657 @@ export function CashProvider({ children }) {
     showToast('تمت استعادة نماذج الهواتف والإكسسوارات الافتراضية بنجاح');
   };
 
+  // ==========================================
+  // PURCHASES & SUPPLIERS & EXPENSES MANAGEMENT (المشتريات والموردين والمصروفات)
+  // ==========================================
+
+  const addPurchase = (purchaseData) => {
+    const isGoods = purchaseData.type === 'inventory_goods';
+    const isLiquidity = purchaseData.type === 'cash_liquidity';
+    const totalAmount = Number(purchaseData.totalAmount) || 0;
+    const paidAmount = Number(purchaseData.paidAmount) || 0;
+    const remainingAmount = Math.max(0, totalAmount - paidAmount);
+    const paymentStatus = remainingAmount <= 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid');
+    
+    let defaultPrefix = 'EXP';
+    if (isGoods) defaultPrefix = 'PUR';
+    if (isLiquidity) defaultPrefix = 'CASH';
+
+    const invoiceNumber = (purchaseData.invoiceNumber || '').trim() || `${defaultPrefix}-${Date.now().toString().slice(-6)}`;
+
+    const channelMap = {
+      cash: 'drawerCash',
+      wallet: 'vodafoneCash',
+      instapay: 'instapay',
+      bank: 'bankAccounts'
+    };
+    const paidChannel = purchaseData.paidChannel || channelMap[purchaseData.paymentMethod] || 'drawerCash';
+    const purchasedCashAmount = isLiquidity 
+      ? (Number(purchaseData.purchasedCashAmount) || totalAmount) 
+      : 0;
+
+    const initialPayments = [];
+    if (paidAmount > 0) {
+      initialPayments.push({
+        id: `pay-${Date.now()}`,
+        date: purchaseData.date || new Date().toISOString(),
+        amount: paidAmount,
+        method: purchaseData.paymentMethod || 'cash',
+        channel: paidChannel,
+        walletId: purchaseData.paidFromWalletId || null,
+        notes: isLiquidity 
+          ? 'سداد قيمة شراء رصيد كاش' 
+          : (isGoods ? 'دفعة أولى عند استلام فاتورة الشراء' : 'سداد قيمة المصروف')
+      });
+    }
+
+    const newPurchase = {
+      id: `pur-${Date.now()}`,
+      invoiceNumber,
+      type: purchaseData.type || 'inventory_goods',
+      expenseCategory: purchaseData.expenseCategory || null,
+      date: purchaseData.date || new Date().toISOString(),
+      supplierName: (purchaseData.supplierName || (isLiquidity ? 'موزع فودافون كاش' : (isGoods ? 'مورد عام' : 'مصروف عام للمحل'))).trim(),
+      supplierPhone: (purchaseData.supplierPhone || '').trim(),
+      targetWalletId: purchaseData.targetWalletId || null,
+      targetWalletPhone: purchaseData.targetWalletPhone || null,
+      purchasedCashAmount: isLiquidity ? purchasedCashAmount : 0,
+      items: Array.isArray(purchaseData.items) ? purchaseData.items : [],
+      totalAmount,
+      paidAmount,
+      remainingAmount,
+      paymentMethod: purchaseData.paymentMethod || 'cash',
+      paidChannel,
+      paymentStatus,
+      paidFromWalletId: purchaseData.paidFromWalletId || null,
+      notes: (purchaseData.notes || '').trim(),
+      updateInventory: !!purchaseData.updateInventory,
+      payments: initialPayments,
+      createdAt: new Date().toISOString()
+    };
+
+    // 1. If linked to inventory and has items, update inventory automatically
+    if (isGoods && purchaseData.updateInventory && Array.isArray(purchaseData.items)) {
+      setInventory(prev => {
+        let updatedList = [...prev];
+        purchaseData.items.forEach(item => {
+          const qty = Number(item.quantity) || 0;
+          if (qty <= 0) return;
+
+          const existingIdx = updatedList.findIndex(p => (item.productId && p.id === item.productId) || (p.name && item.name && p.name.trim().toLowerCase() === item.name.trim().toLowerCase()));
+
+          if (existingIdx !== -1) {
+            const prod = updatedList[existingIdx];
+            const targetColor = item.color || prod.variants?.[0]?.color || 'افتراضي';
+            let colorFound = false;
+            const updatedVariants = (prod.variants || []).map(v => {
+              if (v.color === targetColor) {
+                colorFound = true;
+                return { ...v, quantity: (Number(v.quantity) || 0) + qty };
+              }
+              return v;
+            });
+            if (!colorFound) {
+              updatedVariants.push({ color: targetColor, quantity: qty });
+            }
+            const newTotalQty = updatedVariants.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0);
+            const updatedProd = {
+              ...prod,
+              costPrice: Number(item.unitCost) > 0 ? Number(item.unitCost) : prod.costPrice,
+              salePrice: Number(item.suggestedSalePrice) > 0 ? Number(item.suggestedSalePrice) : prod.salePrice,
+              variants: updatedVariants,
+              totalQuantity: newTotalQty
+            };
+            updatedList[existingIdx] = updatedProd;
+            realtime.saveProduct(updatedProd);
+            if (currentUser && shopId) syncProductToCloud(shopId, updatedProd);
+          } else {
+            const targetColor = item.color || 'افتراضي';
+            const brandNewProd = {
+              id: `prod-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+              category: item.category || 'accessories',
+              name: (item.name || 'صنف جديد').trim(),
+              brand: (item.brand || 'عام').trim(),
+              storage: (item.storage || '').trim(),
+              costPrice: Number(item.unitCost) || 0,
+              salePrice: Number(item.suggestedSalePrice) || Math.round((Number(item.unitCost) || 0) * 1.2),
+              minStockAlert: 5,
+              notes: `تمت الإضافة تلقائياً من فاتورة شراء ${invoiceNumber}`,
+              createdAt: new Date().toISOString(),
+              images: [],
+              variants: [{ color: targetColor, quantity: qty }],
+              totalQuantity: qty
+            };
+            updatedList.unshift(brandNewProd);
+            realtime.saveProduct(brandNewProd);
+            if (currentUser && shopId) syncProductToCloud(shopId, brandNewProd);
+          }
+        });
+        return updatedList;
+      });
+    }
+
+    // 2. If paid via shop wallet, deduct from wallet and log transfer
+    if (paidAmount > 0 && purchaseData.paidFromWalletId) {
+      addTransaction({
+        walletId: purchaseData.paidFromWalletId,
+        amount: paidAmount,
+        type: 'transfer_out',
+        notes: `سداد ${isLiquidity ? 'شراء رصيد كاش' : (isGoods ? 'فاتورة مشتريات' : 'مصروف')}: ${invoiceNumber} (${newPurchase.supplierName})`,
+        date: purchaseData.date || new Date().toISOString()
+      });
+    }
+
+    // 3. If cash_liquidity, recharge target shop wallet so limit & balance increase
+    if (isLiquidity && purchasedCashAmount > 0 && purchaseData.targetWalletId) {
+      // Direct recharge into target shop wallet balance
+      setShopWallets(prev => prev.map(w => 
+        w.id === purchaseData.targetWalletId 
+          ? { ...w, balance: (Number(w.balance) || 0) + purchasedCashAmount }
+          : w
+      ));
+
+      addTransaction({
+        walletId: purchaseData.targetWalletId,
+        amount: purchasedCashAmount,
+        type: 'recharge',
+        notes: `تغذية وتوريد رصيد كاش من المورد: ${newPurchase.supplierName} (فاتورة ${invoiceNumber})`,
+        date: purchaseData.date || new Date().toISOString()
+      });
+    }
+
+    // 4. CAPITAL / TREASURY DEDUCTION & ELECTRONIC CASH STOCK ADDITION:
+    setTreasury(prev => {
+      const nextTreasury = { ...prev };
+      const newHistory = [...(prev.history || [])];
+      const channelNames = {
+        drawerCash: 'كاش الدرج والخزينة',
+        vodafoneCash: 'فودافون كاش ومحافظ المحمول',
+        instapay: 'إنستاباي',
+        bankAccounts: 'الحسابات البنكية'
+      };
+
+      if (paidAmount > 0 && paidChannel && nextTreasury[paidChannel] !== undefined) {
+        const curBal = Number(nextTreasury[paidChannel]) || 0;
+        nextTreasury[paidChannel] = Math.max(0, curBal - paidAmount);
+
+        newHistory.unshift({
+          id: `mov-${Date.now()}-deduct`,
+          date: purchaseData.date || new Date().toISOString(),
+          type: 'purchase_deduction',
+          channel: paidChannel,
+          amount: paidAmount,
+          isIncrease: false,
+          notes: `خصم سداد فاتورة ${isLiquidity ? 'شراء رصيد كاش' : (isGoods ? 'مشتريات بضاعة' : 'مصروف')}: ${invoiceNumber} من ${channelNames[paidChannel] || paidChannel} (${newPurchase.supplierName})`
+        });
+      }
+
+      if (isLiquidity && purchasedCashAmount > 0) {
+        const curVf = Number(nextTreasury.vodafoneCash) || 0;
+        nextTreasury.vodafoneCash = curVf + purchasedCashAmount;
+
+        newHistory.unshift({
+          id: `mov-${Date.now()}-addcash`,
+          date: purchaseData.date || new Date().toISOString(),
+          type: 'cash_stock_in',
+          channel: 'vodafoneCash',
+          amount: purchasedCashAmount,
+          isIncrease: true,
+          notes: `تغذية رصيد فودافون كاش ومحافظ المحمول: فاتورة ${invoiceNumber} بمبلغ +${formatCurrency(purchasedCashAmount)} (${purchaseData.targetWalletPhone || ''})`
+        });
+      }
+
+      nextTreasury.history = newHistory;
+      nextTreasury.lastUpdated = new Date().toISOString();
+      return nextTreasury;
+    });
+
+    setPurchases(prev => [newPurchase, ...prev]);
+
+    let toastMsg = `تم حفظ فاتورة المشتريات رقم ${invoiceNumber} بنجاح!`;
+    if (isLiquidity) {
+      toastMsg = `تم تسجيل شراء رصيد كاش بقيمة ${formatCurrency(purchasedCashAmount)} وتغذية الخزينة ورأس المال بنجاح!`;
+    } else if (!isGoods) {
+      toastMsg = `تم تسجيل المصروف بقيمة ${formatCurrency(totalAmount)} وخصمه من الخزينة بنجاح!`;
+    }
+    showToast(toastMsg, 'success');
+    return newPurchase;
+  };
+
+  const updatePurchase = (purchaseId, updatedFields) => {
+    setPurchases(prev => prev.map(p => {
+      if (p.id !== purchaseId) return p;
+      const totalAmount = updatedFields.totalAmount !== undefined ? Number(updatedFields.totalAmount) : p.totalAmount;
+      const paidAmount = updatedFields.paidAmount !== undefined ? Number(updatedFields.paidAmount) : p.paidAmount;
+      const remainingAmount = Math.max(0, totalAmount - paidAmount);
+      const paymentStatus = remainingAmount <= 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid');
+      return {
+        ...p,
+        ...updatedFields,
+        totalAmount,
+        paidAmount,
+        remainingAmount,
+        paymentStatus
+      };
+    }));
+    showToast('تم تحديث بيانات الفاتورة بنجاح');
+  };
+
+  const deletePurchase = (purchaseId) => {
+    const purchase = purchases.find(p => p.id === purchaseId);
+    if (!purchase) return;
+
+    if (purchase.paidAmount > 0 || (purchase.type === 'cash_liquidity' && purchase.purchasedCashAmount > 0)) {
+      const channelMap = {
+        cash: 'drawerCash',
+        wallet: 'vodafoneCash',
+        instapay: 'instapay',
+        bank: 'bankAccounts'
+      };
+      const channel = purchase.paidChannel || channelMap[purchase.paymentMethod] || 'drawerCash';
+      
+      setTreasury(prev => {
+        const nextTreasury = { ...prev };
+        const newHistory = [...(prev.history || [])];
+
+        if (purchase.paidAmount > 0 && nextTreasury[channel] !== undefined) {
+          const curBal = Number(nextTreasury[channel]) || 0;
+          nextTreasury[channel] = curBal + purchase.paidAmount;
+
+          newHistory.unshift({
+            id: `mov-${Date.now()}-ref`,
+            date: new Date().toISOString(),
+            type: 'purchase_reversal',
+            channel,
+            amount: purchase.paidAmount,
+            isIncrease: true,
+            notes: `استرداد مبالغ فاتورة محذوفة (${purchase.invoiceNumber}) لحساب الخزينة`
+          });
+        }
+
+        if (purchase.type === 'cash_liquidity' && purchase.purchasedCashAmount > 0) {
+          const curVf = Number(nextTreasury.vodafoneCash) || 0;
+          nextTreasury.vodafoneCash = Math.max(0, curVf - purchase.purchasedCashAmount);
+
+          newHistory.unshift({
+            id: `mov-${Date.now()}-revcash`,
+            date: new Date().toISOString(),
+            type: 'cash_stock_out',
+            channel: 'vodafoneCash',
+            amount: purchase.purchasedCashAmount,
+            isIncrease: false,
+            notes: `إلغاء رصيد كاش المشترى لفاتورة محذوفة (${purchase.invoiceNumber}) بمبلغ -${formatCurrency(purchase.purchasedCashAmount)}`
+          });
+        }
+
+        nextTreasury.history = newHistory;
+        nextTreasury.lastUpdated = new Date().toISOString();
+        return nextTreasury;
+      });
+    }
+
+    setPurchases(prev => prev.filter(p => p.id !== purchaseId));
+    showToast('تم حذف الفاتورة واسترجاع أرصدة الخزينة بنجاح', 'info');
+  };
+
+  const recordSupplierPayment = (purchaseId, { amount, paymentMethod = 'cash', paidChannel = null, walletId = null, notes = '' }) => {
+    const payAmt = Number(amount) || 0;
+    if (payAmt <= 0) {
+      showToast('يرجى إدخال مبلغ سداد صحيح أكبر من صفر', 'error');
+      return false;
+    }
+
+    const channelMap = {
+      cash: 'drawerCash',
+      wallet: 'vodafoneCash',
+      instapay: 'instapay',
+      bank: 'bankAccounts'
+    };
+    const targetChannel = paidChannel || channelMap[paymentMethod] || 'drawerCash';
+
+    let foundPurchase = null;
+    setPurchases(prev => prev.map(p => {
+      if (p.id !== purchaseId) return p;
+      foundPurchase = p;
+      const newPaid = p.paidAmount + payAmt;
+      const newRemaining = Math.max(0, p.totalAmount - newPaid);
+      const newStatus = newRemaining <= 0 ? 'paid' : 'partial';
+
+      const newPayment = {
+        id: `pay-${Date.now()}`,
+        date: new Date().toISOString(),
+        amount: payAmt,
+        method: paymentMethod,
+        channel: targetChannel,
+        walletId: walletId || null,
+        notes: notes || 'سداد دفعة من الحساب الآجل للمورد'
+      };
+
+      return {
+        ...p,
+        paidAmount: newPaid,
+        remainingAmount: newRemaining,
+        paymentStatus: newStatus,
+        payments: [...(p.payments || []), newPayment]
+      };
+    }));
+
+    if (!foundPurchase) return false;
+
+    if (paymentMethod === 'wallet' && walletId) {
+      setShopWallets(prev => prev.map(w => 
+        w.id === walletId 
+          ? { ...w, balance: Math.max(0, (Number(w.balance) || 0) - payAmt) }
+          : w
+      ));
+
+      addTransaction({
+        walletId,
+        amount: payAmt,
+        type: 'transfer_out',
+        notes: `سداد دفعة آجل للمورد: ${foundPurchase.supplierName} (فاتورة ${foundPurchase.invoiceNumber})`,
+        date: new Date().toISOString()
+      });
+    }
+
+    setTreasury(prev => {
+      const curBal = Number(prev[targetChannel]) || 0;
+      const channelNames = {
+        drawerCash: 'كاش الدرج والخزينة',
+        vodafoneCash: 'فودافون كاش ومحافظ المحمول',
+        instapay: 'إنستاباي',
+        bankAccounts: 'الحسابات البنكية'
+      };
+
+      const newHistoryRecord = {
+        id: `mov-${Date.now()}`,
+        date: new Date().toISOString(),
+        type: 'supplier_payment',
+        channel: targetChannel,
+        amount: payAmt,
+        isIncrease: false,
+        notes: `سداد دفعة آجل للمورد: ${foundPurchase.supplierName} (فاتورة ${foundPurchase.invoiceNumber}) من ${channelNames[targetChannel] || targetChannel}`
+      };
+
+      return {
+        ...prev,
+        [targetChannel]: Math.max(0, curBal - payAmt),
+        lastUpdated: new Date().toISOString(),
+        history: [newHistoryRecord, ...(prev.history || [])]
+      };
+    });
+
+    showToast(`تم تسجيل سداد دفعة للمورد بقيمة ${formatCurrency(payAmt)} وخصمها من الخزينة بنجاح!`, 'success');
+    return true;
+  };
+
+  // ==========================================
+  // CAPITAL & TREASURY MANAGEMENT (رأس المال والسيولة والخزينة)
+  // ==========================================
+
+  const updateTreasuryBalance = (channel, newBalance, reason = '') => {
+    const num = Math.max(0, Number(newBalance) || 0);
+    const oldBal = Number(treasury[channel]) || 0;
+    const diff = num - oldBal;
+
+    const channelNames = {
+      drawerCash: 'كاش الدرج والخزينة',
+      vodafoneCash: 'فودافون كاش ومحافظ المحمول',
+      instapay: 'إنستاباي',
+      bankAccounts: 'الحسابات البنكية'
+    };
+
+    const newHistoryRecord = {
+      id: `mov-${Date.now()}`,
+      date: new Date().toISOString(),
+      type: 'adjustment',
+      channel,
+      oldBalance: oldBal,
+      newBalance: num,
+      amount: Math.abs(diff),
+      isIncrease: diff >= 0,
+      notes: reason.trim() || `تسوية رصيد ${channelNames[channel] || channel} (الفرق: ${diff >= 0 ? '+' : ''}${formatCurrency(diff)})`
+    };
+
+    setTreasury(prev => ({
+      ...prev,
+      [channel]: num,
+      lastUpdated: new Date().toISOString(),
+      history: [newHistoryRecord, ...(prev.history || [])]
+    }));
+
+    showToast(`تم تحديث رصيد ${channelNames[channel] || channel} إلى ${formatCurrency(num)} بنجاح!`, 'success');
+    return true;
+  };
+
+  const transferBetweenTreasury = (fromChannel, toChannel, amount, notes = '') => {
+    const num = Number(amount) || 0;
+    if (num <= 0) {
+      showToast('يرجى إدخال مبلغ تحويل صحيح أكبر من صفر', 'error');
+      return false;
+    }
+
+    const fromBal = Number(treasury[fromChannel]) || 0;
+    if (num > fromBal) {
+      showToast(`الرصيد المتاح في جهة التحويل (${formatCurrency(fromBal)}) غير كافٍ لتحويل (${formatCurrency(num)})!`, 'error');
+      return false;
+    }
+
+    const channelNames = {
+      drawerCash: 'كاش الدرج',
+      vodafoneCash: 'فودافون كاش',
+      instapay: 'إنستاباي',
+      bankAccounts: 'الحسابات البنكية'
+    };
+
+    const newHistoryRecord = {
+      id: `mov-${Date.now()}`,
+      date: new Date().toISOString(),
+      type: 'transfer',
+      from: fromChannel,
+      to: toChannel,
+      amount: num,
+      notes: notes.trim() || `تحويل من ${channelNames[fromChannel]} إلى ${channelNames[toChannel]}`
+    };
+
+    setTreasury(prev => ({
+      ...prev,
+      [fromChannel]: Math.max(0, (Number(prev[fromChannel]) || 0) - num),
+      [toChannel]: (Number(prev[toChannel]) || 0) + num,
+      lastUpdated: new Date().toISOString(),
+      history: [newHistoryRecord, ...(prev.history || [])]
+    }));
+
+    showToast(`تم تحويل ${formatCurrency(num)} من ${channelNames[fromChannel]} إلى ${channelNames[toChannel]} بنجاح!`, 'success');
+    return true;
+  };
+
+  const depositToTreasury = (channel, amount, notes = '') => {
+    const num = Number(amount) || 0;
+    if (num <= 0) return false;
+
+    const channelNames = {
+      drawerCash: 'كاش الدرج',
+      vodafoneCash: 'فودافون كاش',
+      instapay: 'إنستاباي',
+      bankAccounts: 'الحسابات البنكية'
+    };
+
+    const newHistoryRecord = {
+      id: `mov-${Date.now()}`,
+      date: new Date().toISOString(),
+      type: 'deposit',
+      channel,
+      amount: num,
+      notes: notes.trim() || `إيداع وضخ سيولة إضافية في ${channelNames[channel] || channel}`
+    };
+
+    setTreasury(prev => ({
+      ...prev,
+      [channel]: (Number(prev[channel]) || 0) + num,
+      lastUpdated: new Date().toISOString(),
+      history: [newHistoryRecord, ...(prev.history || [])]
+    }));
+
+    showToast(`تم إيداع ${formatCurrency(num)} في ${channelNames[channel]} بنجاح!`, 'success');
+    return true;
+  };
+
+  const withdrawFromTreasury = (channel, amount, notes = '') => {
+    const num = Number(amount) || 0;
+    if (num <= 0) return false;
+
+    const curBal = Number(treasury[channel]) || 0;
+    if (num > curBal) {
+      showToast(`الرصيد المتاح (${formatCurrency(curBal)}) أقل من المبلغ المطلوب سحبه`, 'error');
+      return false;
+    }
+
+    const channelNames = {
+      drawerCash: 'كاش الدرج',
+      vodafoneCash: 'فودافون كاش',
+      instapay: 'إنستاباي',
+      bankAccounts: 'الحسابات البنكية'
+    };
+
+    const newHistoryRecord = {
+      id: `mov-${Date.now()}`,
+      date: new Date().toISOString(),
+      type: 'withdraw',
+      channel,
+      amount: num,
+      notes: notes.trim() || `سحب مسحوبات خاصة من ${channelNames[channel] || channel}`
+    };
+
+    setTreasury(prev => ({
+      ...prev,
+      [channel]: Math.max(0, curBal - num),
+      lastUpdated: new Date().toISOString(),
+      history: [newHistoryRecord, ...(prev.history || [])]
+    }));
+
+    showToast(`تم سحب ${formatCurrency(num)} من ${channelNames[channel]} بنجاح`, 'info');
+    return true;
+  };
+
+  // ==========================================
+  // DAILY AUDIT & END-OF-DAY CLOSING (جرد نهاية اليوم وإقفال اليومية وبدء يوم جديد)
+  // ==========================================
+
+  const recordDailyAudit = ({
+    date = null,
+    auditorName = '',
+    notes = '',
+    systemBalances,
+    actualBalances,
+    variances,
+    daySummary,
+    status = 'matched'
+  }) => {
+    const auditDate = date ? new Date(date) : new Date();
+    const dateOnly = getLocalDateString(auditDate);
+    const timeStr = formatTimeArabic(auditDate);
+    
+    const newAudit = {
+      id: `audit-${Date.now()}`,
+      date: auditDate.toISOString(),
+      dateOnly,
+      time: timeStr,
+      auditorName: auditorName.trim() || 'صاحب المحل',
+      notes: notes.trim(),
+      status, // 'matched' | 'surplus' | 'deficit'
+      systemBalances,
+      actualBalances,
+      variances,
+      daySummary,
+      createdAt: new Date().toISOString()
+    };
+
+    // 1. Update treasury actual balances to start the new day with counted cash
+    if (actualBalances) {
+      setTreasury(prev => {
+        const next = { ...prev };
+        const newHistory = [...(prev.history || [])];
+
+        const channels = ['drawerCash', 'vodafoneCash', 'instapay', 'bankAccounts'];
+        const channelNames = {
+          drawerCash: 'كاش الدرج والخزينة',
+          vodafoneCash: 'فودافون كاش ومحافظ المحمول',
+          instapay: 'إنستاباي',
+          bankAccounts: 'الحسابات البنكية'
+        };
+
+        channels.forEach(ch => {
+          if (actualBalances[ch] !== undefined && actualBalances[ch] !== null) {
+            const act = Number(actualBalances[ch]) || 0;
+            const sys = Number(systemBalances?.[ch]) || Number(prev[ch]) || 0;
+            const diff = act - sys;
+
+            next[ch] = act;
+
+            if (diff !== 0) {
+              newHistory.unshift({
+                id: `mov-${Date.now()}-audit-${ch}`,
+                date: auditDate.toISOString(),
+                type: 'daily_closing_audit',
+                channel: ch,
+                oldBalance: sys,
+                newBalance: act,
+                amount: Math.abs(diff),
+                isIncrease: diff > 0,
+                notes: `تسوية جرد نهاية اليومية: ${channelNames[ch]} (فرق الجرد: ${diff > 0 ? '+' : ''}${formatCurrency(diff)})`
+              });
+            }
+          }
+        });
+
+        next.history = newHistory;
+        next.lastUpdated = auditDate.toISOString();
+        return next;
+      });
+    }
+
+    // 2. Update shop wallets actual balances if provided in audit
+    if (actualBalances?.shopWallets && Array.isArray(actualBalances.shopWallets)) {
+      setShopWallets(prev => prev.map(w => {
+        const counted = actualBalances.shopWallets.find(sw => sw.id === w.id);
+        if (counted && counted.balance !== undefined) {
+          return { ...w, balance: Number(counted.balance) || 0 };
+        }
+        return w;
+      }));
+    }
+
+    // 3. Update instapay accounts actual balances if provided in audit
+    if (actualBalances?.instapayAccounts && Array.isArray(actualBalances.instapayAccounts)) {
+      setInstapayAccounts(prev => prev.map(a => {
+        const counted = actualBalances.instapayAccounts.find(ia => ia.id === a.id);
+        if (counted && counted.balance !== undefined) {
+          return { ...a, balance: Number(counted.balance) || 0 };
+        }
+        return a;
+      }));
+    }
+
+    // 4. Save audit log
+    setDailyAudits(prev => [newAudit, ...prev]);
+
+    showToast(
+      status === 'matched' 
+        ? 'تم اعتماد جرد اليومية بنجاح ومطابقة كافة الأرصدة لبدء يوم جديد!' 
+        : `تم اعتماد جرد اليومية وتسوية الأرصدة (${status === 'deficit' ? 'يوجد عجز' : 'توجد زيادة'}) وبدء يوم جديد بنجاح!`,
+      status === 'deficit' ? 'warning' : 'success'
+    );
+
+    triggerConfetti();
+    return newAudit;
+  };
+
+  const deleteDailyAudit = (auditId) => {
+    setDailyAudits(prev => prev.filter(a => a.id !== auditId));
+    showToast('تم حذف سجل الجرد بنجاح', 'info');
+  };
+
   // Reset demo data
   const handleResetDemo = () => {
     const demo = storage.resetToDemo();
@@ -1531,7 +2405,7 @@ export function CashProvider({ children }) {
 
   // Export data
   const handleExport = () => {
-    storage.exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives);
+    storage.exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives, purchases, treasury, instapayAccounts, dailyAudits);
     showToast('تم تصدير النسخة الاحتياطية بنجاح');
   };
 
@@ -1746,6 +2620,57 @@ export function CashProvider({ children }) {
   const totalInventorySaleValue = inventory.reduce((sum, p) => sum + ((Number(p.salePrice) || 0) * (Number(p.totalQuantity) || 0)), 0);
   const totalPhonesCount = inventory.filter(p => p.category === 'phones').length;
   const totalAccessoriesCount = inventory.filter(p => p.category !== 'phones').length;
+
+  // Purchases Metrics & KPIs
+  const currentMonthKey = getCurrentMonthKey();
+  const todayPurchases = purchases.filter(p => {
+    const pDate = p.date ? getLocalDateString(p.date) : '';
+    return pDate === todayStr;
+  });
+  const todayPurchasesAmount = todayPurchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+
+  const monthPurchases = purchases.filter(p => {
+    const pDate = p.date ? getLocalDateString(p.date) : '';
+    return pDate.startsWith(currentMonthKey);
+  });
+  const monthPurchasesAmount = monthPurchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+
+  const totalPurchasesAmount = purchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+  const totalSupplierDebt = purchases.reduce((sum, p) => sum + (Number(p.remainingAmount) || 0), 0);
+  const inventoryPurchasesTotal = purchases.filter(p => p.type === 'inventory_goods').reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+  const generalExpensesTotal = purchases.filter(p => p.type === 'general_expense').reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+  const cashLiquidityPurchasesTotal = purchases.filter(p => p.type === 'cash_liquidity').reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+
+  const uniqueSuppliers = useMemo(() => {
+    const set = new Set();
+    purchases.forEach(p => {
+      if (p.supplierName && (p.type === 'inventory_goods' || p.type === 'cash_liquidity')) set.add(p.supplierName.trim());
+    });
+    return Array.from(set);
+  }, [purchases]);
+
+  // Capital & Treasury Calculations
+  const totalLiquidCash = (Number(treasury.drawerCash) || 0) + 
+                          (Number(treasury.vodafoneCash) || 0) + 
+                          (Number(treasury.instapay) || 0) + 
+                          (Number(treasury.bankAccounts) || 0);
+
+  const clientsTotalReceivables = useMemo(() => {
+    return (clients || []).reduce((sum, client) => {
+      const wallets = client.wallets || [];
+      const walletIds = new Set(wallets.map(w => w.id));
+      const recharges = transactions
+        .filter(t => walletIds.has(t.walletId) && (t.type === 'recharge' || t.type === 'limit_reset') && !t.isSettled)
+        .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      const payments = transactions
+        .filter(t => (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment')
+        .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      const debt = Math.max(0, recharges - payments);
+      return sum + debt;
+    }, 0);
+  }, [clients, transactions]);
+
+  const totalCapitalNetWorth = totalLiquidCash + totalInventoryCost + clientsTotalReceivables - totalSupplierDebt;
 
   return (
     <CashContext.Provider

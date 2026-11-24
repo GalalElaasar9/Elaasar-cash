@@ -12,6 +12,10 @@ const STORAGE_KEYS = {
   SHOP_WALLETS: 'elaasar_cash_shop_wallets_v1',
   CLIENT_ARCHIVES: 'elaasar_cash_client_archives_v1',
   DISMISSED_ARCHIVE_IDS: 'elaasar_cash_dismissed_archive_ids_v1',
+  PURCHASES: 'elaasar_cash_purchases_v1',
+  TREASURY: 'elaasar_cash_treasury_v1',
+  INSTAPAY_ACCOUNTS: 'elaasar_cash_instapay_accounts_v1',
+  DAILY_AUDITS: 'elaasar_cash_daily_audits_v1',
 };
 
 // Generates today's date string and some earlier timestamps
@@ -285,6 +289,7 @@ export const INITIAL_SHOP_WALLETS = [
     phoneNumber: '01098765432',
     label: 'محفظة المبيعات المركزية (المحل)',
     totalLimit: 200000,
+    balance: 30000,
     createdAt: getRecentDate(15)
   },
   {
@@ -292,6 +297,7 @@ export const INITIAL_SHOP_WALLETS = [
     phoneNumber: '01011223344',
     label: 'محفظة فرع المحطة (المحل)',
     totalLimit: 200000,
+    balance: 20000,
     createdAt: getRecentDate(10)
   },
   {
@@ -299,6 +305,7 @@ export const INITIAL_SHOP_WALLETS = [
     phoneNumber: '01055667788',
     label: 'محفظة كبار العملاء والسيولة (المحل)',
     totalLimit: 200000,
+    balance: 15000,
     createdAt: getRecentDate(5)
   },
   {
@@ -306,6 +313,7 @@ export const INITIAL_SHOP_WALLETS = [
     phoneNumber: '01023456789',
     label: 'محفظة إدارة الحسابات (المحل)',
     totalLimit: 200000,
+    balance: 10000,
     createdAt: getRecentDate(20)
   },
   {
@@ -313,6 +321,7 @@ export const INITIAL_SHOP_WALLETS = [
     phoneNumber: '01034567890',
     label: 'محفظة المشتريات والتوريدات (المحل)',
     totalLimit: 200000,
+    balance: 5000,
     createdAt: getRecentDate(12)
   },
   {
@@ -320,7 +329,175 @@ export const INITIAL_SHOP_WALLETS = [
     phoneNumber: '01099887766',
     label: 'محفظة التحويلات الفورية (المحل)',
     totalLimit: 200000,
+    balance: 5000,
     createdAt: getRecentDate(8)
+  }
+];
+
+export const INITIAL_INSTAPAY_ACCOUNTS = [
+  {
+    id: 'insta-1',
+    accountName: 'إنستاباي - البنك الأهلي المصري (الرئيسي)',
+    handle: 'elaasar@instapay',
+    phone: '01098765432',
+    bankName: 'البنك الأهلي المصري',
+    balance: 40000,
+    isDefault: true,
+    notes: 'حساب فرع المحل الرئيسي والتحويلات المركزية',
+    createdAt: getRecentDate(30)
+  },
+  {
+    id: 'insta-2',
+    accountName: 'إنستاباي - بنك مصر (فرع المحطة)',
+    handle: '01011223344@instapay',
+    phone: '01011223344',
+    bankName: 'بنك مصر',
+    balance: 15000,
+    isDefault: false,
+    notes: 'حساب فرع المحطة ومشتريات الأجهزة',
+    createdAt: getRecentDate(20)
+  },
+  {
+    id: 'insta-3',
+    accountName: 'إنستاباي - CIB (كبار العملاء والسيولة)',
+    handle: 'elaasarcash@cib',
+    phone: '01055667788',
+    bankName: 'البنك التجاري الدولي (CIB)',
+    balance: 10000,
+    isDefault: false,
+    notes: 'حساب توريدات السيولة النقدية وكبار التجار',
+    createdAt: getRecentDate(10)
+  }
+];
+
+export const INITIAL_DEMO_DAILY_AUDITS = [
+  {
+    id: 'audit-2026-11-23',
+    date: getRecentDate(1, 23, 45),
+    dateOnly: '2026-11-23',
+    auditorName: 'محمود الأعصر (صاحب المحل)',
+    notes: 'تم جرد اليومية بالكامل، ومطابقة كاش الدرج مع خطوط فودافون كاش وحسابات إنستاباي بنجاح. لا يوجد أي عجز.',
+    status: 'matched', // 'matched' | 'surplus' | 'deficit'
+    systemBalances: {
+      drawerCash: 45000,
+      vodafoneCash: 85000,
+      instapay: 65000,
+      bankAccounts: 30000,
+      totalLiquidCash: 225000,
+      shopWallets: [
+        { id: 'wallet-1-1', phoneNumber: '01098765432', label: 'محفظة المبيعات المركزية (المحل)', balance: 30000 },
+        { id: 'wallet-1-2', phoneNumber: '01011223344', label: 'محفظة فرع المحطة (المحل)', balance: 20000 },
+        { id: 'wallet-1-3', phoneNumber: '01055667788', label: 'محفظة كبار العملاء والسيولة (المحل)', balance: 15000 },
+        { id: 'wallet-2-1', phoneNumber: '01023456789', label: 'محفظة إدارة الحسابات (المحل)', balance: 10000 },
+        { id: 'wallet-2-2', phoneNumber: '01034567890', label: 'محفظة المشتريات والتوريدات (المحل)', balance: 5000 },
+        { id: 'wallet-3-1', phoneNumber: '01099887766', label: 'محفظة التحويلات الفورية (المحل)', balance: 5000 },
+      ],
+      instapayAccounts: [
+        { id: 'insta-1', accountName: 'إنستاباي - البنك الأهلي المصري (الرئيسي)', balance: 40000 },
+        { id: 'insta-2', accountName: 'إنستاباي - بنك مصر (فرع المحطة)', balance: 15000 },
+        { id: 'insta-3', accountName: 'إنستاباي - CIB (كبار العملاء والسيولة)', balance: 10000 },
+      ]
+    },
+    actualBalances: {
+      drawerCash: 45000,
+      vodafoneCash: 85000,
+      instapay: 65000,
+      bankAccounts: 30000,
+      totalLiquidCash: 225000,
+      shopWallets: {
+        'wallet-1-1': 30000,
+        'wallet-1-2': 20000,
+        'wallet-1-3': 15000,
+        'wallet-2-1': 10000,
+        'wallet-2-2': 5000,
+        'wallet-3-1': 5000
+      },
+      instapayAccounts: {
+        'insta-1': 40000,
+        'insta-2': 15000,
+        'insta-3': 10000
+      }
+    },
+    variances: {
+      drawerCash: 0,
+      vodafoneCash: 0,
+      instapay: 0,
+      bankAccounts: 0,
+      totalVariance: 0
+    },
+    daySummary: {
+      transfersOutCount: 14,
+      transfersOutTotal: 34500,
+      rechargesTotal: 22000,
+      purchasesCount: 2,
+      purchasesTotal: 15000,
+      clientsTotalReceivables: 114500,
+      netDayVolume: 56500
+    }
+  },
+  {
+    id: 'audit-2026-11-22',
+    date: getRecentDate(2, 23, 30),
+    dateOnly: '2026-11-22',
+    auditorName: 'محمود الأعصر (صاحب المحل)',
+    notes: 'جرد نهاية يوم الأحد، تم تسجيل زيادة طفيفة +50 ج.م في كاش الدرج ناتجة عن بواقي فكة معاملات العملاء.',
+    status: 'surplus',
+    systemBalances: {
+      drawerCash: 41200,
+      vodafoneCash: 92000,
+      instapay: 55000,
+      bankAccounts: 30000,
+      totalLiquidCash: 218200,
+      shopWallets: [
+        { id: 'wallet-1-1', phoneNumber: '01098765432', label: 'محفظة المبيعات المركزية (المحل)', balance: 35000 },
+        { id: 'wallet-1-2', phoneNumber: '01011223344', label: 'محفظة فرع المحطة (المحل)', balance: 22000 },
+        { id: 'wallet-1-3', phoneNumber: '01055667788', label: 'محفظة كبار العملاء والسيولة (المحل)', balance: 15000 },
+        { id: 'wallet-2-1', phoneNumber: '01023456789', label: 'محفظة إدارة الحسابات (المحل)', balance: 10000 },
+        { id: 'wallet-2-2', phoneNumber: '01034567890', label: 'محفظة المشتريات والتوريدات (المحل)', balance: 5000 },
+        { id: 'wallet-3-1', phoneNumber: '01099887766', label: 'محفظة التحويلات الفورية (المحل)', balance: 5000 },
+      ],
+      instapayAccounts: [
+        { id: 'insta-1', accountName: 'إنستاباي - البنك الأهلي المصري (الرئيسي)', balance: 35000 },
+        { id: 'insta-2', accountName: 'إنستاباي - بنك مصر (فرع المحطة)', balance: 10000 },
+        { id: 'insta-3', accountName: 'إنستاباي - CIB (كبار العملاء والسيولة)', balance: 10000 },
+      ]
+    },
+    actualBalances: {
+      drawerCash: 41250,
+      vodafoneCash: 92000,
+      instapay: 55000,
+      bankAccounts: 30000,
+      totalLiquidCash: 218250,
+      shopWallets: {
+        'wallet-1-1': 35000,
+        'wallet-1-2': 22000,
+        'wallet-1-3': 15000,
+        'wallet-2-1': 10000,
+        'wallet-2-2': 5000,
+        'wallet-3-1': 5000
+      },
+      instapayAccounts: {
+        'insta-1': 35000,
+        'insta-2': 10000,
+        'insta-3': 10000
+      }
+    },
+    variances: {
+      drawerCash: 50,
+      vodafoneCash: 0,
+      instapay: 0,
+      bankAccounts: 0,
+      totalVariance: 50
+    },
+    daySummary: {
+      transfersOutCount: 11,
+      transfersOutTotal: 28000,
+      rechargesTotal: 19500,
+      purchasesCount: 1,
+      purchasesTotal: 8500,
+      clientsTotalReceivables: 118000,
+      netDayVolume: 47500
+    }
   }
 ];
 
@@ -1161,6 +1338,161 @@ export const INITIAL_DEMO_INVENTORY = [
   }
 ];
 
+export const INITIAL_DEMO_PURCHASES = [
+  {
+    id: 'pur-1',
+    invoiceNumber: 'PUR-2026-101',
+    type: 'inventory_goods',
+    date: getRecentDate(3, 14, 20),
+    supplierName: 'شركة الفرسان لتوزيع الهواتف (الحاج شريف)',
+    supplierPhone: '01023456789',
+    items: [
+      { id: 'item-1-1', name: 'Samsung Galaxy A55 5G', category: 'phones', color: 'أزرق ثلجي', quantity: 5, unitCost: 16500, totalCost: 82500, suggestedSalePrice: 18200 },
+      { id: 'item-1-2', name: 'Samsung Galaxy A15', category: 'phones', color: 'أسود كحلي', quantity: 5, unitCost: 6200, totalCost: 31000, suggestedSalePrice: 7100 }
+    ],
+    totalAmount: 113500,
+    paidAmount: 100000,
+    remainingAmount: 13500,
+    paymentMethod: 'partial',
+    paymentStatus: 'partial',
+    paidFromWalletId: null,
+    notes: 'فاتورة توريد هواتف سامسونج أصلية بضمان محلي - متبقي 13,500 ج.م تسدد بعد 10 أيام',
+    payments: [
+      { id: 'pay-1', date: getRecentDate(3, 14, 25), amount: 100000, method: 'cash', notes: 'دفعة أولى نقدية من الدرج' }
+    ]
+  },
+  {
+    id: 'pur-2',
+    invoiceNumber: 'PUR-2026-102',
+    type: 'inventory_goods',
+    date: getRecentDate(1, 11, 45),
+    supplierName: 'مؤسسة النور للإكسسوارات والأجهزة',
+    supplierPhone: '01145678901',
+    items: [
+      { id: 'item-2-1', name: 'شاحن سامسونج أصلي 25 واط Type-C', category: 'chargers', color: 'أبيض', quantity: 20, unitCost: 280, totalCost: 5600, suggestedSalePrice: 450 },
+      { id: 'item-2-2', name: 'سماعة Joyroom Earbuds Pro', category: 'earphones', color: 'أسود', quantity: 10, unitCost: 650, totalCost: 6500, suggestedSalePrice: 950 }
+    ],
+    totalAmount: 12100,
+    paidAmount: 12100,
+    remainingAmount: 0,
+    paymentMethod: 'wallet',
+    paymentStatus: 'paid',
+    paidFromWalletId: 'wallet-1-1',
+    notes: 'تم التحويل فودافون كاش من محفظة المبيعات المركزية بالكامل',
+    payments: [
+      { id: 'pay-2', date: getRecentDate(1, 11, 50), amount: 12100, method: 'wallet', walletId: 'wallet-1-1', notes: 'تحويل كامل من خط المحل' }
+    ]
+  },
+  {
+    id: 'pur-3',
+    invoiceNumber: 'EXP-2026-050',
+    type: 'general_expense',
+    expenseCategory: 'electricity',
+    supplierName: 'شركة جنوب الدلتا لتوزيع الكهرباء',
+    supplierPhone: '',
+    date: getRecentDate(0, 9, 15),
+    items: [
+      { id: 'item-3-1', name: 'فاتورة استهلاك كهرباء المحل والتكييفات لشهر نوفمبر', category: 'electricity', quantity: 1, unitCost: 1850, totalCost: 1850 }
+    ],
+    totalAmount: 1850,
+    paidAmount: 1850,
+    remainingAmount: 0,
+    paymentMethod: 'cash',
+    paymentStatus: 'paid',
+    notes: 'سداد نقدي من الدرج إيصال رسمي رقم 88741',
+    payments: [
+      { id: 'pay-3', date: getRecentDate(0, 9, 15), amount: 1850, method: 'cash', notes: 'سداد نقدي من الدرج' }
+    ]
+  },
+  {
+    id: 'pur-4',
+    invoiceNumber: 'EXP-2026-051',
+    type: 'general_expense',
+    expenseCategory: 'printing',
+    supplierName: 'مطبعة الأهرام الحديثة',
+    supplierPhone: '01278912345',
+    date: getRecentDate(2, 16, 0),
+    items: [
+      { id: 'item-4-1', name: 'أكياس هدايا ودعاية مطبوعة فاخرة بشعار الأعصر كاش (50 كجم)', category: 'printing', quantity: 50, unitCost: 75, totalCost: 3750 }
+    ],
+    totalAmount: 3750,
+    paidAmount: 2000,
+    remainingAmount: 1750,
+    paymentMethod: 'partial',
+    paymentStatus: 'partial',
+    notes: 'عربون 2000 ج.م ومتبقي 1750 ج.م تسدد عند استلام باقي البنرات والأكياس',
+    payments: [
+      { id: 'pay-4', date: getRecentDate(2, 16, 0), amount: 2000, method: 'cash', notes: 'عربون نقدي' }
+    ]
+  },
+  {
+    id: 'pur-5',
+    invoiceNumber: 'CASH-2026-080',
+    type: 'cash_liquidity',
+    date: getRecentDate(1, 15, 30),
+    supplierName: 'موزع فودافون كاش المعتمد (الحاج رأفت)',
+    supplierPhone: '01019887766',
+    targetWalletId: 'wallet-1-1',
+    targetWalletPhone: '01098765432',
+    purchasedCashAmount: 50000,
+    items: [
+      { id: 'item-5-1', name: 'شحن وتغذية رصيد فودافون كاش لمحفظة المبيعات المركزية (01098765432)', category: 'services', quantity: 1, unitCost: 50000, totalCost: 50000 }
+    ],
+    totalAmount: 50000,
+    paidAmount: 50000,
+    remainingAmount: 0,
+    paymentMethod: 'instapay',
+    paidFromChannel: 'instapay',
+    paymentStatus: 'paid',
+    notes: 'تم شراء رصيد كاش وتغذية خط المحل، وسداد القيمة عبر تحويل إنستاباي',
+    payments: [
+      { id: 'pay-5', date: getRecentDate(1, 15, 30), amount: 50000, method: 'instapay', notes: 'تحويل عبر إنستاباي' }
+    ]
+  }
+];
+
+export const INITIAL_DEMO_TREASURY = {
+  drawerCash: 45000,
+  vodafoneCash: 85000,
+  instapay: 65000,
+  bankAccounts: 30000,
+  walletsBreakdown: [
+    { id: 'vf-1', name: 'محفظة المبيعات المركزية (01098765432)', balance: 35000 },
+    { id: 'vf-2', name: 'محفظة فرع المحطة (01011223344)', balance: 25000 },
+    { id: 'vf-3', name: 'محفظة كبار العملاء والسيولة (01055667788)', balance: 25000 },
+  ],
+  history: [
+    {
+      id: 'mov-1',
+      date: getRecentDate(0, 18, 30),
+      type: 'transfer',
+      from: 'drawer',
+      to: 'instapay',
+      amount: 15000,
+      notes: 'تحويل نقدي من كاش الدرج وتوريده لحساب إنستاباي'
+    },
+    {
+      id: 'mov-2',
+      date: getRecentDate(1, 14, 15),
+      type: 'transfer',
+      from: 'instapay',
+      to: 'vodafone_cash',
+      amount: 20000,
+      notes: 'شحن وتغذية محافظ فودافون كاش من حساب إنستاباي'
+    },
+    {
+      id: 'mov-3',
+      date: getRecentDate(2, 21, 0),
+      type: 'adjustment',
+      channel: 'drawer',
+      oldBalance: 38000,
+      newBalance: 45000,
+      amount: 7000,
+      notes: 'تسوية وجرد الدرج المسائي (ضخ سيولة نقدية جديدة من المالك)'
+    }
+  ]
+};
+
 export const storage = {
   getClients() {
     try {
@@ -1342,9 +1674,101 @@ export const storage = {
     }
   },
 
-  exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives = []) {
+  getPurchases() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PURCHASES);
+      if (data === null) {
+        localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(INITIAL_DEMO_PURCHASES));
+        return INITIAL_DEMO_PURCHASES;
+      }
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error('Error reading purchases from storage:', e);
+      return INITIAL_DEMO_PURCHASES;
+    }
+  },
+
+  savePurchases(purchases) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases || []));
+    } catch (e) {
+      console.error('Error saving purchases:', e);
+    }
+  },
+
+  getTreasury() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.TREASURY);
+      if (data === null) {
+        localStorage.setItem(STORAGE_KEYS.TREASURY, JSON.stringify(INITIAL_DEMO_TREASURY));
+        return INITIAL_DEMO_TREASURY;
+      }
+      const parsed = JSON.parse(data);
+      return parsed && typeof parsed === 'object' ? parsed : INITIAL_DEMO_TREASURY;
+    } catch (e) {
+      console.error('Error reading treasury from storage:', e);
+      return INITIAL_DEMO_TREASURY;
+    }
+  },
+
+  saveTreasury(treasury) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.TREASURY, JSON.stringify(treasury || INITIAL_DEMO_TREASURY));
+    } catch (e) {
+      console.error('Error saving treasury:', e);
+    }
+  },
+
+  getInstapayAccounts() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS);
+      if (data === null) {
+        localStorage.setItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS, JSON.stringify(INITIAL_INSTAPAY_ACCOUNTS));
+        return INITIAL_INSTAPAY_ACCOUNTS;
+      }
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_INSTAPAY_ACCOUNTS;
+    } catch (e) {
+      console.error('Error reading instapay accounts from storage:', e);
+      return INITIAL_INSTAPAY_ACCOUNTS;
+    }
+  },
+
+  saveInstapayAccounts(accounts) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS, JSON.stringify(accounts || INITIAL_INSTAPAY_ACCOUNTS));
+    } catch (e) {
+      console.error('Error saving instapay accounts:', e);
+    }
+  },
+
+  getDailyAudits() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DAILY_AUDITS);
+      if (data === null) {
+        localStorage.setItem(STORAGE_KEYS.DAILY_AUDITS, JSON.stringify(INITIAL_DEMO_DAILY_AUDITS));
+        return INITIAL_DEMO_DAILY_AUDITS;
+      }
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DEMO_DAILY_AUDITS;
+    } catch (e) {
+      console.error('Error reading daily audits from storage:', e);
+      return INITIAL_DEMO_DAILY_AUDITS;
+    }
+  },
+
+  saveDailyAudits(audits) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.DAILY_AUDITS, JSON.stringify(audits || []));
+    } catch (e) {
+      console.error('Error saving daily audits:', e);
+    }
+  },
+
+  exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives = [], purchases = [], treasury = null, instapayAccounts = [], dailyAudits = []) {
     const backup = {
-      version: '3.4',
+      version: '3.8',
       system: 'Elaasar Cash & Mobile Shop Management System',
       exportDate: new Date().toISOString(),
       clients,
@@ -1352,7 +1776,11 @@ export const storage = {
       inventory: inventory || [],
       trash: trash || { wallets: [], clients: [], products: [] },
       shopWallets: shopWallets || [],
-      clientArchives: clientArchives || []
+      clientArchives: clientArchives || [],
+      purchases: purchases || [],
+      treasury: treasury || INITIAL_DEMO_TREASURY,
+      instapayAccounts: instapayAccounts || INITIAL_INSTAPAY_ACCOUNTS,
+      dailyAudits: dailyAudits || INITIAL_DEMO_DAILY_AUDITS
     };
     
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -1370,6 +1798,10 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(INITIAL_DEMO_INVENTORY));
     localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(INITIAL_SHOP_WALLETS));
     localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
+    localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(INITIAL_DEMO_PURCHASES));
+    localStorage.setItem(STORAGE_KEYS.TREASURY, JSON.stringify(INITIAL_DEMO_TREASURY));
+    localStorage.setItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS, JSON.stringify(INITIAL_INSTAPAY_ACCOUNTS));
+    localStorage.setItem(STORAGE_KEYS.DAILY_AUDITS, JSON.stringify(INITIAL_DEMO_DAILY_AUDITS));
     localStorage.removeItem(STORAGE_KEYS.TRASH);
     localStorage.removeItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
     return {
@@ -1378,7 +1810,11 @@ export const storage = {
       inventory: INITIAL_DEMO_INVENTORY,
       shopWallets: INITIAL_SHOP_WALLETS,
       trash: { wallets: [], clients: [], products: [] },
-      clientArchives: INITIAL_DEMO_ARCHIVES
+      clientArchives: INITIAL_DEMO_ARCHIVES,
+      purchases: INITIAL_DEMO_PURCHASES,
+      treasury: INITIAL_DEMO_TREASURY,
+      instapayAccounts: INITIAL_INSTAPAY_ACCOUNTS,
+      dailyAudits: INITIAL_DEMO_DAILY_AUDITS
     };
   },
 
@@ -1390,13 +1826,21 @@ export const storage = {
     localStorage.removeItem(STORAGE_KEYS.TRASH);
     localStorage.removeItem(STORAGE_KEYS.CLIENT_ARCHIVES);
     localStorage.removeItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
+    localStorage.removeItem(STORAGE_KEYS.PURCHASES);
+    localStorage.removeItem(STORAGE_KEYS.TREASURY);
+    localStorage.removeItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS);
+    localStorage.removeItem(STORAGE_KEYS.DAILY_AUDITS);
     return {
       clients: [],
       transactions: [],
       inventory: [],
       shopWallets: [],
       trash: { wallets: [], clients: [], products: [] },
-      clientArchives: []
+      clientArchives: [],
+      purchases: [],
+      treasury: { drawerCash: 0, vodafoneCash: 0, instapay: 0, bankAccounts: 0, history: [] },
+      instapayAccounts: [],
+      dailyAudits: []
     };
   }
 };

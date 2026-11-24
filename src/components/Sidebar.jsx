@@ -21,7 +21,9 @@ import {
   ChevronRight,
   ChevronLeft,
   Send,
-  UserPlus
+  UserPlus,
+  ShoppingBag,
+  Coins
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -39,7 +41,8 @@ export default function Sidebar({
     setActiveModal, 
     todayTransactions,
     lowStockProductsCount,
-    totalTrashCount
+    totalTrashCount,
+    purchases
   } = useCash();
 
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -62,6 +65,19 @@ export default function Sidebar({
       icon: Smartphone, 
       badge: lowStockProductsCount > 0 ? lowStockProductsCount : null,
       isWarning: lowStockProductsCount > 0
+    },
+    { 
+      id: 'purchases', 
+      label: 'سجل المشتريات', 
+      shortLabel: 'المشتريات', 
+      icon: ShoppingBag,
+      badge: purchases?.length > 0 ? purchases.length : null 
+    },
+    { 
+      id: 'capital', 
+      label: 'رأس المال والسيولة', 
+      shortLabel: 'رأس المال', 
+      icon: Coins 
     },
     { id: 'matrix', label: 'مراقبة الليميت', shortLabel: 'الليميت', icon: Layers },
     { id: 'inbound', label: 'الوارد والعمولة (له)', shortLabel: 'الوارد', icon: ArrowDownToLine, isBlue: true },
@@ -95,39 +111,41 @@ export default function Sidebar({
         <div className="flex flex-col flex-1 min-h-0">
           
           {/* Brand Header */}
-          <div className={`p-4 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center ${
-            isCollapsed ? 'justify-center' : 'justify-between'
-          }`}>
-            {isCollapsed ? (
+          {isCollapsed ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-3.5 px-2 border-b border-slate-200/80 dark:border-slate-800/80">
               <div 
-                className="cursor-pointer" 
+                className="cursor-pointer transition-transform hover:scale-105 active:scale-95 flex items-center justify-center" 
                 onClick={() => handleSelectTab('clients')}
-                title="منظومة الأعصر كاش"
+                title="منظومة الأعصر كاش - اضغط للانتقال للرئيسية"
               >
-                <ElaasarLogo size="sm" showSubtitle={false} />
+                <ElaasarLogo size="md" hideText={true} />
               </div>
-            ) : (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center justify-center"
+                title="توسيع القائمة الجانبية"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="p-4 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between">
               <ElaasarLogo 
                 size="md" 
                 showSubtitle={true} 
                 onClick={() => handleSelectTab('clients')} 
               />
-            )}
-
-            {/* Collapse Toggle Button */}
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title={isCollapsed ? 'توسيع القائمة الجانبية' : 'طي القائمة الجانبية'}
-            >
-              {isCollapsed ? (
-                <ChevronLeft className="w-4 h-4" />
-              ) : (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="طي القائمة الجانبية"
+              >
                 <ChevronRight className="w-4 h-4" />
-              )}
-            </button>
-          </div>
+              </button>
+            </div>
+          )}
 
           {/* Quick Actions (تحويل كاش سريع) */}
           <div className="p-3">

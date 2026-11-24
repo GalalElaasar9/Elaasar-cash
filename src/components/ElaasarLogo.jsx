@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 export default function ElaasarLogo({
   size = 'md',
   showSubtitle = true,
+  hideText = false,
   variant = 'horizontal',
   onClick,
   className = ''
@@ -31,7 +32,7 @@ export default function ElaasarLogo({
   return (
     <div
       onClick={onClick}
-      className={`flex ${variant === 'vertical' ? 'flex-col items-center text-center' : 'items-center'} gap-2.5 sm:gap-3 select-none group cursor-pointer ${className}`}
+      className={`flex ${variant === 'vertical' ? 'flex-col items-center text-center' : 'items-center'} ${hideText ? 'justify-center gap-0' : 'gap-2.5 sm:gap-3'} select-none group cursor-pointer ${className}`}
     >
 
       {/* 1. Emblem Container with Glow & Gradient Ring */}
@@ -75,29 +76,31 @@ export default function ElaasarLogo({
       </div>
 
       {/* 2. Brand Typography & Tagline */}
-      <div className={`flex flex-col ${variant === 'vertical' ? 'items-center mt-1' : 'justify-center text-right'}`}>
+      {!hideText && (
+        <div className={`flex flex-col ${variant === 'vertical' ? 'items-center mt-1' : 'justify-center text-right'}`}>
 
-        {/* Main Brand Title */}
-        <div className="flex items-center gap-1.5 leading-tight">
-          <span className={`${titleSizes[size]} tracking-tight text-slate-900 dark:text-white transition-colors`}>
-            الأعـصـر
-          </span>
-          <span className={`${titleSizes[size]} bg-gradient-to-r from-red-600 via-rose-600 to-red-700 bg-clip-text text-transparent`}>
-            كـاش
-          </span>
-        </div>
-
-        {/* Subtitle / Services Pill - hidden on small mobile and tablet screens */}
-        {showSubtitle && (
-          <div className="hidden md:flex items-center gap-1.5 mt-0.5">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800/90 dark:text-slate-300 border border-slate-200 dark:border-slate-700/80 shadow-xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-              <span>خدمات المحمول والدفع الذكي</span>
+          {/* Main Brand Title */}
+          <div className="flex items-center gap-1.5 leading-tight">
+            <span className={`${titleSizes[size]} tracking-tight text-slate-900 dark:text-white transition-colors`}>
+              الأعـصـر
+            </span>
+            <span className={`${titleSizes[size]} bg-gradient-to-r from-red-600 via-rose-600 to-red-700 bg-clip-text text-transparent`}>
+              كـاش
             </span>
           </div>
-        )}
 
-      </div>
+          {/* Subtitle / Services Pill - hidden on small mobile and tablet screens */}
+          {showSubtitle && (
+            <div className="hidden md:flex items-center gap-1.5 mt-0.5">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800/90 dark:text-slate-300 border border-slate-200 dark:border-slate-700/80 shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                <span>خدمات المحمول والدفع الذكي</span>
+              </span>
+            </div>
+          )}
+
+        </div>
+      )}
 
     </div>
   );

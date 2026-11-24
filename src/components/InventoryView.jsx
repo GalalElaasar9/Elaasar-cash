@@ -42,13 +42,19 @@ import {
   Check,
   History,
   X,
-  Filter
+  Filter,
+  Zap,
+  Building2,
+  CreditCard,
+  Coins
 } from 'lucide-react';
 
 export default function InventoryView() {
   const { 
     inventory, 
     shopWallets,
+    instapayAccounts = [],
+    deleteInstapayAccount,
     transactions,
     setActiveModal, 
     setModalData, 
@@ -66,7 +72,24 @@ export default function InventoryView() {
     totalAccessoriesCount
   } = useCash();
 
-  const [inventorySection, setInventorySection] = useState('devices'); // 'devices' | 'shop_wallets'
+  const [inventorySection, setInventorySection] = useState('devices'); // 'devices' | 'shop_wallets' | 'shop_instapay'
+  const [instapaySearch, setInstapaySearch] = useState('');
+  const [copiedInstapayHandle, setCopiedInstapayHandle] = useState(null);
+
+  const filteredInstapayAccounts = useMemo(() => {
+    if (!instapaySearch.trim()) return instapayAccounts;
+    const q = instapaySearch.trim().toLowerCase();
+    return instapayAccounts.filter(acc => 
+      (acc.accountName || '').toLowerCase().includes(q) ||
+      (acc.bankName || '').toLowerCase().includes(q) ||
+      (acc.handle || '').toLowerCase().includes(q) ||
+      (acc.phone || '').includes(q)
+    );
+  }, [instapayAccounts, instapaySearch]);
+
+  const totalInstapayBalance = useMemo(() => {
+    return instapayAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  }, [instapayAccounts]);
 
   const [activeCategoryFilter, setActiveCategoryFilter] = useState('all'); // 'all' | 'phones' | 'accessories' | 'low_stock' | 'out_of_stock'
   const [searchQuery, setSearchQuery] = useState('');
@@ -116,6 +139,10 @@ export default function InventoryView() {
   }, [shopWallets, transactions]);
 
   // Aggregate shop lines stats
+  const totalShopBalance = useMemo(() => {
+    return (shopWallets || []).reduce((sum, w) => sum + (Number(w.balance) || 0), 0);
+  }, [shopWallets]);
+
   const totalShopLimit = useMemo(() => {
     return allShopWalletsWithStats.reduce((sum, w) => sum + (w.stats.totalLimit || 200000), 0);
   }, [allShopWalletsWithStats]);
@@ -409,6 +436,23 @@ export default function InventoryView() {
               inventorySection === 'shop_wallets' ? 'bg-white/20 text-white' : 'bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400'
             }`}>
               {shopWallets?.length || 0}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setInventorySection('shop_instapay')}
+            className={`btn-interactive flex items-center justify-center gap-2 px-5 py-2 text-xs sm:text-sm font-black rounded-xl transition-all ${
+              inventorySection === 'shop_instapay'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs shadow-purple-600/25'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-300" />
+            <span>حسابات إنستاباي - InstaPay</span>
+            <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+              inventorySection === 'shop_instapay' ? 'bg-white/20 text-white' : 'bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400'
+            }`}>
+              {instapayAccounts?.length || 0}
             </span>
           </button>
         </div>
@@ -1401,7 +1445,7 @@ export default function InventoryView() {
           </div>
 
           {/* 2. Top KPI Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             {/* Total Lines */}
             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
@@ -1411,6 +1455,19 @@ export default function InventoryView() {
                 <span className="text-[11px] font-bold text-slate-400 block leading-tight">إجمالي خطوط المحل</span>
                 <span className="text-base sm:text-lg font-black text-slate-900 dark:text-white font-mono">
                   {shopWallets.length} <span className="text-xs font-normal text-slate-400">خط</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Total Liquid Cash in Lines */}
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-100 dark:border-rose-900/40">
+                <Coins className="w-5 h-5 text-rose-600" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[11px] font-bold text-slate-400 block leading-tight">رصيد السيولة بالخطوط</span>
+                <span className="text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 font-mono truncate block">
+                  {formatCurrency(totalShopBalance)}
                 </span>
               </div>
             </div>
@@ -1434,7 +1491,7 @@ export default function InventoryView() {
                 <TrendingUp className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <span className="text-[11px] font-bold text-slate-400 block leading-tight">المتاح للتحويل حالياً</span>
+                <span className="text-[11px] font-bold text-slate-400 block leading-tight">المتبقي من الليميت</span>
                 <span className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono truncate block">
                   {formatCurrency(totalShopRemaining)}
                 </span>
@@ -1442,7 +1499,7 @@ export default function InventoryView() {
             </div>
 
             {/* Today's Transfers */}
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3 col-span-2 sm:col-span-1">
               <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-100 dark:border-rose-900/40">
                 <Send className="w-5 h-5 rotate-180" />
               </div>
@@ -1637,6 +1694,17 @@ export default function InventoryView() {
                         <Calendar className="w-3 h-3 text-red-500 shrink-0" />
                         <span>يتجدد في <strong className="text-slate-600 dark:text-slate-300">{stats.nextResetDateShort}</strong></span>
                       </div>
+                    </div>
+
+                    {/* Live Balance Box (رصيد السيولة بالخط) */}
+                    <div className="flex items-center justify-between text-xs bg-rose-50/80 dark:bg-rose-950/40 px-3 py-2 rounded-xl border border-rose-200/80 dark:border-rose-900/40 mb-2.5">
+                      <span className="text-rose-800 dark:text-rose-300 font-bold flex items-center gap-1.5">
+                        <Coins className="w-3.5 h-3.5 text-rose-600" />
+                        <span>رصيد السيولة بالخط (المتاح):</span>
+                      </span>
+                      <span className="font-black text-sm text-rose-700 dark:text-rose-200 font-mono">
+                        {formatCurrency(wallet.balance !== undefined ? wallet.balance : 0)}
+                      </span>
                     </div>
 
                     {/* Daily Transfer Limit & Remaining Box */}
@@ -1933,6 +2001,300 @@ export default function InventoryView() {
                   <ChevronLeft className="w-4 h-4" />
                 </button>
               </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* SECTION 3: SHOP INSTAPAY ACCOUNTS                        */}
+      {/* ======================================================== */}
+      {inventorySection === 'shop_instapay' && (
+        <div className="space-y-6">
+
+          {/* 1. Header Card */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5 sm:gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-800 text-white font-bold flex items-center justify-center shadow-md shadow-purple-500/20 shrink-0">
+                <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-amber-300" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base sm:text-lg md:text-xl font-black text-slate-900 dark:text-white leading-tight">
+                    حسابات إنستاباي - InstaPay
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-purple-100 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    {instapayAccounts.length} حسابات مسجلة
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  إدارة حسابات الدفع اللحظي ومعرفات IPA والتحويل المباشر وسداد مستحقات العملاء والموردين
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalData({ channel: 'instapay' });
+                  setActiveModal('transfer');
+                }}
+                className="btn-interactive flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs sm:text-sm font-bold shadow-xs transition-all"
+                title="تسجيل تحويل فوري من أحد حسابات إنستاباي"
+              >
+                <Send className="w-4 h-4 rotate-180" />
+                <span>تحويل سريع</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setModalData(null);
+                  setActiveModal('addInstapayAccount');
+                }}
+                className="btn-interactive flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-black shadow-md shadow-purple-600/25 ring-1 ring-purple-500/30 transition-all"
+                title="إضافة حساب إنستاباي جديد للمحل"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ إضافة حساب إنستاباي</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Top Analytics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
+            
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                  إجمالي رصيد إنستاباي
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-purple-700 dark:text-purple-400 font-mono">
+                  {formatCurrency(totalInstapayBalance)}
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                <Coins className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                  عدد الحسابات النشطة
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                    {instapayAccounts.length}
+                  </span>
+                  {instapayAccounts.some(a => a.isDefault) && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
+                      يوجد حساب رئيسي
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                <CreditCard className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                  الحساب الافتراضي للسداد
+                </span>
+                <span className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-200 truncate max-w-[180px] block">
+                  {instapayAccounts.find(a => a.isDefault)?.accountName || (instapayAccounts[0]?.accountName || 'لا يوجد')}
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <Building2 className="w-5 h-5" />
+              </div>
+            </div>
+
+          </div>
+
+          {/* 3. Search Bar */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-200/90 dark:border-slate-800 shadow-sm">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="🔍 ابحث بالاسم، اسم البنك، أو عنوان الدفع اللحظي (IPA) أو رقم الهاتف..."
+                value={instapaySearch}
+                onChange={(e) => setInstapaySearch(e.target.value)}
+                className="w-full pl-8 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+              />
+              {instapaySearch && (
+                <button
+                  type="button"
+                  onClick={() => setInstapaySearch('')}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 4. Accounts Cards Grid */}
+          {filteredInstapayAccounts.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-10 border border-slate-200 dark:border-slate-800 text-center space-y-3">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                <Zap className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-black text-slate-800 dark:text-slate-200">
+                {instapaySearch ? 'لا توجد حسابات تطابق البحث' : 'لا توجد حسابات إنستاباي مسجلة'}
+              </h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                {instapaySearch ? 'جرب البحث بكلمة أخرى أو مسح نص البحث.' : 'قم بإضافة حساب إنستاباي لتتمكن من التحويل منه وسداد العملاء والموردين بسهولة.'}
+              </p>
+              {!instapaySearch && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalData(null);
+                    setActiveModal('addInstapayAccount');
+                  }}
+                  className="btn-interactive inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold shadow-md shadow-purple-600/25"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إضافة حسابك الأول الآن</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredInstapayAccounts.map((acc) => {
+                const isDefault = Boolean(acc.isDefault);
+                const handleOrPhone = acc.handle || acc.phone || '';
+
+                return (
+                  <div
+                    key={acc.id}
+                    className={`bg-white dark:bg-slate-900 rounded-2xl border p-4 sm:p-5 shadow-sm space-y-4 hover:shadow-md transition-all relative ${
+                      isDefault
+                        ? 'border-purple-300 dark:border-purple-800/80 ring-2 ring-purple-500/20'
+                        : 'border-slate-200/90 dark:border-slate-800'
+                    }`}
+                  >
+                    {/* Top Row: Account & Bank */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold shrink-0">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                            {acc.accountName}
+                          </h4>
+                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 truncate block">
+                            {acc.bankName || 'بنك مصري'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isDefault && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs shrink-0">
+                          افتراضي
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Balance Display */}
+                    <div className="p-3 rounded-xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                        الرصيد المتاح:
+                      </span>
+                      <span className="text-base sm:text-lg font-black text-purple-700 dark:text-purple-300 font-mono">
+                        {formatCurrency(acc.balance || 0)}
+                      </span>
+                    </div>
+
+                    {/* IPA Handle / Phone Number */}
+                    {handleOrPhone && (
+                      <div className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/60 px-3 py-2 rounded-xl border border-slate-200/70 dark:border-slate-700/60">
+                        <div className="flex items-center gap-1.5 min-w-0 font-mono font-bold text-slate-800 dark:text-slate-200 text-left" dir="ltr">
+                          <Zap className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                          <span className="truncate">{handleOrPhone}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(handleOrPhone);
+                            setCopiedInstapayHandle(acc.id);
+                            setTimeout(() => setCopiedInstapayHandle(null), 2000);
+                            showToast('تم نسخ عنوان إنستاباي بنجاح!');
+                          }}
+                          className="p-1 text-slate-400 hover:text-purple-600 transition-colors"
+                          title="نسخ المعرف"
+                        >
+                          {copiedInstapayHandle === acc.id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Notes if any */}
+                    {acc.notes && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic line-clamp-2">
+                        {acc.notes}
+                      </p>
+                    )}
+
+                    {/* Actions Row */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalData({ channel: 'instapay', instapayAccountId: acc.id });
+                          setActiveModal('transfer');
+                        }}
+                        className="btn-interactive flex-1 py-1.5 px-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-xs shadow-purple-600/20"
+                      >
+                        <Send className="w-3.5 h-3.5 rotate-180" />
+                        <span>تحويل منه</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalData({ account: acc });
+                          setActiveModal('editInstapayAccount');
+                        }}
+                        className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors"
+                        title="تعديل بيانات الحساب"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          askConfirm(
+                            `هل أنت متأكد من حذف حساب إنستاباي "${acc.accountName}"؟`,
+                            () => {
+                              deleteInstapayAccount(acc.id);
+                            }
+                          );
+                        }}
+                        className="btn-interactive p-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-bold transition-colors"
+                        title="حذف الحساب"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                  </div>
+                );
+              })}
             </div>
           )}
 

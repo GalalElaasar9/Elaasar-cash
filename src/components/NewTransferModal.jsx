@@ -26,19 +26,24 @@ import {
   Store,
   Smartphone,
   Search,
-  UserCheck
+  UserCheck,
+  CreditCard,
+  Zap,
+  Coins
 } from 'lucide-react';
 
 export default function NewTransferModal() {
   const { 
     clients, 
     shopWallets = [],
+    instapayAccounts = [],
     transactions, 
     activeModal, 
     setActiveModal, 
     modalData, 
     addTransaction,
     addRecharge,
+    transferFromInstapay,
     showToast,
     askConfirm 
   } = useCash();
@@ -46,7 +51,9 @@ export default function NewTransferModal() {
   const dialogRef = useRef(null);
 
   // Form states
-  const [sourceType, setSourceType] = useState('client'); // 'shop' | 'client'
+  const [transferChannel, setTransferChannel] = useState('wallet'); // 'wallet' | 'instapay'
+  const [selectedInstapayAccountId, setSelectedInstapayAccountId] = useState('');
+  const [sourceType, setSourceType] = useState('shop'); // 'shop' | 'client'
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedWalletId, setSelectedWalletId] = useState('');
   const [amount, setAmount] = useState('');
@@ -65,8 +72,24 @@ export default function NewTransferModal() {
   // Auto-generate transaction code on modal open and handle source line isolation
   useEffect(() => {
     if (activeModal === 'transfer') {
-      const randomCode = `VF-${Math.floor(100000 + Math.random() * 900000)}`;
-      setTransactionCode(randomCode);
+      // Check channel from modalData
+      if (modalData?.channel === 'instapay' || modalData?.instapayAccountId) {
+        setTransferChannel('instapay');
+        setTransactionCode(`INSTA-${Math.floor(100000 + Math.random() * 900000)}`);
+        if (modalData?.instapayAccountId) {
+          setSelectedInstapayAccountId(modalData.instapayAccountId);
+        } else if (instapayAccounts.length > 0) {
+          const def = instapayAccounts.find(a => a.isDefault) || instapayAccounts[0];
+          setSelectedInstapayAccountId(def.id);
+        }
+      } else {
+        setTransferChannel('wallet');
+        setTransactionCode(`VF-${Math.floor(100000 + Math.random() * 900000)}`);
+        if (instapayAccounts.length > 0 && !selectedInstapayAccountId) {
+          const def = instapayAccounts.find(a => a.isDefault) || instapayAccounts[0];
+          setSelectedInstapayAccountId(def.id);
+        }
+      }
 
       // Reset recipient selection
       setRecipientMode('unregistered');
@@ -108,7 +131,7 @@ export default function NewTransferModal() {
         .slice(0, 16);
       setCustomDate(localIso);
     }
-  }, [activeModal, modalData, clients, shopWallets]);
+  }, [activeModal, modalData, clients, shopWallets, instapayAccounts]);
 
   // When source type or selected client changes, auto-select first wallet if needed
   useEffect(() => {
@@ -256,6 +279,15 @@ export default function NewTransferModal() {
   const isOverDailyLimit = walletStats ? numAmount > walletStats.remainingDailyTransfer : false;
   const isBlocked = isLocked || isDailyTransferExhausted || isOverDailyLimit || isOverLimit;
 
+  // InstaPay Account Math & Selection
+  const selectedInstapayAcc = useMemo(() => {
+    return instapayAccounts.find(a => a.id === selectedInstapayAccountId) || (instapayAccounts.length > 0 ? instapayAccounts[0] : null);
+  }, [instapayAccounts, selectedInstapayAccountId]);
+
+  const instapayBalance = Number(selectedInstapayAcc?.balance) || 0;
+  const isInstapayOverBalance = transferChannel === 'instapay' && numAmount > instapayBalance;
+  const instapayRemainingAfter = instapayBalance - numAmount;
+
   // Recipient phone validation
   const cleanRecipient = cleanEgyptianPhone(recipientPhone);
   const recipientCarrier = getEgyptianCarrier(cleanRecipient);
@@ -275,17 +307,87 @@ export default function NewTransferModal() {
   }, [recipientMode, cleanRecipient, clients]);
 
   // Overall form validity check for submit button
-  const isFormValid = Boolean(
-    selectedWalletId &&
+  const isInstapayFormValid = Boolean(
+    transferChannel === 'instapay' &&
+    selectedInstapayAcc &&
     numAmount > 0 &&
-    !isBlocked &&
-    cleanRecipient &&
-    isRecipientValid &&
-    (recipientMode === 'unregistered' || (recipientClientId && recipientWalletId))
+    !isInstapayOverBalance &&
+    (
+      (recipientMode === 'unregistered' && recipientPhone.trim().length >= 3) ||
+      (recipientMode === 'client' && recipientClientId)
+    )
   );
+
+  const isFormValid = transferChannel === 'instapay'
+    ? isInstapayFormValid
+    : Boolean(
+        selectedWalletId &&
+        numAmount > 0 &&
+        !isBlocked &&
+        cleanRecipient &&
+        isRecipientValid &&
+        (recipientMode === 'unregistered' || (recipientClientId && recipientWalletId))
+      );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // 1. Handle InstaPay Transfer Channel
+    if (transferChannel === 'instapay') {
+      if (!selectedInstapayAcc) {
+        showToast('يرجى اختيار حساب إنستاباي المحول منه', 'error');
+        return;
+      }
+
+      if (numAmount <= 0) {
+        showToast('يرجى إدخال مبلغ تحويل صحيح أكبر من 0', 'error');
+        return;
+      }
+
+      if (isInstapayOverBalance) {
+        showToast(`الرصيد المتاح في حساب (${selectedInstapayAcc.accountName}) هو (${formatCurrency(instapayBalance)}) وهو أقل من المبلغ المطلوب تحويله!`, 'error');
+        return;
+      }
+
+      if (recipientMode === 'client' && !recipientClientId) {
+        showToast('يرجى اختيار العميل المستلم', 'error');
+        return;
+      }
+
+      if (recipientMode === 'unregistered' && !recipientPhone.trim()) {
+        showToast('يرجى إدخال رقم أو عنوان IPA للمحول إليه (المستلم)', 'error');
+        return;
+      }
+
+      setIsSubmitting(true);
+      try {
+        const isTransferToClient = recipientMode === 'client' && selectedRecipientClient;
+        const targetRecipient = recipientPhone.trim() || (isTransferToClient ? (selectedRecipientWallet?.phoneNumber || selectedRecipientClient.name) : '');
+
+        const res = transferFromInstapay({
+          instapayAccountId: selectedInstapayAcc.id,
+          amount: numAmount,
+          recipient: targetRecipient,
+          recipientClientId: isTransferToClient ? selectedRecipientClient.id : null,
+          recipientClientName: isTransferToClient ? selectedRecipientClient.name : null,
+          recipientWalletId: isTransferToClient ? selectedRecipientWallet?.id : null,
+          recordClientRecharge: isTransferToClient && recordClientRecharge,
+          transactionCode,
+          notes: notes.trim(),
+          date: customDate ? new Date(customDate).toISOString() : new Date().toISOString()
+        });
+
+        if (res) {
+          showToast(`تم تحويل ${formatCurrency(numAmount)} بنجاح وخصمها من حساب إنستاباي (${selectedInstapayAcc.accountName})!`, 'success');
+          handleClose();
+        }
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // 2. Handle Mobile Wallet Transfer Channel
     if (!selectedWalletId) {
       showToast(isShopMode ? 'يرجى اختيار خط المحل المحول منه' : 'يرجى اختيار رقم المحفظة المحول منها', 'error');
       return;
@@ -381,10 +483,16 @@ export default function NewTransferModal() {
       className="fixed inset-0 m-auto z-50 w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl p-0 border border-slate-200 dark:border-slate-800 shadow-2xl backdrop:bg-slate-950/60 overflow-hidden"
     >
       {/* Modal Header */}
-      <div className="p-5 sm:p-6 bg-gradient-to-r from-red-600 to-rose-700 text-white flex items-center justify-between">
+      <div className={`p-5 sm:p-6 text-white flex items-center justify-between transition-colors ${
+        transferChannel === 'instapay'
+          ? 'bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800'
+          : 'bg-gradient-to-r from-red-600 to-rose-700'
+      }`}>
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-2xl bg-white/15 backdrop-blur-md">
-            {isShopMode ? (
+            {transferChannel === 'instapay' ? (
+              <Zap className="w-5 h-5 text-amber-300" />
+            ) : isShopMode ? (
               <Store className="w-5 h-5" />
             ) : (
               <Send className="w-5 h-5 rotate-180" />
@@ -392,10 +500,16 @@ export default function NewTransferModal() {
           </div>
           <div>
             <h2 id="transfer-modal-title" className="text-lg sm:text-xl font-black">
-              {isShopMode ? 'تحويل كاش من خطوط المحل' : 'تسجيل تحويل فودافون كاش جديد'}
+              {transferChannel === 'instapay'
+                ? 'تحويل مباشر من إنستاباي (InstaPay)'
+                : isShopMode
+                ? 'تحويل كاش من خطوط المحل'
+                : 'تسجيل تحويل فودافون كاش جديد'}
             </h2>
-            <p className="text-xs text-red-100 mt-0.5">
-              {isShopMode
+            <p className="text-xs text-white/80 mt-0.5">
+              {transferChannel === 'instapay'
+                ? 'خصم فوري من رصيد حساب إنستاباي ومزامنة كشف حساب العميل ورأس المال'
+                : isShopMode
                 ? 'خصم فوري ومباشر من خط المحل المحدد ومراقبة حد اليوم والشهر'
                 : 'يتم خصم المبلغ مباشرة وتحديث المتبقي من الليميت فوراً'}
             </p>
@@ -414,192 +528,325 @@ export default function NewTransferModal() {
       {/* Form Content */}
       <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
         
-        {/* Source Type Toggle (Only if opened generally without pre-selection) */}
-        {!modalData?.isShopWallet && !modalData?.clientId && (
-          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => setSourceType('shop')}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                isShopMode
-                  ? 'bg-red-600 text-white shadow-xs font-black'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Store className="w-3.5 h-3.5" />
-              <span>خطوط المحل ({shopWallets.length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSourceType('client')}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                !isShopMode
-                  ? 'bg-red-600 text-white shadow-xs font-black'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <User className="w-3.5 h-3.5" />
-              <span>خطوط العملاء ({clients.length})</span>
-            </button>
-          </div>
-        )}
+        {/* Main Channel Selector: Mobile Wallets vs InstaPay */}
+        <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={() => {
+              setTransferChannel('wallet');
+              if (transactionCode.startsWith('INSTA-')) {
+                setTransactionCode(`VF-${Math.floor(100000 + Math.random() * 900000)}`);
+              }
+            }}
+            className={`btn-interactive py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-2 ${
+              transferChannel === 'wallet'
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Smartphone className="w-4 h-4" />
+            <span>فودافون كاش ومحافظ المحمول ({shopWallets.length})</span>
+          </button>
 
-        {/* Step 1: Select Source Line */}
-        {isShopMode ? (
-          <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Store className="w-4 h-4 text-red-600" />
-                <span>اختر خط المحل المحول منه:</span>
-              </label>
-              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-900/50">
-                خطوط المحل فقط ({shopWallets.length} خط)
-              </span>
+          <button
+            type="button"
+            onClick={() => {
+              setTransferChannel('instapay');
+              if (transactionCode.startsWith('VF-')) {
+                setTransactionCode(`INSTA-${Math.floor(100000 + Math.random() * 900000)}`);
+              }
+            }}
+            className={`btn-interactive py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-2 ${
+              transferChannel === 'instapay'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-300" />
+            <span>إنستاباي - InstaPay ({instapayAccounts.length})</span>
+          </button>
+        </div>
+
+        {/* CHANNEL SPECIFIC SOURCE SELECTOR & STATS */}
+        {transferChannel === 'instapay' ? (
+          <div className="space-y-3">
+            {/* 1. Select InstaPay Account */}
+            <div className="bg-purple-50/70 dark:bg-purple-950/30 p-3.5 rounded-2xl border border-purple-200/80 dark:border-purple-900/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span>اختر حساب إنستاباي المحول منه:</span>
+                  <span className="text-rose-500 font-black">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal('addInstapayAccount')}
+                  className="text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:underline flex items-center gap-1"
+                >
+                  <span>+ إضافة حساب جديد</span>
+                </button>
+              </div>
+
+              {instapayAccounts.length === 0 ? (
+                <div className="text-center py-4 text-xs font-bold text-amber-600 dark:text-amber-400">
+                  لا توجد حسابات إنستاباي مسجلة حالياً. اضغط على "+ إضافة حساب جديد" لإضافة حساب.
+                </div>
+              ) : (
+                <select
+                  value={selectedInstapayAccountId}
+                  onChange={(e) => setSelectedInstapayAccountId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 rounded-xl text-slate-900 dark:text-white font-bold focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  required
+                >
+                  {instapayAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.accountName} {acc.bankName ? `(${acc.bankName})` : ''} - {acc.handle || acc.phone || 'بدون معرف'} {acc.isDefault ? '[الافتراضي]' : ''} (الرصيد: {formatCurrency(acc.balance)})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
-            {shopWallets.length === 0 ? (
-              <div className="text-center py-4 text-xs font-bold text-amber-600 dark:text-amber-400">
-                لا توجد خطوط مسجلة للمحل حالياً. يمكنك إضافة خط جديد من تبويب المخزون &gt; أرقام وخطوط المحل.
+            {/* Live Calculation Banner for InstaPay */}
+            {selectedInstapayAcc && (
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-between">
+                  <span>الرصيد اللحظي لـ ({selectedInstapayAcc.accountName}):</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">
+                    البنك: {selectedInstapayAcc.bankName || 'غير محدد'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] text-slate-400 block">الرصيد المتاح حالياً</span>
+                    <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 font-mono">
+                      {formatCurrency(instapayBalance)}
+                    </span>
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] text-rose-500 block">المبلغ المخصوم (-)</span>
+                    <span className="text-xs sm:text-sm font-black text-rose-600 dark:text-rose-400 font-mono">
+                      {numAmount > 0 ? formatCurrency(numAmount) : '0 ج.م'}
+                    </span>
+                  </div>
+
+                  <div className={`p-2.5 rounded-xl border transition-colors ${
+                    isInstapayOverBalance
+                      ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800'
+                      : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800'
+                  }`}>
+                    <span className={`text-[10px] block font-bold ${
+                      isInstapayOverBalance ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                    }`}>
+                      المتبقي بعد التحويل
+                    </span>
+                    <span className={`text-xs sm:text-sm font-black font-mono ${
+                      isInstapayOverBalance ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
+                    }`}>
+                      {formatCurrency(instapayRemainingAfter)}
+                    </span>
+                  </div>
+                </div>
+
+                {isInstapayOverBalance && (
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-100/80 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-xs font-semibold">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>تنبيه: المبلغ المطلوب تحويله ({formatCurrency(numAmount)}) أكبر من الرصيد المتوفر في هذا الحساب ({formatCurrency(instapayBalance)})!</span>
+                  </div>
+                )}
               </div>
-            ) : (
-              <select
-                value={selectedWalletId}
-                onChange={(e) => setSelectedWalletId(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-red-500/50"
-                required
-              >
-                {shopWallets.map(w => {
-                  const s = calculateWalletStats(w, transactions);
-                  const carrier = getEgyptianCarrier(w.phoneNumber);
-                  return (
-                    <option key={w.id} value={w.id}>
-                      {w.phoneNumber} ({carrier?.name || 'شبكة'}) - {w.label || 'خط المحل'} {s.isLocked ? `[🔒 مقفول لتجاوز الليميت الشهري]` : s.isDailyTransferExhausted ? `[🔒 اكتمل حد اليوم 60 ألف]` : `(متاح للتحويل: ${formatCurrency(s.remainingLimit)})`}
-                    </option>
-                  );
-                })}
-              </select>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            {/* Customer select */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-red-600" />
-                <span>العميل</span>
-              </label>
-              <select
-                value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-red-500/50"
-                required
-              >
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.wallets?.length || 0} أرقام)
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Wallet Number select */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Phone className="w-3.5 h-3.5 text-red-600" />
-                <span>الرقم المحول منه (المحفظة)</span>
-              </label>
-              <select
-                value={selectedWalletId}
-                onChange={(e) => setSelectedWalletId(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-red-500/50"
-                required
-              >
-                {currentClient?.wallets?.map(w => {
-                  const s = calculateWalletStats(w, transactions);
-                  return (
-                    <option key={w.id} value={w.id}>
-                      {w.phoneNumber} - {w.label} (متبقي: {formatCurrency(s.remainingLimit)})
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-          </div>
-        )}
-
-        {/* Live Calculation Banner - Deduct directly from limit & display remaining */}
-        {walletStats && (
-          <div className="bg-slate-50 dark:bg-slate-800/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
-            <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-between">
-              <span>الحساب المباشر لليميت المحفظة:</span>
-              <span className="font-mono text-slate-700 dark:text-slate-300">
-                الليميت الكلي: {formatCurrency(walletStats.totalLimit)}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-              
-              <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
-                <span className="text-[10px] text-slate-400 block">الليميت الشهري المتبقي</span>
-                <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 font-mono">
-                  {formatCurrency(currentRemaining)}
-                </span>
+          <div className="space-y-3">
+            {/* Source Type Toggle (Only if opened generally without pre-selection) */}
+            {!modalData?.isShopWallet && !modalData?.clientId && (
+              <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setSourceType('shop')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    isShopMode
+                      ? 'bg-red-600 text-white shadow-xs font-black'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Store className="w-3.5 h-3.5" />
+                  <span>خطوط المحل ({shopWallets.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSourceType('client')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    !isShopMode
+                      ? 'bg-red-600 text-white shadow-xs font-black'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <User className="w-3.5 h-3.5" />
+                  <span>خطوط العملاء ({clients.length})</span>
+                </button>
               </div>
+            )}
 
-              <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
-                <span className="text-[10px] text-slate-400 block">متاح تحويله اليوم (من 60 ألف)</span>
-                <span className={`text-xs sm:text-sm font-bold font-mono ${walletStats.isDailyTransferExhausted ? 'text-rose-600' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                  {formatCurrency(walletStats.remainingDailyTransfer)}
-                </span>
-              </div>
+            {/* Step 1: Select Source Line */}
+            {isShopMode ? (
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Store className="w-4 h-4 text-red-600" />
+                    <span>اختر خط المحل المحول منه:</span>
+                  </label>
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-900/50">
+                    خطوط المحل فقط ({shopWallets.length} خط)
+                  </span>
+                </div>
 
-              <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
-                <span className="text-[10px] text-rose-500 block">المبلغ المخصوم (-)</span>
-                <span className="text-xs sm:text-sm font-black text-rose-600 dark:text-rose-400 font-mono">
-                  {numAmount > 0 ? formatCurrency(numAmount) : '0 ج.م'}
-                </span>
+                {shopWallets.length === 0 ? (
+                  <div className="text-center py-4 text-xs font-bold text-amber-600 dark:text-amber-400">
+                    لا توجد خطوط مسجلة للمحل حالياً. يمكنك إضافة خط جديد من تبويب المخزون &gt; أرقام وخطوط المحل.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedWalletId}
+                    onChange={(e) => setSelectedWalletId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                    required
+                  >
+                    {shopWallets.map(w => {
+                      const s = calculateWalletStats(w, transactions);
+                      const carrier = getEgyptianCarrier(w.phoneNumber);
+                      return (
+                        <option key={w.id} value={w.id}>
+                          {w.phoneNumber} ({carrier?.name || 'شبكة'}) - {w.label || 'خط المحل'} {s.isLocked ? `[🔒 مقفول لتجاوز الليميت الشهري]` : s.isDailyTransferExhausted ? `[🔒 اكتمل حد اليوم 60 ألف]` : `(متاح للتحويل: ${formatCurrency(s.remainingLimit)})`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
               </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                {/* Customer select */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-red-600" />
+                    <span>العميل</span>
+                  </label>
+                  <select
+                    value={selectedClientId}
+                    onChange={(e) => setSelectedClientId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                    required
+                  >
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.wallets?.length || 0} أرقام)
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className={`p-2 rounded-xl border transition-colors ${
-                isOverLimit || isOverDailyLimit
-                  ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800'
-                  : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800'
-              }`}>
-                <span className={`text-[10px] block font-bold ${
-                  isOverLimit || isOverDailyLimit ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                }`}>
-                  المتبقي بعد الخصم
-                </span>
-                <span className={`text-xs sm:text-sm font-black font-mono ${
-                  isOverLimit || isOverDailyLimit ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
-                }`}>
-                  {formatCurrency(remainingAfter)}
-                </span>
+                {/* Wallet Number select */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-red-600" />
+                    <span>الرقم المحول منه (المحفظة)</span>
+                  </label>
+                  <select
+                    value={selectedWalletId}
+                    onChange={(e) => setSelectedWalletId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                    required
+                  >
+                    {currentClient?.wallets?.map(w => {
+                      const s = calculateWalletStats(w, transactions);
+                      return (
+                        <option key={w.id} value={w.id}>
+                          {w.phoneNumber} - {w.label} (متبقي: {formatCurrency(s.remainingLimit)})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
+            )}
 
-            </div>
+            {/* Live Calculation Banner - Deduct directly from limit & display remaining */}
+            {walletStats && (
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center justify-between">
+                  <span>الحساب المباشر لليميت المحفظة:</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">
+                    الليميت الكلي: {formatCurrency(walletStats.totalLimit)}
+                  </span>
+                </div>
 
-            {isLocked ? (
-              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 text-xs font-bold border border-rose-300 dark:border-rose-800">
-                <Lock className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>تم قفل هذا الرقم لتجاوز الحد الشهري (200,000 ج.م). لا يمكن إجراء تحويلات منه حتى 1/{walletStats.nextResetDateShort.split('/')[1]}!</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] text-slate-400 block">الليميت الشهري المتبقي</span>
+                    <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 font-mono">
+                      {formatCurrency(currentRemaining)}
+                    </span>
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] text-slate-400 block">متاح تحويله اليوم (من 60 ألف)</span>
+                    <span className={`text-xs sm:text-sm font-bold font-mono ${walletStats.isDailyTransferExhausted ? 'text-rose-600' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                      {formatCurrency(walletStats.remainingDailyTransfer)}
+                    </span>
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] text-rose-500 block">المبلغ المخصوم (-)</span>
+                    <span className="text-xs sm:text-sm font-black text-rose-600 dark:text-rose-400 font-mono">
+                      {numAmount > 0 ? formatCurrency(numAmount) : '0 ج.م'}
+                    </span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border transition-colors ${
+                    isOverLimit || isOverDailyLimit
+                      ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800'
+                      : 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800'
+                  }`}>
+                    <span className={`text-[10px] block font-bold ${
+                      isOverLimit || isOverDailyLimit ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                    }`}>
+                      المتبقي بعد الخصم
+                    </span>
+                    <span className={`text-xs sm:text-sm font-black font-mono ${
+                      isOverLimit || isOverDailyLimit ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
+                    }`}>
+                      {formatCurrency(remainingAfter)}
+                    </span>
+                  </div>
+                </div>
+
+                {isLocked ? (
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-200 text-xs font-bold border border-rose-300 dark:border-rose-800">
+                    <Lock className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>تم قفل هذا الرقم لتجاوز الحد الشهري (200,000 ج.م). لا يمكن إجراء تحويلات منه حتى 1/{walletStats.nextResetDateShort.split('/')[1]}!</span>
+                  </div>
+                ) : isDailyTransferExhausted ? (
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-800">
+                    <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+                    <span>تم الوصول للحد الأقصى للتحويل اليومي من هذا الرقم (60,000 ج.م في اليوم). لا يمكن تحويل المزيد اليوم.</span>
+                  </div>
+                ) : isOverDailyLimit ? (
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-100/80 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-xs font-semibold">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>تنبيه: المبلغ المدخل يتجاوز المتبقي من الحد اليومي المسموح به لهذا الرقم ({formatCurrency(walletStats.remainingDailyTransfer)} متبقية من أصل 60,000 ج.م اليوم).</span>
+                  </div>
+                ) : isOverLimit ? (
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-100/80 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-xs font-semibold">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>تنبيه: المبلغ المدخل يتجاوز الليميت الشهري المتبقي في هذه المحفظة بمقدار {formatCurrency(Math.abs(remainingAfter))}.</span>
+                  </div>
+                ) : null}
               </div>
-            ) : isDailyTransferExhausted ? (
-              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-800">
-                <Lock className="w-4 h-4 shrink-0 text-amber-600" />
-                <span>تم الوصول للحد الأقصى للتحويل اليومي من هذا الرقم (60,000 ج.م في اليوم). لا يمكن تحويل المزيد اليوم.</span>
-              </div>
-            ) : isOverDailyLimit ? (
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-100/80 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-xs font-semibold">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>تنبيه: المبلغ المدخل يتجاوز المتبقي من الحد اليومي المسموح به لهذا الرقم ({formatCurrency(walletStats.remainingDailyTransfer)} متبقية من أصل 60,000 ج.م اليوم).</span>
-              </div>
-            ) : isOverLimit ? (
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-100/80 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-xs font-semibold">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>تنبيه: المبلغ المدخل يتجاوز الليميت الشهري المتبقي في هذه المحفظة بمقدار {formatCurrency(Math.abs(remainingAfter))}.</span>
-              </div>
-            ) : null}
+            )}
           </div>
         )}
 
@@ -624,12 +871,14 @@ export default function NewTransferModal() {
                 }}
                 className={`btn-interactive px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
                   recipientMode === 'unregistered'
-                    ? 'bg-red-600 text-white shadow-xs font-black'
+                    ? transferChannel === 'instapay'
+                      ? 'bg-purple-600 text-white shadow-xs font-black'
+                      : 'bg-red-600 text-white shadow-xs font-black'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <Phone className="w-3.5 h-3.5" />
-                <span>رقم غير مسجل (يدوي)</span>
+                <span>{transferChannel === 'instapay' ? 'رقم أو IPA يدوي' : 'رقم غير مسجل (يدوي)'}</span>
               </button>
 
               <button
@@ -638,7 +887,9 @@ export default function NewTransferModal() {
                 onClick={() => handleSwitchToClientRecipient()}
                 className={`btn-interactive px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
                   recipientMode === 'client'
-                    ? 'bg-red-600 text-white shadow-xs font-black'
+                    ? transferChannel === 'instapay'
+                      ? 'bg-purple-600 text-white shadow-xs font-black'
+                      : 'bg-red-600 text-white shadow-xs font-black'
                     : clients.length === 0
                     ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -653,14 +904,18 @@ export default function NewTransferModal() {
 
           {/* If Registered Client Mode: Choose Client and their line */}
           {recipientMode === 'client' && (
-            <div className="bg-red-50/60 dark:bg-red-950/25 p-3.5 rounded-2xl border border-red-200/70 dark:border-red-900/40 space-y-3">
+            <div className={`p-3.5 rounded-2xl border space-y-3 ${
+              transferChannel === 'instapay'
+                ? 'bg-purple-50/60 dark:bg-purple-950/25 border-purple-200/70 dark:border-purple-900/40'
+                : 'bg-red-50/60 dark:bg-red-950/25 border-red-200/70 dark:border-red-900/40'
+            }`}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                 
                 {/* 1. Client Select with optional quick filter */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5 h-6">
                     <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-red-600" />
+                      <User className={`w-3.5 h-3.5 ${transferChannel === 'instapay' ? 'text-purple-600' : 'text-red-600'}`} />
                       <span>اختر العميل المستلم:</span>
                       <span className="text-rose-500 font-black">*</span>
                     </label>
@@ -702,13 +957,13 @@ export default function NewTransferModal() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5 h-6">
                     <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Smartphone className="w-3.5 h-3.5 text-red-600" />
-                      <span>اختر رقم المحفظة المستلمة:</span>
+                      <Smartphone className={`w-3.5 h-3.5 ${transferChannel === 'instapay' ? 'text-purple-600' : 'text-red-600'}`} />
+                      <span>اختر رقم أو محفظة المستلم:</span>
                       <span className="text-rose-500 font-black">*</span>
                     </label>
                     {selectedRecipientWallet && (
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                        {getEgyptianCarrier(selectedRecipientWallet.phoneNumber)?.name || 'شبكة'}
+                        {getEgyptianCarrier(selectedRecipientWallet.phoneNumber)?.name || 'محفظة'}
                       </span>
                     )}
                   </div>
@@ -746,8 +1001,8 @@ export default function NewTransferModal() {
               </div>
 
               {/* Option to automatically record as recharge in client's account */}
-              {isShopMode && selectedRecipientClient && selectedRecipientWallet && (
-                <div className="pt-2 border-t border-red-200/60 dark:border-red-900/30 flex items-center justify-between">
+              {selectedRecipientClient && (
+                <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
@@ -757,10 +1012,10 @@ export default function NewTransferModal() {
                     />
                     <div>
                       <span className="text-xs font-black text-slate-800 dark:text-slate-100">
-                        تسجيل التحويل كشحن رصيد في حساب ومحفظة العميل
+                        تسجيل التحويل كشحن رصيد/آجل في كشف حساب العميل
                       </span>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                        (يتم خصم التحويل من خط المحل وإيداع المبلغ في كشف حساب العميل "{selectedRecipientClient.name}" وزيادة المديونية تلقائياً)
+                        (يتم خصم التحويل من الرصيد وقيد المبلغ في كشف حساب "{selectedRecipientClient.name}" وزيادة المديونية تلقائياً)
                       </span>
                     </div>
                   </label>
@@ -793,22 +1048,28 @@ export default function NewTransferModal() {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className={`w-full h-11 pl-3 pr-4 text-base font-black bg-slate-50 dark:bg-slate-800 rounded-xl focus:outline-none transition-all ${
-                    isOverLimit
+                    (transferChannel === 'instapay' ? isInstapayOverBalance : isOverLimit)
                       ? 'text-rose-600 border-2 border-rose-500 focus:ring-2 focus:ring-rose-500/50'
+                      : transferChannel === 'instapay'
+                      ? 'text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-purple-500/50'
                       : 'text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-red-500/50'
                   }`}
                   required
                 />
                 <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${
-                  isOverLimit ? 'text-rose-500' : 'text-slate-400'
+                  (transferChannel === 'instapay' ? isInstapayOverBalance : isOverLimit) ? 'text-rose-500' : 'text-slate-400'
                 }`}>
                   ج.م
                 </span>
               </div>
-              {isOverLimit && (
+              {(transferChannel === 'instapay' ? isInstapayOverBalance : isOverLimit) && (
                 <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 mt-1 flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  <span>المبلغ يتجاوز الليميت المتاح ({formatCurrency(currentRemaining)}). قم بتقليل المبلغ لتفعيل الزر.</span>
+                  <span>
+                    {transferChannel === 'instapay'
+                      ? `المبلغ يتجاوز رصيد حساب إنستاباي المتاح (${formatCurrency(instapayBalance)})`
+                      : `المبلغ يتجاوز الليميت المتاح (${formatCurrency(currentRemaining)}). قم بتقليل المبلغ.`}
+                  </span>
                 </p>
               )}
             </div>
@@ -817,7 +1078,7 @@ export default function NewTransferModal() {
             <div>
               <div className="flex items-center justify-between mb-1.5 h-6">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 whitespace-nowrap">
-                  <span>رقم المحول إليه</span>
+                  <span>{transferChannel === 'instapay' ? 'المحول إليه (رقم / IPA)' : 'رقم المحول إليه'}</span>
                   <span className="text-rose-500 font-black text-sm">*</span>
                   <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 px-1.5 py-0.2 rounded">
                     مطلوب
@@ -828,7 +1089,21 @@ export default function NewTransferModal() {
                     </span>
                   )}
                 </label>
-                {recipientCarrier ? (
+                {transferChannel === 'instapay' ? (
+                  recipientPhone.includes('@') ? (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 shrink-0">
+                      عنوان IPA
+                    </span>
+                  ) : recipientCarrier ? (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
+                      {recipientCarrier.name}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0" dir="ltr">
+                      هاتف أو IPA
+                    </span>
+                  )
+                ) : recipientCarrier ? (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
                     {recipientCarrier.name}
                   </span>
@@ -841,19 +1116,23 @@ export default function NewTransferModal() {
 
               <div className="relative">
                 <input
-                  type="tel"
+                  type={transferChannel === 'instapay' ? 'text' : 'tel'}
                   required
-                  maxLength={11}
-                  placeholder="010XXXXXXXX"
+                  maxLength={transferChannel === 'instapay' ? 50 : 11}
+                  placeholder={transferChannel === 'instapay' ? '010XXXXXXXX أو username@instapay' : '010XXXXXXXX'}
                   value={recipientPhone}
                   readOnly={recipientMode === 'client'}
                   onChange={(e) => {
                     if (recipientMode === 'unregistered') {
-                      setRecipientPhone(cleanEgyptianPhone(e.target.value));
+                      if (transferChannel === 'instapay') {
+                        setRecipientPhone(e.target.value);
+                      } else {
+                        setRecipientPhone(cleanEgyptianPhone(e.target.value));
+                      }
                     }
                   }}
                   className={`w-full h-11 px-3.5 text-base font-bold font-mono text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 transition-all ${
-                    isRecipientValid
+                    (transferChannel === 'instapay' ? recipientPhone.trim().length >= 3 : isRecipientValid)
                       ? 'border-emerald-500 focus:ring-emerald-500/40 bg-emerald-50/10'
                       : !recipientPhone.trim()
                       ? 'border-slate-300 dark:border-slate-700 focus:border-rose-500 focus:ring-rose-500/40'
@@ -863,14 +1142,14 @@ export default function NewTransferModal() {
                 />
               </div>
 
-              {recipientPhoneError ? (
+              {transferChannel === 'wallet' && recipientPhoneError ? (
                 <p className="text-[11px] text-rose-500 font-bold mt-1 flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   <span>{recipientPhoneError}</span>
                 </p>
-              ) : isRecipientValid ? (
+              ) : (transferChannel === 'instapay' ? recipientPhone.trim().length >= 3 : isRecipientValid) ? (
                 <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
-                  <span>✓ رقم مصري صحيح ({recipientCarrier?.name}){recipientMode === 'client' && selectedRecipientClient ? ` - العميل: ${selectedRecipientClient.name}` : ''}</span>
+                  <span>✓ {transferChannel === 'instapay' ? (recipientPhone.includes('@') ? 'عنوان إنستاباي صحيح' : 'رقم المستلم مدخل') : `رقم مصري صحيح (${recipientCarrier?.name})`}{recipientMode === 'client' && selectedRecipientClient ? ` - العميل: ${selectedRecipientClient.name}` : ''}</span>
                 </p>
               ) : null}
 
@@ -947,7 +1226,7 @@ export default function NewTransferModal() {
           </label>
           <input
             type="text"
-            placeholder="مثال: دفعة مشتريات بضاعة، توريد عميل..."
+            placeholder={transferChannel === 'instapay' ? "مثال: تحويل إنستاباي، سداد دفعة مورد، شحن محفظة..." : "مثال: دفعة مشتريات بضاعة، توريد عميل..."}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/50"
@@ -970,25 +1249,36 @@ export default function NewTransferModal() {
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all ${
               !isFormValid
                 ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700 shadow-none opacity-60'
+                : transferChannel === 'instapay'
+                ? 'btn-interactive bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md shadow-purple-600/30'
                 : 'btn-interactive bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-md shadow-red-600/30'
             }`}
-            title={
-              isBlocked
-                ? 'الزر معطل لتجاوز الحد المسموح'
-                : !numAmount
-                ? 'يرجى إدخال مبلغ التحويل'
-                : recipientMode === 'client' && !recipientClientId
-                ? 'يرجى اختيار العميل المستلم'
-                : recipientMode === 'client' && !recipientWalletId
-                ? 'يرجى اختيار رقم المحفظة المستلمة'
-                : !recipientPhone.trim()
-                ? 'يرجى إدخال رقم المحول إليه (مطلوب)'
-                : !isRecipientValid
-                ? 'يرجى إدخال 11 رقماً مصرياً صحيحاً للمستلم'
-                : 'تأكيد وخصم التحويلة'
-            }
           >
-            {isLocked ? (
+            {transferChannel === 'instapay' ? (
+              isInstapayOverBalance ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-rose-300 shrink-0" />
+                  <span>المبلغ يتجاوز رصيد إنستاباي</span>
+                </>
+              ) : !numAmount ? (
+                <span>ادخل مبلغ التحويل</span>
+              ) : recipientMode === 'client' && !recipientClientId ? (
+                <>
+                  <User className="w-4 h-4 shrink-0 text-amber-300" />
+                  <span>اختر العميل المستلم</span>
+                </>
+              ) : !recipientPhone.trim() ? (
+                <>
+                  <Zap className="w-4 h-4 shrink-0 text-amber-300" />
+                  <span>ادخل مستلم إنستاباي</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 text-amber-300" />
+                  <span>تأكيد وتحويل إنستاباي</span>
+                </>
+              )
+            ) : isLocked ? (
               <>
                 <Lock className="w-4 h-4 text-rose-500 shrink-0" />
                 <span>الرقم مقفول شهرياً (معطل)</span>
