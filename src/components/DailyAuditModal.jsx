@@ -33,12 +33,12 @@ export default function DailyAuditModal() {
   const { 
     activeModal, 
     setActiveModal, 
-    treasury, 
-    shopWallets, 
-    instapayAccounts, 
-    transactions, 
-    purchases, 
-    clients, 
+    treasury = {}, 
+    shopWallets = [], 
+    instapayAccounts = [], 
+    transactions = [], 
+    purchases = [], 
+    clients = [], 
     recordDailyAudit, 
     showToast 
   } = useCash();
@@ -73,8 +73,8 @@ export default function DailyAuditModal() {
       setNotes('');
       
       // Default actual values to current system balances for ease of use
-      setActualDrawerCash(String(Number(treasury.drawerCash) || 0));
-      setActualBankAccounts(String(Number(treasury.bankAccounts) || 0));
+      setActualDrawerCash(String(Number(treasury?.drawerCash) || 0));
+      setActualBankAccounts(String(Number(treasury?.bankAccounts) || 0));
 
       const initialWallets = {};
       (shopWallets || []).forEach(w => {
@@ -99,35 +99,35 @@ export default function DailyAuditModal() {
   // Today's Activity Metrics
   const todayStr = getTodayString();
   const dayTx = useMemo(() => {
-    return transactions.filter(t => t.dateOnly === (auditDate || todayStr));
+    return (transactions || []).filter(t => t.dateOnly === (auditDate || todayStr));
   }, [transactions, auditDate, todayStr]);
 
   const dayPurchases = useMemo(() => {
-    return purchases.filter(p => {
+    return (purchases || []).filter(p => {
       const pDate = p.date ? getLocalDateString(p.date) : '';
       return pDate === (auditDate || todayStr);
     });
   }, [purchases, auditDate, todayStr]);
 
   const dayTotalTransfersOut = useMemo(() => {
-    return dayTx.filter(t => t.type === 'transfer_out').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    return (dayTx || []).filter(t => t.type === 'transfer_out').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   }, [dayTx]);
 
   const dayTotalRecharges = useMemo(() => {
-    return dayTx.filter(t => t.type === 'recharge' || t.type === 'limit_reset').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    return (dayTx || []).filter(t => t.type === 'recharge' || t.type === 'limit_reset').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   }, [dayTx]);
 
   const dayTotalPurchases = useMemo(() => {
-    return dayPurchases.reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
+    return (dayPurchases || []).reduce((sum, p) => sum + (Number(p.totalAmount) || 0), 0);
   }, [dayPurchases]);
 
   const dayTotalClientCollections = useMemo(() => {
-    return dayTx.filter(t => t.type === 'client_payment' && !t.isCreditorPayout).reduce((sum, t) => sum + (Number(t.rawAmount || t.amount) || 0), 0);
+    return (dayTx || []).filter(t => t.type === 'client_payment' && !t.isCreditorPayout).reduce((sum, t) => sum + (Number(t.rawAmount || t.amount) || 0), 0);
   }, [dayTx]);
 
   // System Calculated Balances
-  const systemDrawerCash = Number(treasury.drawerCash) || 0;
-  const systemBankAccounts = Number(treasury.bankAccounts) || 0;
+  const systemDrawerCash = Number(treasury?.drawerCash) || 0;
+  const systemBankAccounts = Number(treasury?.bankAccounts) || 0;
   
   // Total system for all shop wallets
   const systemShopWalletsTotal = (shopWallets || []).reduce((sum, w) => sum + (Number(w.balance) || 0), 0);

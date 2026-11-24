@@ -37,6 +37,7 @@ import AdjustCapitalModal from './components/AdjustCapitalModal';
 import AddInstapayAccountModal from './components/AddInstapayAccountModal';
 import DailyAuditModal from './components/DailyAuditModal';
 import DailyAuditDetailsModal from './components/DailyAuditDetailsModal';
+import RecordOpeningCapitalModal from './components/RecordOpeningCapitalModal';
 
 import { UserPlus, Send, Search, Users, AlertCircle, Sparkles, LayoutGrid, Table, FileSpreadsheet } from 'lucide-react';
 
@@ -333,6 +334,7 @@ function MainApp() {
       <AddInstapayAccountModal />
       <DailyAuditModal />
       <DailyAuditDetailsModal />
+      <RecordOpeningCapitalModal />
 
       {/* Toast Notification */}
       <Toast />

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastUpdated": "2026-11-20T13:17:18.143Z",
+  "lastUpdated": "2026-11-24T14:10:32.959Z",
   "shopInfo": {
     "name": "الأعصر لخدمات المحمول",
     "syncId": "elaasar_main"
@@ -20,21 +20,21 @@
           "id": "wallet-1-2",
           "phoneNumber": "01011223344",
           "label": "محفظة فرع المحطة",
-          "totalLimit": 60000,
+          "totalLimit": 200000,
           "createdAt": "2026-11-10T08:30:00.000Z"
         },
         {
           "id": "wallet-1-3",
           "phoneNumber": "01055667788",
           "label": "محفظة كبار العملاء (ليميت مخصص)",
-          "totalLimit": 60000,
+          "totalLimit": 200000,
           "createdAt": "2026-11-15T08:30:00.000Z"
         },
         {
           "id": "wallet-1-1",
           "phoneNumber": "01098765432",
           "label": "محفظة المبيعات المركزية",
-          "totalLimit": 60000,
+          "totalLimit": 200000,
           "createdAt": "2026-11-05T08:30:00.000Z"
         },
         {
@@ -44,7 +44,9 @@
           "totalLimit": 200000,
           "createdAt": "2026-11-20T13:16:58.122Z"
         }
-      ]
+      ],
+      "commissionMode": "none",
+      "commissionPercent": 0.995
     },
     {
       "id": "client-2",
@@ -56,7 +58,7 @@
           "id": "wallet-2-1",
           "phoneNumber": "01023456789",
           "label": "محفظة إدارة الحسابات",
-          "totalLimit": 60000,
+          "totalLimit": 200000,
           "createdAt": "2026-10-31T08:30:00.000Z"
         },
         {
@@ -66,7 +68,9 @@
           "totalLimit": 45000,
           "createdAt": "2026-11-08T08:30:00.000Z"
         }
-      ]
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
     },
     {
       "id": "client-3",
@@ -78,10 +82,12 @@
           "id": "wallet-3-1",
           "phoneNumber": "01099887766",
           "label": "محفظة التحويلات الفورية",
-          "totalLimit": 60000,
+          "totalLimit": 200000,
           "createdAt": "2026-11-12T08:30:00.000Z"
         }
-      ]
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
     }
   ],
   "transactions": [

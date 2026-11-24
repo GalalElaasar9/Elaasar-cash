@@ -6,7 +6,8 @@ import {
   INITIAL_DEMO_PURCHASES, 
   INITIAL_DEMO_TREASURY,
   INITIAL_INSTAPAY_ACCOUNTS,
-  INITIAL_DEMO_DAILY_AUDITS 
+  INITIAL_DEMO_DAILY_AUDITS,
+  INITIAL_DEMO_DAILY_OPENING_BALANCES
 } from '../utils/storage';
 import { 
   calculateWalletStats, 
@@ -54,6 +55,7 @@ export function CashProvider({ children }) {
   const [treasury, setTreasury] = useState(() => storage.getTreasury());
   const [instapayAccounts, setInstapayAccounts] = useState(() => storage.getInstapayAccounts());
   const [dailyAudits, setDailyAudits] = useState(() => storage.getDailyAudits());
+  const [dailyOpeningBalances, setDailyOpeningBalances] = useState(() => storage.getDailyOpeningBalances());
   const [theme, setTheme] = useState(() => storage.getTheme());
   const [selectedDate, setSelectedDate] = useState(getTodayString());
   const [toast, setToast] = useState(null);
@@ -254,6 +256,31 @@ export function CashProvider({ children }) {
   useEffect(() => {
     storage.saveClientArchives(clientArchives);
   }, [clientArchives]);
+
+  // Sync purchases to localStorage
+  useEffect(() => {
+    storage.savePurchases(purchases);
+  }, [purchases]);
+
+  // Sync treasury to localStorage
+  useEffect(() => {
+    storage.saveTreasury(treasury);
+  }, [treasury]);
+
+  // Sync instapayAccounts to localStorage
+  useEffect(() => {
+    storage.saveInstapayAccounts(instapayAccounts);
+  }, [instapayAccounts]);
+
+  // Sync dailyAudits to localStorage
+  useEffect(() => {
+    storage.saveDailyAudits(dailyAudits);
+  }, [dailyAudits]);
+
+  // Sync dailyOpeningBalances to localStorage
+  useEffect(() => {
+    storage.saveDailyOpeningBalances(dailyOpeningBalances);
+  }, [dailyOpeningBalances]);
 
   // Sync theme
   useEffect(() => {
@@ -2380,6 +2407,141 @@ export function CashProvider({ children }) {
     showToast('تم حذف سجل الجرد بنجاح', 'info');
   };
 
+  // ==========================================
+  // DAILY OPENING CAPITAL & BALANCES (رصيد بداية اليومية والافتتاح)
+  // ==========================================
+  const recordDailyOpeningBalance = ({
+    date = null,
+    recordedBy = 'محمود الأعصر (صاحب المحل)',
+    drawerCash = 0,
+    vodafoneCash = 0,
+    instapay = 0,
+    bankAccounts = 0,
+    shopWallets: inputWallets = [],
+    instapayAccounts: inputInstapay = [],
+    notes = '',
+    applyToLive = true
+  }) => {
+    const targetDate = date ? new Date(date) : new Date();
+    const dateOnly = getLocalDateString(targetDate);
+    const nowIso = new Date().toISOString();
+
+    const dCash = Number(drawerCash) || 0;
+    const vCash = Number(vodafoneCash) || 0;
+    const iCash = Number(instapay) || 0;
+    const bCash = Number(bankAccounts) || 0;
+    const totalOpeningCash = dCash + vCash + iCash + bCash;
+
+    const newOpening = {
+      id: `open-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      date: targetDate.toISOString(),
+      dateOnly,
+      recordedAt: nowIso,
+      recordedBy,
+      drawerCash: dCash,
+      vodafoneCash: vCash,
+      instapay: iCash,
+      bankAccounts: bCash,
+      totalOpeningCash,
+      shopWallets: Array.isArray(inputWallets) ? inputWallets : [],
+      instapayAccounts: Array.isArray(inputInstapay) ? inputInstapay : [],
+      notes: notes || '',
+      applyToLive: Boolean(applyToLive)
+    };
+
+    setDailyOpeningBalances(prev => {
+      const filtered = prev.filter(o => o.dateOnly !== dateOnly);
+      return [newOpening, ...filtered];
+    });
+
+    if (applyToLive) {
+      setTreasury(prev => ({
+        ...prev,
+        drawerCash: dCash,
+        vodafoneCash: vCash,
+        instapay: iCash,
+        bankAccounts: bCash,
+        history: [
+          {
+            id: `th-${Date.now()}`,
+            date: nowIso,
+            type: 'adjust',
+            amount: totalOpeningCash,
+            account: 'all',
+            description: `تثبيت رصيد بداية اليومية والافتتاح (${dateOnly})`,
+            performedBy: recordedBy
+          },
+          ...(prev.history || [])
+        ]
+      }));
+
+      if (Array.isArray(inputWallets) && inputWallets.length > 0) {
+        setShopWallets(prev => prev.map(sw => {
+          const matched = inputWallets.find(iw => iw.id === sw.id);
+          if (matched && matched.balance !== undefined) {
+            return { ...sw, balance: Number(matched.balance) || 0 };
+          }
+          return sw;
+        }));
+      }
+
+      if (Array.isArray(inputInstapay) && inputInstapay.length > 0) {
+        setInstapayAccounts(prev => prev.map(acc => {
+          const matched = inputInstapay.find(ia => ia.id === acc.id);
+          if (matched && matched.balance !== undefined) {
+            return { ...acc, balance: Number(matched.balance) || 0 };
+          }
+          return acc;
+        }));
+      }
+    }
+
+    showToast(`تم تسجيل وتثبيت رصيد بداية اليومية (${dateOnly}) بإجمالي ${totalOpeningCash.toLocaleString()} ج.م`);
+    triggerConfetti();
+    return newOpening;
+  };
+
+  const deleteDailyOpeningBalance = (openingId) => {
+    setDailyOpeningBalances(prev => prev.filter(o => o.id !== openingId));
+    showToast('تم حذف رصيد بداية اليومية بنجاح', 'info');
+  };
+
+  const getOpeningBalanceForDate = (dateOnly) => {
+    if (!dateOnly) return null;
+    const direct = dailyOpeningBalances.find(o => o.dateOnly === dateOnly);
+    if (direct) return direct;
+    
+    // Check previous day's audit
+    const prevAudit = dailyAudits.find(a => {
+      const aDate = new Date(a.dateOnly || a.date);
+      const targetDate = new Date(dateOnly);
+      const diff = Math.round((targetDate - aDate) / (1000 * 60 * 60 * 24));
+      return diff === 1;
+    });
+
+    if (prevAudit && prevAudit.actualBalances) {
+      return {
+        id: `open-from-prev-${dateOnly}`,
+        dateOnly,
+        isDerivedFromAudit: true,
+        drawerCash: prevAudit.actualBalances.drawerCash || 0,
+        vodafoneCash: prevAudit.actualBalances.vodafoneCash || 0,
+        instapay: prevAudit.actualBalances.instapay || 0,
+        bankAccounts: prevAudit.actualBalances.bankAccounts || 0,
+        totalOpeningCash: prevAudit.actualTotal || 0,
+        shopWallets: prevAudit.shopWallets || [],
+        instapayAccounts: prevAudit.instapayAccounts || [],
+        notes: `منقول تلقائياً من جرد إقفال اليوم السابق (${prevAudit.dateOnly})`
+      };
+    }
+    return null;
+  };
+
+  const getClosingAuditForDate = (dateOnly) => {
+    if (!dateOnly) return null;
+    return dailyAudits.find(a => a.dateOnly === dateOnly || a.date?.startsWith(dateOnly)) || null;
+  };
+
   // Reset demo data
   const handleResetDemo = () => {
     const demo = storage.resetToDemo();
@@ -2387,7 +2549,12 @@ export function CashProvider({ children }) {
     setTransactions(demo.transactions);
     setInventory(demo.inventory);
     setShopWallets(demo.shopWallets || INITIAL_SHOP_WALLETS);
+    setInstapayAccounts(demo.instapayAccounts || INITIAL_INSTAPAY_ACCOUNTS);
     setClientArchives(demo.clientArchives || []);
+    setPurchases(demo.purchases || INITIAL_DEMO_PURCHASES);
+    setTreasury(demo.treasury || INITIAL_DEMO_TREASURY);
+    setDailyAudits(demo.dailyAudits || INITIAL_DEMO_DAILY_AUDITS);
+    setDailyOpeningBalances(demo.dailyOpeningBalances || INITIAL_DEMO_DAILY_OPENING_BALANCES);
     showToast('تم استعادة البيانات التجريبية الافتراضية بنجاح');
   };
 
@@ -2399,13 +2566,18 @@ export function CashProvider({ children }) {
     setInventory(empty.inventory);
     setTrash(empty.trash);
     setShopWallets([]);
+    setInstapayAccounts([]);
     setClientArchives([]);
+    setPurchases([]);
+    setTreasury(empty.treasury || { drawerCash: 0, vodafoneCash: 0, instapay: 0, bankAccounts: 0, history: [] });
+    setDailyAudits([]);
+    setDailyOpeningBalances([]);
     showToast('تم مسح جميع البيانات بنجاح', 'info');
   };
 
   // Export data
   const handleExport = () => {
-    storage.exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives, purchases, treasury, instapayAccounts, dailyAudits);
+    storage.exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives, purchases, treasury, instapayAccounts, dailyAudits, dailyOpeningBalances);
     showToast('تم تصدير النسخة الاحتياطية بنجاح');
   };
 
@@ -2422,6 +2594,21 @@ export function CashProvider({ children }) {
     }
     if (Array.isArray(backupData.shopWallets)) {
       setShopWallets(backupData.shopWallets);
+    }
+    if (Array.isArray(backupData.instapayAccounts)) {
+      setInstapayAccounts(backupData.instapayAccounts);
+    }
+    if (Array.isArray(backupData.purchases)) {
+      setPurchases(backupData.purchases);
+    }
+    if (backupData.treasury && typeof backupData.treasury === 'object') {
+      setTreasury(backupData.treasury);
+    }
+    if (Array.isArray(backupData.dailyAudits)) {
+      setDailyAudits(backupData.dailyAudits);
+    }
+    if (Array.isArray(backupData.dailyOpeningBalances)) {
+      setDailyOpeningBalances(backupData.dailyOpeningBalances);
     }
     if (backupData.trash && typeof backupData.trash === 'object') {
       setTrash(backupData.trash);
@@ -2679,6 +2866,10 @@ export function CashProvider({ children }) {
         transactions,
         inventory,
         shopWallets,
+        instapayAccounts,
+        purchases,
+        treasury,
+        dailyAudits,
         theme,
         toggleTheme,
         selectedDate,
@@ -2704,6 +2895,10 @@ export function CashProvider({ children }) {
         addShopWallet,
         updateShopWallet,
         deleteShopWallet,
+        addInstapayAccount,
+        updateInstapayAccount,
+        deleteInstapayAccount,
+        transferFromInstapay,
         addTransaction,
         addRecharge,
         addClientPayment,
@@ -2715,6 +2910,42 @@ export function CashProvider({ children }) {
         deleteTransaction,
         updateTransaction,
         findWalletAndClient,
+
+        // Purchases & Expenses Actions & Metrics
+        addPurchase,
+        updatePurchase,
+        deletePurchase,
+        recordSupplierPayment,
+        todayPurchases,
+        todayPurchasesAmount,
+        monthPurchases,
+        monthPurchasesAmount,
+        totalPurchasesAmount,
+        totalSupplierDebt,
+        inventoryPurchasesTotal,
+        generalExpensesTotal,
+        cashLiquidityPurchasesTotal,
+        uniqueSuppliers,
+
+        // Capital & Treasury Actions & Metrics
+        updateTreasuryBalance,
+        transferBetweenTreasury,
+        depositToTreasury,
+        withdrawFromTreasury,
+        totalLiquidCash,
+        clientsTotalReceivables,
+        totalCapitalNetWorth,
+
+        // Daily Audit & Closing
+        recordDailyAudit,
+        deleteDailyAudit,
+
+        // Daily Opening Capital & Balances
+        dailyOpeningBalances,
+        recordDailyOpeningBalance,
+        deleteDailyOpeningBalance,
+        getOpeningBalanceForDate,
+        getClosingAuditForDate,
 
         // Inventory Actions
         addProduct,

@@ -18,28 +18,41 @@ import {
   Receipt, 
   ArrowRight, 
   ArrowLeft,
-  ChevronRight,
-  ChevronLeft,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight, 
+  ChevronLeft, 
+  ChevronDown, 
+  ChevronUp, 
   Send, 
   Clock, 
   DollarSign, 
   Percent, 
   Copy, 
-  Check,
-  CheckCircle2,
-  TrendingDown,
-  PhoneCall,
-  FileSpreadsheet,
-  ArrowDownToLine,
-  ExternalLink,
-  Moon,
-  Sparkles,
-  AlertCircle,
-  FileText,
-  ShoppingBag,
-  Smartphone
+  Check, 
+  CheckCircle2, 
+  TrendingDown, 
+  PhoneCall, 
+  FileSpreadsheet, 
+  ArrowDownToLine, 
+  ExternalLink, 
+  Moon, 
+  Sparkles, 
+  AlertCircle, 
+  FileText, 
+  ShoppingBag, 
+  Smartphone,
+  Coins,
+  Building2,
+  Wallet,
+  Sun,
+  History,
+  Eye,
+  RefreshCw,
+  FileCheck,
+  TrendingUp,
+  CreditCard,
+  Layers,
+  ArrowUpRight,
+  ArrowDownLeft
 } from 'lucide-react';
 
 const STORAGE_KEY_ITEMS = 'elaasar_cash_inbound_items_v2';
@@ -50,17 +63,25 @@ const STORAGE_KEY_ARCHIVE = 'elaasar_cash_inbound_days_archive_v2';
 export default function DailyLogView({ onNavigateToInbound }) {
   const { 
     transactions, 
+    purchases = [],
+    treasury = {},
     selectedDate, 
     setSelectedDate, 
     deleteTransaction, 
+    deletePurchase,
     setActiveModal, 
     setModalData,
     showToast,
-    askConfirm 
+    askConfirm,
+    dailyOpeningBalances = [],
+    dailyAudits = [],
+    getOpeningBalanceForDate,
+    getClosingAuditForDate
   } = useCash();
 
   const [searchDaily, setSearchDaily] = useState('');
   const [copiedId, setCopiedId] = useState(null);
+  const [activeDailyStream, setActiveDailyStream] = useState('timeline'); // 'timeline', 'transfers', 'collections', 'purchases', 'sales', 'inbound', 'treasury', 'audit'
 
   // Inbound Shift Section States
   const [inboundRefreshKey, setInboundRefreshKey] = useState(0);
@@ -80,6 +101,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
   }, []);
 
   const todayStr = getTodayString();
+  const isToday = selectedDate === todayStr;
 
   // Quick date change helpers
   const handleShiftDate = (days) => {
@@ -100,74 +122,163 @@ export default function DailyLogView({ onNavigateToInbound }) {
     setSelectedDate(`${yyyy}-${mm}-${dd}`);
   };
 
-  // Filter transactions for this day
+  // 1. Transactions for the selected date
   const dayTransactions = useMemo(() => {
     return transactions.filter(t => t.dateOnly === selectedDate);
   }, [transactions, selectedDate]);
 
-  // Filtered by search within the day
-  const filteredDayTransactions = useMemo(() => {
-    if (!searchDaily.trim()) return dayTransactions;
-    const q = searchDaily.toLowerCase().trim();
-    return dayTransactions.filter(t => 
-      t.customerName?.toLowerCase().includes(q) ||
-      t.productName?.toLowerCase().includes(q) ||
-      t.variantColor?.toLowerCase().includes(q) ||
-      t.walletPhone?.includes(q) ||
-      t.recipientPhone?.includes(q) ||
-      t.transactionCode?.toLowerCase().includes(q) ||
-      t.notes?.toLowerCase().includes(q)
-    );
-  }, [dayTransactions, searchDaily]);
+  // 2. Opening Balance for the selected date
+  const dayOpening = useMemo(() => {
+    return getOpeningBalanceForDate ? getOpeningBalanceForDate(selectedDate) : null;
+  }, [selectedDate, getOpeningBalanceForDate, dailyOpeningBalances, dailyAudits]);
 
-  // Pagination for transactions table (10 operations per page as requested)
+  // 3. Closing Audit for the selected date
+  const dayAudit = useMemo(() => {
+    return getClosingAuditForDate ? getClosingAuditForDate(selectedDate) : null;
+  }, [selectedDate, getClosingAuditForDate, dailyAudits]);
+
+  // 4. Purchases for the selected date
+  const dayPurchases = useMemo(() => {
+    return (purchases || []).filter(p => {
+      const pDateOnly = p.dateOnly || (p.date ? getLocalDateString(p.date) : '');
+      return pDateOnly === selectedDate;
+    });
+  }, [purchases, selectedDate]);
+
+  // 5. Treasury Movements for the selected date
+  const dayTreasuryMovements = useMemo(() => {
+    return (treasury?.history || []).filter(h => {
+      const hDateOnly = h.date ? getLocalDateString(h.date) : '';
+      return hDateOnly === selectedDate;
+    });
+  }, [treasury, selectedDate]);
+
+  // Split transaction categories
+  const dayTransferTxs = useMemo(() => dayTransactions.filter(t => t.type === 'transfer_out'), [dayTransactions]);
+  const dayRechargeTxs = useMemo(() => dayTransactions.filter(t => t.type === 'recharge' || t.type === 'limit_reset'), [dayTransactions]);
+  const dayPaymentTxs = useMemo(() => dayTransactions.filter(t => t.type === 'client_payment'), [dayTransactions]);
+  const daySalesTxs = useMemo(() => dayTransactions.filter(t => t.type === 'product_sale'), [dayTransactions]);
+
+  // Financial Totals
+  const dayTotalTransfers = dayTransferTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const dayTotalRecharges = dayRechargeTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const dayTotalCollections = dayPaymentTxs.filter(t => !t.isCreditorPayout).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const dayTotalCreditorPayouts = dayPaymentTxs.filter(t => t.isCreditorPayout).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const dayTotalSalesAmount = daySalesTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const dayTotalFees = dayTransactions.reduce((sum, t) => sum + (Number(t.fee) || 0), 0);
+  const dayTotalPurchasesPaid = dayPurchases.reduce((sum, p) => sum + (Number(p.paidAmount ?? p.totalAmount) || 0), 0);
+
+  // Inflow = Client debt collections + Direct device sales + Line recharges
+  const dayTotalInflow = dayTotalCollections + dayTotalSalesAmount + dayTotalRecharges;
+
+  // Outflow = Outgoing transfers + Purchases paid + Creditor payouts
+  const dayTotalOutflow = dayTotalTransfers + dayTotalPurchasesPaid + dayTotalCreditorPayouts;
+
+  // Net Day Flow
+  const dayNetFlow = dayTotalInflow - dayTotalOutflow;
+
+  // Theoretical Closing Capital
+  const theoreticalClosing = (dayOpening?.totalOpeningCash || 0) + dayNetFlow;
+
+  // Unified Timeline (All events sorted descending by timestamp)
+  const unifiedTimelineItems = useMemo(() => {
+    const list = [];
+
+    // Transactions
+    dayTransactions.forEach(t => {
+      const isSale = t.type === 'product_sale';
+      const isPayment = t.type === 'client_payment';
+      const isRecharge = t.type === 'recharge' || t.type === 'limit_reset';
+
+      list.push({
+        id: `tx-${t.id}`,
+        timestamp: new Date(t.date || t.timestamp || Date.now()).getTime(),
+        dateStr: t.date,
+        stream: isSale ? 'sales' : isPayment ? 'collections' : 'transfers',
+        title: isSale 
+          ? `مبيعات أجهزة: ${t.productName || 'جهاز / إكسسوار'}`
+          : isPayment
+          ? (t.isCreditorPayout ? `صرف لمستحق دائن: ${t.customerName}` : `سداد من العميل: ${t.customerName}`)
+          : isRecharge
+          ? `شحن خط/محفظة: ${t.walletPhone}`
+          : `تحويل كاش: إلى ${t.recipientPhone || t.customerName}`,
+        party: isSale ? (t.customerName || 'عميل نقدي') : t.customerName,
+        phone: t.walletPhone || t.recipientPhone,
+        amount: Number(t.amount) || 0,
+        isInflow: isPayment ? !t.isCreditorPayout : isSale || isRecharge,
+        fee: t.fee || 0,
+        notes: t.notes || '',
+        code: t.transactionCode,
+        raw: t
+      });
+    });
+
+    // Purchases
+    dayPurchases.forEach(p => {
+      list.push({
+        id: `pur-${p.id}`,
+        timestamp: new Date(p.date || Date.now()).getTime(),
+        dateStr: p.date,
+        stream: 'purchases',
+        title: `فاتورة مشتريات: ${p.supplierName} (${p.categoryLabel || p.category})`,
+        party: p.supplierName,
+        amount: Number(p.paidAmount ?? p.totalAmount) || 0,
+        isInflow: false,
+        fee: 0,
+        notes: p.notes || `فاتورة #${p.invoiceNumber || '—'} • مدفوع: ${Number(p.paidAmount ?? p.totalAmount).toLocaleString()} ج.م من أصل ${Number(p.totalAmount).toLocaleString()} ج.م`,
+        raw: p
+      });
+    });
+
+    // Treasury movements
+    dayTreasuryMovements.forEach(h => {
+      list.push({
+        id: `tr-${h.id}`,
+        timestamp: new Date(h.date || Date.now()).getTime(),
+        dateStr: h.date,
+        stream: 'treasury',
+        title: h.description || `حركة خزينة: ${h.type}`,
+        party: h.performedBy || 'المسؤول',
+        amount: Number(h.amount) || 0,
+        isInflow: h.type === 'deposit',
+        fee: 0,
+        notes: h.account ? `الحساب: ${h.account}` : '',
+        raw: h
+      });
+    });
+
+    return list.sort((a, b) => b.timestamp - a.timestamp);
+  }, [dayTransactions, dayPurchases, dayTreasuryMovements]);
+
+  // Filtered timeline by search
+  const filteredTimelineItems = useMemo(() => {
+    if (!searchDaily.trim()) return unifiedTimelineItems;
+    const q = searchDaily.toLowerCase().trim();
+    return unifiedTimelineItems.filter(item => 
+      item.title?.toLowerCase().includes(q) ||
+      item.party?.toLowerCase().includes(q) ||
+      item.phone?.includes(q) ||
+      item.code?.toLowerCase().includes(q) ||
+      item.notes?.toLowerCase().includes(q)
+    );
+  }, [unifiedTimelineItems, searchDaily]);
+
+  // Pagination for timeline & transfers
   const ITEMS_PER_PAGE = 10;
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Reset page when search or selected date changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchDaily, selectedDate]);
+  }, [searchDaily, selectedDate, activeDailyStream]);
 
-  const totalPages = Math.ceil(filteredDayTransactions.length / ITEMS_PER_PAGE) || 1;
+  const totalPages = Math.ceil(filteredTimelineItems.length / ITEMS_PER_PAGE) || 1;
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
-
-  const paginatedTransactions = useMemo(() => {
+  const paginatedTimeline = useMemo(() => {
     const start = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
-    return filteredDayTransactions.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredDayTransactions, safeCurrentPage]);
+    return filteredTimelineItems.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredTimelineItems, safeCurrentPage]);
 
-  // Metrics for the selected day
-  const dayTransferTxs = dayTransactions.filter(t => t.type === 'transfer_out');
-  const dayRechargeTxs = dayTransactions.filter(t => t.type === 'recharge' || t.type === 'limit_reset');
-  const dayPaymentTxs = dayTransactions.filter(t => t.type === 'client_payment');
-  const daySalesTxs = dayTransactions.filter(t => t.type === 'product_sale');
-  const dayTotalAmount = dayTransferTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  const dayTotalRechargeAmount = dayRechargeTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  const dayTotalPaymentAmount = dayPaymentTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  const dayTotalSalesAmount = daySalesTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  const dayTotalFees = dayTransactions.reduce((sum, t) => sum + (Number(t.fee) || 0), 0);
-  const dayTxCount = dayTransactions.length;
-  const dayAverage = dayTransferTxs.length > 0 ? Math.round(dayTotalAmount / dayTransferTxs.length) : 0;
-
-  // Find most active wallet on this day
-  const topWallet = useMemo(() => {
-    if (dayTransactions.length === 0) return null;
-    const walletMap = {};
-    dayTransactions.forEach(t => {
-      walletMap[t.walletPhone] = (walletMap[t.walletPhone] || 0) + t.amount;
-    });
-    let topPhone = '';
-    let maxAmount = 0;
-    Object.entries(walletMap).forEach(([phone, amt]) => {
-      if (amt > maxAmount) {
-        maxAmount = amt;
-        topPhone = phone;
-      }
-    });
-    return { phone: topPhone, amount: maxAmount };
-  }, [dayTransactions]);
-
+  // Copy helper
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
@@ -180,7 +291,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
     setActiveModal('receipt');
   };
 
-  const handleDelete = async (tx) => {
+  const handleDeleteTx = async (tx) => {
     const isSale = tx.type === 'product_sale';
     const isPayment = tx.type === 'client_payment';
     const confirmed = await askConfirm({
@@ -200,58 +311,51 @@ export default function DailyLogView({ onNavigateToInbound }) {
     }
   };
 
+  const handleDeletePurchaseItem = async (p) => {
+    const confirmed = await askConfirm({
+      title: 'حذف فاتورة مشتريات',
+      message: `هل أنت متأكد من حذف فاتورة "${p.supplierName}" بقيمة ${formatCurrency(p.totalAmount)}؟`,
+      details: 'سيتم حذف الفاتورة وعكس تأثيرها المالي على الخزينة وحساب المورد.',
+      type: 'warning',
+      confirmText: 'نعم، احذف الفاتورة',
+      cancelText: 'إلغاء'
+    });
+    if (confirmed) {
+      deletePurchase(p.id);
+    }
+  };
+
   // Export Day to CSV with UTF-8 BOM for Arabic in Excel
   const handleExportCSV = () => {
-    if (dayTransactions.length === 0) {
+    if (unifiedTimelineItems.length === 0) {
       showToast('لا توجد عمليات لتصديرها في هذا اليوم', 'info');
       return;
     }
 
-    const headers = [
-      'التوقيت',
-      'نوع المعاملة',
-      'اسم العميل / الصنف',
-      'رقم المحفظة / تفاصيل المنتج',
-      'المبلغ (ج.م)',
-      'الليميت المتبقي / الكمية',
-      'رقم المحول إليه / اللون',
-      'كود العملية',
-      'الرسوم',
-      'الملاحظات'
-    ];
-
-    const rows = dayTransactions.map(t => {
-      let typeLabel = 'تحويل كاش (سحب)';
-      if (t.type === 'recharge') typeLabel = 'شحن وإيداع رصيد';
-      else if (t.type === 'client_payment') typeLabel = t.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من عميل';
-      else if (t.type === 'product_sale') typeLabel = 'مبيعات هواتف وأجهزة';
-
-      return [
-        `"${formatTimeArabic(t.date)}"`,
-        `"${typeLabel}"`,
-        `"${t.customerName || (t.type === 'product_sale' ? t.productName : '')}"`,
-        `"${t.type === 'product_sale' ? (t.productName || '') : `'${t.walletPhone || ''}`}"`,
-        t.amount,
-        t.type === 'product_sale' ? (t.quantity || 1) : (t.limitAfter !== undefined ? t.limitAfter : ''),
-        `"${t.type === 'product_sale' ? (t.variantColor || '') : `'${t.recipientPhone || ''}`}"`,
-        `"${t.transactionCode || ''}"`,
-        t.fee || 0,
-        `"${(t.notes || '').replace(/"/g, '""')}"`
-      ];
-    });
+    const headers = ['التوقيت', 'القسم / البند', 'البيان', 'الطرف المعني / العميل', 'الداخل (ج.م)', 'الخارج (ج.م)', 'الرسوم', 'الملاحظات'];
+    const rows = unifiedTimelineItems.map(item => [
+      `"${item.dateStr ? formatTimeArabic(item.dateStr) : '—'}"`,
+      `"${item.stream}"`,
+      `"${(item.title || '').replace(/"/g, '""')}"`,
+      `"${(item.party || '').replace(/"/g, '""')}"`,
+      item.isInflow ? item.amount : 0,
+      !item.isInflow ? item.amount : 0,
+      item.fee || 0,
+      `"${(item.notes || '').replace(/"/g, '""')}"`
+    ]);
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `سجل-فودافون-كاش-${selectedDate}.csv`;
+    a.download = `دفتر-اليومية-الشامل-${selectedDate}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('تم تصدير ملف إكسل لليوم بنجاح');
+    showToast('تم تصدير شيت اليومية الشامل بنجاح');
   };
 
-  // Closed/Ended shifts matching the selected date (by businessDate or closedAt date)
+  // Closed/Ended shifts matching the selected date
   const dayInboundShifts = useMemo(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_ARCHIVE);
@@ -269,7 +373,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
     }
   }, [selectedDate, inboundRefreshKey]);
 
-  // Check if there is an active ongoing shift session matching selectedDate
+  // Active inbound shift
   const activeInboundShift = useMemo(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_SHIFT);
@@ -312,23 +416,6 @@ export default function DailyLogView({ onNavigateToInbound }) {
     }
   }, [selectedDate, inboundRefreshKey]);
 
-  // Combined totals across all closed shifts on this date if multiple
-  const inboundDaySummary = useMemo(() => {
-    if (dayInboundShifts.length <= 1) return null;
-    const totalAmount = dayInboundShifts.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
-    const totalCommission = dayInboundShifts.reduce((sum, s) => sum + (Number(s.commissionValue) || 0), 0);
-    const totalNet = dayInboundShifts.reduce((sum, s) => sum + (Number(s.amountAfterCommission) || 0), 0);
-    const totalItemsCount = dayInboundShifts.reduce((sum, s) => sum + (Number(s.itemsCount) || (s.items ? s.items.length : 0)), 0);
-    return {
-      totalAmount,
-      totalCommission,
-      totalNet,
-      totalItemsCount,
-      shiftsCount: dayInboundShifts.length
-    };
-  }, [dayInboundShifts]);
-
-  // Helper to toggle accordion for shift items
   const toggleShiftItems = (shiftId) => {
     setExpandedShiftIds(prev => ({
       ...prev,
@@ -336,7 +423,6 @@ export default function DailyLogView({ onNavigateToInbound }) {
     }));
   };
 
-  // Helper to export closed inbound shift report to CSV (UTF-8 BOM for Arabic in Excel)
   const handleExportInboundShift = (shift) => {
     if (!shift || !shift.items || shift.items.length === 0) {
       showToast('لا توجد بنود لتصديرها في هذه الوردية', 'info');
@@ -351,22 +437,6 @@ export default function DailyLogView({ onNavigateToInbound }) {
       `"${item.date ? formatDateTimeArabic(item.date) : ''}"`
     ]);
 
-    rows.push([]);
-    rows.push([`تقرير وردية الوارد له ليوم: ${shift.businessDateLabel || selectedDate}`, '', '', '']);
-    rows.push([`فترة الوردية: من ${shift.startedAtTimeStr || '—'} إلى ${shift.endedAtTimeStr || '—'}`, '', '', '']);
-    rows.push(['إجمالي المبالغ المسجلة (قبل العمولة)', shift.totalAmount, '', '']);
-    rows.push([
-      `العمولة (${shift.commissionRate}${shift.commissionType === 'percentage' ? '%' : shift.commissionType === 'perThousand' ? ' لكل 1000' : ' ج.م'})`,
-      shift.commissionMode === 'deduct' ? -shift.commissionValue : shift.commissionValue,
-      shift.commissionMode === 'deduct' ? 'مخصومة من المبلغ' : 'مضافة للمبلغ',
-      ''
-    ]);
-    rows.push(['الصافي النهائي بعد العمولة (المطلوب)', shift.amountAfterCommission, '', '']);
-    if (shift.targetAmount) {
-      rows.push(['المستهدف المطلوب', shift.targetAmount, '', '']);
-      rows.push(['الفرق', shift.difference, '', '']);
-    }
-
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -378,56 +448,75 @@ export default function DailyLogView({ onNavigateToInbound }) {
     showToast('تم تصدير تقرير وردية الوارد له بنجاح');
   };
 
-  const isToday = selectedDate === todayStr;
-
   return (
     <div className="space-y-6">
       
-      {/* Date Navigation & Actions Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
+      {/* =========================================================================
+          1. Master Date Controller & Quick Actions Bar
+      ========================================================================= */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-6 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
         
-        {/* Top Header: Date description & Export/Print Actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 border border-red-100 dark:border-red-900/40">
-              <CalendarIcon className="w-5 h-5" />
+        {/* Top Header: Title, Date Label & Action Buttons */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-red-600 to-rose-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-red-600/25">
+              <CalendarIcon className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
-                  {formatDateArabic(selectedDate)}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white leading-tight">
+                  دفتر اليومية الشامل • {formatDateArabic(selectedDate)}
                 </h2>
                 {isToday ? (
-                  <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50">
-                    اليوم الحالي
+                  <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 flex items-center gap-1 shadow-2xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>اليوم الحالي</span>
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                    أرشيف محفوظات
+                  <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    أرشيف محفوظات تاريخ ({selectedDate})
                   </span>
                 )}
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 block mt-0.5">
-                {isToday ? 'سجل المبيعات والعمليات الجارية لليوم الحاضر' : `سجل مبيعات وعمليات يوم ${selectedDate}`}
-              </span>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                سجل متكامل يجمع رأس المال الافتتاحي، تحويلات الكاش، سدادات العملاء، المشتريات، مبيعات الأجهزة، وجرد الإقفال
+              </p>
             </div>
           </div>
 
-          {/* Export and Print Buttons */}
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          {/* Quick Master Actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setActiveModal('recordOpeningCapital')}
+              className="btn-interactive flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-black shadow-md shadow-amber-500/25 transition-all"
+              title="تسجيل وتثبيت رصيد بداية اليومية والافتتاح"
+            >
+              <Sun className="w-4 h-4 text-amber-200" />
+              <span>{dayOpening ? 'تعديل رصيد البداية' : '☀️ تسجيل رصيد بداية اليومية'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveModal('dailyAudit')}
+              className="btn-interactive flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-black shadow-md shadow-purple-600/25 transition-all"
+              title="جرد وإقفال اليومية ومطابقة العجز أو الزيادة"
+            >
+              <Moon className="w-4 h-4 text-purple-200" />
+              <span>{dayAudit ? 'عرض/تعديل الجرد' : '🌙 جرد وإقفال اليومية'}</span>
+            </button>
+
             <button
               onClick={handleExportCSV}
-              className="btn-interactive flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-xs"
+              className="btn-interactive flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-2xs"
               title="تصدير شيت إكسل لعمليات هذا اليوم"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>تصدير إكسل</span>
+              <span>إكسل</span>
             </button>
 
             <button
               onClick={() => window.print()}
-              className="btn-interactive flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-xs"
-              title="طباعة تقرير اليوم"
+              className="btn-interactive flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-2xs"
+              title="طباعة تقرير اليوم الشامل"
             >
               <Printer className="w-4 h-4 text-slate-600 dark:text-slate-300" />
               <span>طباعة</span>
@@ -435,43 +524,42 @@ export default function DailyLogView({ onNavigateToInbound }) {
           </div>
         </div>
 
-        {/* Bottom Controls: Date Stepper & Quick Presets */}
+        {/* Date Stepper & Presets */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           
-          {/* Stepper with single-icon date input */}
-          <div className="flex items-center gap-1.5">
+          {/* Stepper with date input */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => handleShiftDate(-1)}
-              className="btn-interactive flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200/80 dark:border-slate-700/80 transition-colors shadow-xs"
+              className="btn-interactive flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200/80 dark:border-slate-700/80 transition-colors shadow-2xs"
               title="اليوم السابق"
             >
               <ChevronRight className="w-4 h-4" />
-              <span className="hidden sm:inline">السابق</span>
+              <span className="hidden sm:inline">اليوم السابق</span>
             </button>
 
-            {/* Date Input with Chrome icon suppressed */}
             <div className="relative flex items-center">
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="pl-3 pr-9 py-2 text-xs sm:text-sm font-bold font-mono bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40 cursor-pointer shadow-xs [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                className="pl-3 pr-9 py-2 text-xs sm:text-sm font-bold font-mono bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-red-500/40 cursor-pointer shadow-2xs"
               />
               <CalendarIcon className="w-4 h-4 text-red-600 dark:text-red-400 absolute right-3 pointer-events-none" />
             </div>
 
             <button
               onClick={() => handleShiftDate(1)}
-              className="btn-interactive flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200/80 dark:border-slate-700/80 transition-colors shadow-xs"
+              className="btn-interactive flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200/80 dark:border-slate-700/80 transition-colors shadow-2xs"
               title="اليوم التالي"
             >
-              <span className="hidden sm:inline">التالي</span>
+              <span className="hidden sm:inline">اليوم التالي</span>
               <ChevronLeft className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Presets Segment */}
-          <div className="flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/90 p-1 rounded-xl self-start sm:self-auto border border-slate-200/60 dark:border-slate-700/60 shadow-xs">
+          {/* Quick Presets */}
+          <div className="flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/90 p-1 rounded-xl self-start sm:self-auto border border-slate-200/60 dark:border-slate-700/60 shadow-2xs">
             <button
               onClick={() => setPresetDay(0)}
               className={`btn-interactive px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
@@ -508,7 +596,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              قبل أمس
+              أول أمس
             </button>
           </div>
 
@@ -516,514 +604,310 @@ export default function DailyLogView({ onNavigateToInbound }) {
 
       </div>
 
-      {/* Daily KPI Statistics Overview */}
-      <div className={`grid gap-3 sm:gap-4 ${
-        daySalesTxs.length > 0 
-          ? 'grid-cols-2 lg:grid-cols-5' 
-          : 'grid-cols-2 md:grid-cols-4'
-      }`}>
+      {/* =========================================================================
+          2. Master Financial Position Cards (شريط اليومية المالي الشامل)
+      ========================================================================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Total Transferred Today */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium block mb-1">
-            إجمالي التحويلات
-          </span>
-          <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400">
-            {formatCurrency(dayTotalAmount)}
+        {/* Card 1: Opening Capital (رصيد بداية اليومية والافتتاح) */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-5 border border-amber-200/80 dark:border-amber-900/40 shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <Sun className="w-4 h-4 text-amber-500" />
+              <span>رصيد بداية اليومية (الافتتاح)</span>
+            </span>
+            {dayOpening ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                {dayOpening.isDerivedFromAudit ? 'منقول من أمس' : 'مثبت ومعتمد'}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                لم يسجل بعد
+              </span>
+            )}
           </div>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-            مخصومة مباشرة من الليميت
-          </span>
+
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+              {dayOpening ? formatCurrency(dayOpening.totalOpeningCash) : '—'}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-1 font-mono">
+              {dayOpening ? (
+                <>
+                  <span>درج: {Number(dayOpening.drawerCash || 0).toLocaleString()}</span>
+                  <span>•</span>
+                  <span>VF: {Number(dayOpening.vodafoneCash || 0).toLocaleString()}</span>
+                  <span>•</span>
+                  <span>IP: {Number(dayOpening.instapay || 0).toLocaleString()}</span>
+                </>
+              ) : (
+                <span>اضغط بالزر بالأسفل لتثبيت رأس مال هذا اليوم</span>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <button
+              onClick={() => setActiveModal('recordOpeningCapital')}
+              className="text-xs font-bold text-amber-600 hover:text-amber-700 dark:text-amber-400 flex items-center gap-1"
+            >
+              <span>{dayOpening ? 'تعديل الافتتاح' : 'تسجيل الافتتاح الآن'}</span>
+              <ArrowLeft className="w-3 h-3" />
+            </button>
+            {dayOpening?.recordedBy && (
+              <span className="text-[10px] text-slate-400 truncate max-w-[120px]">
+                بواسطة: {dayOpening.recordedBy.split(' ')[0]}
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Transactions Count */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium block mb-1">
-            عدد العمليات
-          </span>
-          <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-            {dayTxCount}{' '}
-            <span className="text-xs font-normal text-slate-400">عملية</span>
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-            متوسط التحويل: {formatCurrency(dayAverage)}
-          </span>
-        </div>
-
-        {/* Device & Phone Sales (when present) */}
-        {daySalesTxs.length > 0 && (
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-purple-200/90 dark:border-purple-900/50 shadow-sm relative overflow-hidden">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-purple-600 dark:text-purple-400 font-bold block">
-                مبيعات الأجهزة والهواتف
-              </span>
-              <span className="p-1 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
-                <ShoppingBag className="w-3.5 h-3.5" />
-              </span>
-            </div>
-            <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400">
-              {formatCurrency(dayTotalSalesAmount)}
-            </div>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-              {daySalesTxs.length} عملية بيع من المخزون
+        {/* Card 2: Cash Inflow (إجمالي الداخل اليوم) */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-5 border border-emerald-200/80 dark:border-emerald-900/40 shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+              <ArrowDownLeft className="w-4 h-4 text-emerald-500" />
+              <span>إجمالي الداخل لليومية (Inflow)</span>
+            </span>
+            <span className="p-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600">
+              <TrendingUp className="w-3.5 h-3.5" />
             </span>
           </div>
-        )}
 
-        {/* Fees Collected */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium block mb-1">
-            إجمالي العمولات
-          </span>
-          <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">
-            {formatCurrency(dayTotalFees)}
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+              + {formatCurrency(dayTotalInflow)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-1 font-mono">
+              <span>سدادات: {dayTotalCollections.toLocaleString()}</span>
+              <span>•</span>
+              <span>مبيعات: {dayTotalSalesAmount.toLocaleString()}</span>
+              <span>•</span>
+              <span>شحن: {dayTotalRecharges.toLocaleString()}</span>
+            </div>
           </div>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-            رسوم المعاملات المسجلة
-          </span>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+            <span>عمولات محققة:</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+              +{formatCurrency(dayTotalFees)}
+            </span>
+          </div>
         </div>
 
-        {/* Most Active Wallet */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs text-slate-400 font-medium block mb-1">
-            أعلى رقم نشاطاً
-          </span>
-          <div className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-white truncate" dir="ltr">
-            {topWallet ? formatPhone(topWallet.phone) : '—'}
+        {/* Card 3: Cash Outflow (إجمالي الخارج اليوم) */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-5 border border-rose-200/80 dark:border-rose-900/40 shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
+              <ArrowUpRight className="w-4 h-4 text-rose-500" />
+              <span>إجمالي الخارج من اليومية (Outflow)</span>
+            </span>
+            <span className="p-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600">
+              <TrendingDown className="w-3.5 h-3.5" />
+            </span>
           </div>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-            {topWallet ? `حول: ${formatCurrency(topWallet.amount)}` : 'لا توجد بيانات'}
-          </span>
+
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+              - {formatCurrency(dayTotalOutflow)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-1 font-mono">
+              <span>تحويلات: {dayTotalTransfers.toLocaleString()}</span>
+              <span>•</span>
+              <span>مشتريات: {dayTotalPurchasesPaid.toLocaleString()}</span>
+              {dayTotalCreditorPayouts > 0 && <span>• دائن: {dayTotalCreditorPayouts.toLocaleString()}</span>}
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+            <span>صافي التدفق اليومي:</span>
+            <span className={`font-black font-mono ${dayNetFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {dayNetFlow >= 0 ? `+${formatCurrency(dayNetFlow)}` : formatCurrency(dayNetFlow)}
+            </span>
+          </div>
+        </div>
+
+        {/* Card 4: Closing Balance / Daily Audit (رصيد نهاية اليوم وجرد اليومية) */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-5 border border-purple-200/80 dark:border-purple-900/40 shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-purple-700 dark:text-purple-400 flex items-center gap-1.5">
+              <Moon className="w-4 h-4 text-purple-500" />
+              <span>جرد وإقفال نهاية اليومية</span>
+            </span>
+            {dayAudit ? (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                dayAudit.difference === 0 
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                  : dayAudit.difference > 0
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+              }`}>
+                {dayAudit.difference === 0 ? 'مطابق تماماً 🟢' : dayAudit.difference > 0 ? `فائض: +${dayAudit.difference.toLocaleString()}` : `عجز: ${dayAudit.difference.toLocaleString()}`}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                تقدير دفتري
+              </span>
+            )}
+          </div>
+
+          <div>
+            <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 font-mono">
+              {formatCurrency(dayAudit ? dayAudit.actualTotal : theoreticalClosing)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1 truncate">
+              {dayAudit 
+                ? `جرد فعلي معتمد • القائم بالجرد: ${dayAudit.auditorName || 'المسؤول'}`
+                : `المتوقع دفترياً (بداية + داخل - خارج)`}
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <button
+              onClick={() => {
+                if (dayAudit) {
+                  setModalData(dayAudit);
+                  setActiveModal('dailyAuditDetails');
+                } else {
+                  setActiveModal('dailyAudit');
+                }
+              }}
+              className="text-xs font-bold text-purple-600 hover:text-purple-700 dark:text-purple-400 flex items-center gap-1"
+            >
+              <span>{dayAudit ? 'عرض تقرير الجرد التفصيلي' : 'إجراء جرد الآن'}</span>
+              <ArrowLeft className="w-3 h-3" />
+            </button>
+            <span className="text-[10px] text-slate-400">
+              {dayAudit ? 'معتمد' : 'لم يقفل بعد'}
+            </span>
+          </div>
         </div>
 
       </div>
 
-      {/* ========================================================= */}
-      {/* 2.5 تقرير وردية الوارد له لليوم (مرتبط بالتقويم وتاريخ اليوم) */}
-      {/* ========================================================= */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
-        
-        {/* Section Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-blue-50/60 via-indigo-50/30 to-transparent dark:from-blue-950/25 dark:via-indigo-950/15 dark:to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/25 shrink-0">
-              <ArrowDownToLine className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                  تقرير وردية الوارد (له) لليوم
-                </h3>
-                {dayInboundShifts.length > 0 ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 flex items-center gap-1 shadow-2xs">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>وردية مقفلة ومؤرشفة {dayInboundShifts.length > 1 ? `(${dayInboundShifts.length} ورديات)` : ''}</span>
-                  </span>
-                ) : activeInboundShift ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50 flex items-center gap-1 shadow-2xs">
-                    <Clock className="w-3.5 h-3.5 animate-pulse text-amber-600" />
-                    <span>وردية جارية (قيد التسجيل)</span>
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                    لا توجد وردية مقفلة
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                كشف وتفاصيل المبالغ المحسوبة والعمولة عند إغلاق اليوم ({formatDateArabic(selectedDate)})
-              </p>
-            </div>
-          </div>
+      {/* =========================================================================
+          3. Daily Journal Streams Selector (أقسام دفتر اليومية)
+      ========================================================================= */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-2 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center gap-1.5 overflow-x-auto">
+        <button
+          onClick={() => setActiveDailyStream('timeline')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'timeline'
+              ? 'bg-slate-900 text-white dark:bg-red-600 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>🕒 شريط الوقت الموحد</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
+            {unifiedTimelineItems.length}
+          </span>
+        </button>
 
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            {onNavigateToInbound && (
-              <button
-                onClick={onNavigateToInbound}
-                className="btn-interactive flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-200 dark:border-blue-800 shadow-2xs transition-colors"
-                title="الانتقال إلى حاسبة الوارد له"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>حاسبة الوارد له</span>
-              </button>
-            )}
+        <button
+          onClick={() => setActiveDailyStream('transfers')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'transfers'
+              ? 'bg-slate-900 text-white dark:bg-red-600 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Send className="w-4 h-4 rotate-180" />
+          <span>💸 تحويلات الكاش</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
+            {dayTransferTxs.length}
+          </span>
+        </button>
 
-            <button
-              onClick={() => setIsInboundSectionOpen(!isInboundSectionOpen)}
-              className="btn-interactive p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors"
-              title={isInboundSectionOpen ? 'طي سكشن الوارد له' : 'فتح سكشن الوارد له'}
-            >
-              {isInboundSectionOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveDailyStream('collections')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'collections'
+              ? 'bg-slate-900 text-white dark:bg-red-600 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Coins className="w-4 h-4 text-emerald-400" />
+          <span>👥 تحصيلات وسدادات العملاء</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
+            {dayPaymentTxs.length}
+          </span>
+        </button>
 
-        {/* Section Body (Visible when open) */}
-        {isInboundSectionOpen && (
-          <div className="p-4 sm:p-5 space-y-5">
+        <button
+          onClick={() => setActiveDailyStream('purchases')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'purchases'
+              ? 'bg-slate-900 text-white dark:bg-red-600 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <ShoppingBag className="w-4 h-4 text-amber-400" />
+          <span>🛒 المشتريات ومصروفات المحل</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
+            {dayPurchases.length}
+          </span>
+        </button>
 
-            {/* Active Ongoing Shift Notice (if shift is open right now) */}
-            {activeInboundShift && (
-              <div className="p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/90 dark:border-amber-900/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5 border border-amber-300/40">
-                    <Clock className="w-5 h-5 animate-pulse" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200 flex items-center gap-2">
-                      <span>وردية اليوم مفتوحة حالياً وقيد التسجيل</span>
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
-                        بدأت {activeInboundShift.startedAtTimeStr || 'اليوم'}
-                      </span>
-                    </h4>
-                    <p className="text-xs text-amber-700 dark:text-amber-300/90 mt-0.5">
-                      تم تسجيل <strong className="font-mono">{activeInboundShift.itemsCount}</strong> بند بإجمالي{' '}
-                      <strong className="font-mono text-emerald-600 dark:text-emerald-400">{formatCurrency(activeInboundShift.totalAmount)}</strong>{' '}
-                      (صافي مقدر: <strong className="font-mono">{formatCurrency(activeInboundShift.amountAfterCommission)}</strong>).{' '}
-                      عند انتهاء اليوم والضغط على "إنهاء اليوم وتصفير الكشف"، سيتم تثبيته كوردية رسمية هنا.
-                    </p>
-                  </div>
-                </div>
+        <button
+          onClick={() => setActiveDailyStream('sales')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'sales'
+              ? 'bg-slate-900 text-white dark:bg-red-600 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Smartphone className="w-4 h-4 text-purple-400" />
+          <span>📱 مبيعات الأجهزة والمخزون</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
+            {daySalesTxs.length}
+          </span>
+        </button>
 
-                {onNavigateToInbound && (
-                  <button
-                    onClick={onNavigateToInbound}
-                    className="btn-interactive self-start md:self-auto shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors"
-                  >
-                    <span>إدارة الوردية / إنهاء اليوم</span>
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            )}
+        <button
+          onClick={() => setActiveDailyStream('inbound')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'inbound'
+              ? 'bg-slate-900 text-white dark:bg-red-600 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <ArrowDownToLine className="w-4 h-4 text-blue-400" />
+          <span>📥 ورديات الوارد والعمولة (له)</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
+            {dayInboundShifts.length + (activeInboundShift ? 1 : 0)}
+          </span>
+        </button>
 
-            {/* Aggregated Daily Summary if multiple shifts ended on this day */}
-            {inboundDaySummary && (
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-blue-600" />
-                    <span>إجمالي كل ورديات اليوم ({inboundDaySummary.shiftsCount} ورديات مغلقة ومؤرشفة)</span>
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-500">
-                    {inboundDaySummary.totalItemsCount} بند إجمالي
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                    <span className="text-[11px] text-slate-400 block mb-0.5">إجمالي الوارد لكافة الورديات</span>
-                    <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
-                      {formatCurrency(inboundDaySummary.totalAmount)}
-                    </span>
-                  </div>
-                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                    <span className="text-[11px] text-slate-400 block mb-0.5">إجمالي العمولات المحسوبة</span>
-                    <span className="text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
-                      {formatCurrency(inboundDaySummary.totalCommission)}
-                    </span>
-                  </div>
-                  <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
-                    <span className="text-[11px] text-slate-400 block mb-0.5">إجمالي الصافي النهائي</span>
-                    <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                      {formatCurrency(inboundDaySummary.totalNet)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
+        <button
+          onClick={() => setActiveDailyStream('treasury')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'treasury'
+              ? 'bg-slate-900 text-white dark:bg-red-600 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Building2 className="w-4 h-4 text-teal-400" />
+          <span>🏦 حركات الخزينة ورأس المال</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
+            {dayTreasuryMovements.length}
+          </span>
+        </button>
 
-            {/* List of Closed Shifts for This Day */}
-            {dayInboundShifts.length > 0 ? (
-              <div className="space-y-4">
-                {dayInboundShifts.map((shift, shiftIndex) => {
-                  const isItemsExpanded = expandedShiftIds[shift.id] !== false; // Default expanded
-                  const shiftSearch = inboundItemSearch[shift.id] || '';
-                  
-                  // Filter items if searching
-                  const shiftItems = shift.items || [];
-                  const filteredItems = shiftSearch.trim()
-                    ? shiftItems.filter(it => 
-                        (it.label && it.label.toLowerCase().includes(shiftSearch.toLowerCase().trim())) ||
-                        String(it.amount).includes(shiftSearch.trim())
-                      )
-                    : shiftItems;
-
-                  return (
-                    <div 
-                      key={shift.id || shiftIndex} 
-                      className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 overflow-hidden space-y-4 p-4 sm:p-5 transition-all"
-                    >
-                      
-                      {/* Shift Top Bar: Info, Badges, Export & Print */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                          <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50">
-                            {dayInboundShifts.length > 1 ? `وردية #${shiftIndex + 1}` : 'الوردية الرسمية المعتمدة'}
-                          </span>
-
-                          {/* Time Span Badge */}
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-2xs font-mono">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            <span>من {shift.startedAtTimeStr || '—'}</span>
-                            <span className="text-slate-400">إلى</span>
-                            <span>{shift.endedAtTimeStr || '—'}</span>
-                          </span>
-
-                          {/* Past Midnight End Badge */}
-                          {shift.isPastMidnightEnd && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-purple-100 text-purple-900 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-900/50">
-                              <Moon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                              <span>أغلقت بعد منتصف الليل ({shift.endedAtTimeStr}) ومحسوبة لليوم</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Shift Actions */}
-                        <div className="flex items-center gap-2 self-start sm:self-auto">
-                          <button
-                            onClick={() => handleExportInboundShift(shift)}
-                            className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-2xs"
-                            title="تصدير كشف الوردية كملف إكسل"
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>تصدير إكسل</span>
-                          </button>
-
-                          <button
-                            onClick={() => window.print()}
-                            className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-2xs"
-                            title="طباعة تقرير الوردية"
-                          >
-                            <Printer className="w-3.5 h-3.5 text-slate-500" />
-                            <span>طباعة</span>
-                          </button>
-
-                          <button
-                            onClick={() => toggleShiftItems(shift.id)}
-                            className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-200 dark:border-blue-800/80 shadow-2xs"
-                            title={isItemsExpanded ? 'إخفاء جدول البنود' : 'عرض جدول البنود'}
-                          >
-                            <span>البنود ({shiftItems.length})</span>
-                            {isItemsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* KPI Summary Cards Grid for this Shift */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-3.5">
-                        
-                        {/* 1. Total Inbound Amount */}
-                        <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-                          <span className="text-[11px] sm:text-xs text-slate-400 font-bold block mb-1">
-                            إجمالي الوارد (له)
-                          </span>
-                          <div className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
-                            {formatCurrency(shift.totalAmount)}
-                          </div>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-                            المجموع قبل العمولة ({shift.itemsCount || shiftItems.length} بند)
-                          </span>
-                        </div>
-
-                        {/* 2. Commission Calculated */}
-                        <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-                          <span className="text-[11px] sm:text-xs text-slate-400 font-bold block mb-1">
-                            العمولة المحسوبة
-                          </span>
-                          <div className={`text-lg sm:text-2xl font-black font-mono ${
-                            shift.commissionMode === 'add' 
-                              ? 'text-emerald-600 dark:text-emerald-400' 
-                              : 'text-rose-600 dark:text-rose-400'
-                          }`}>
-                            {shift.commissionMode === 'add' ? '+ ' : '- '}
-                            {formatCurrency(shift.commissionValue)}
-                          </div>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block font-mono">
-                            {shift.commissionRate}
-                            {shift.commissionType === 'percentage' 
-                              ? '%' 
-                              : shift.commissionType === 'perThousand' 
-                              ? ' لكل 1000' 
-                              : ' ج.م'} ({shift.commissionMode === 'add' ? 'إضافة' : 'خصم'})
-                          </span>
-                        </div>
-
-                        {/* 3. Net Amount After Commission */}
-                        <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-emerald-200/90 dark:border-emerald-900/60 shadow-2xs bg-gradient-to-br from-emerald-50/20 to-transparent dark:from-emerald-950/10">
-                          <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-emerald-400 font-bold block mb-1">
-                            الصافي المطلوب (بعد العمولة)
-                          </span>
-                          <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                            {formatCurrency(shift.amountAfterCommission)}
-                          </div>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-                            المبلغ النهائي المستحق عند التصفية
-                          </span>
-                        </div>
-
-                        {/* 4. Target & Difference or Shift Timing */}
-                        {shift.targetAmount && Number(shift.targetAmount) > 0 ? (
-                          <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-                            <span className="text-[11px] sm:text-xs text-slate-400 font-bold block mb-1">
-                              المستهدف والفرق
-                            </span>
-                            <div className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-200 font-mono">
-                              {formatCurrency(shift.targetAmount)}
-                            </div>
-                            <span className={`text-[11px] font-bold mt-1 block font-mono ${
-                              shift.difference > 0 
-                                ? 'text-amber-600 dark:text-amber-400' 
-                                : shift.difference < 0 
-                                ? 'text-blue-600 dark:text-blue-400' 
-                                : 'text-emerald-600 dark:text-emerald-400'
-                            }`}>
-                              {shift.difference > 0 
-                                ? `متبقي عجز: ${formatCurrency(shift.difference)}` 
-                                : shift.difference < 0 
-                                ? `زيادة: ${formatCurrency(Math.abs(shift.difference))}` 
-                                : 'مطابق تماماً'}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-                            <span className="text-[11px] sm:text-xs text-slate-400 font-bold block mb-1">
-                              حالة وإغلاق الوردية
-                            </span>
-                            <div className="text-base sm:text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
-                              {shift.endedAtTimeStr || 'مقفلة'}
-                            </div>
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-                              تم الأرشفة والتصفير بنجاح
-                            </span>
-                          </div>
-                        )}
-
-                      </div>
-
-                      {/* Collapsible Table of Inbound Items */}
-                      {isItemsExpanded && (
-                        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xs">
-                          
-                          {/* Inner Table Header with Search */}
-                          <div className="p-3 sm:p-3.5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/70 dark:bg-slate-800/40">
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-slate-400" />
-                              <h5 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-200">
-                                بيان البنود والمبالغ الواردة ({filteredItems.length} من {shiftItems.length})
-                              </h5>
-                            </div>
-
-                            {shiftItems.length > 5 && (
-                              <div className="relative w-full sm:w-64">
-                                <Search className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                <input
-                                  type="text"
-                                  placeholder="بحث في بنود الوردية..."
-                                  value={shiftSearch}
-                                  onChange={(e) => setInboundItemSearch(prev => ({ ...prev, [shift.id]: e.target.value }))}
-                                  className="w-full pl-3 pr-8 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                />
-                                {shiftSearch && (
-                                  <button
-                                    onClick={() => setInboundItemSearch(prev => ({ ...prev, [shift.id]: '' }))}
-                                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-slate-600"
-                                  >
-                                    مسح
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Items Table */}
-                          {filteredItems.length === 0 ? (
-                            <div className="py-8 text-center text-xs text-slate-400">
-                              {shiftSearch ? 'لا توجد بنود تطابق نص البحث' : 'لا توجد بنود مسجلة في هذه الوردية'}
-                            </div>
-                          ) : (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-right text-xs">
-                                <thead>
-                                  <tr className="bg-slate-50/50 dark:bg-slate-800/20 text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                                    <th className="py-2.5 px-3 w-12 text-center font-bold">#</th>
-                                    <th className="py-2.5 px-3 font-bold">البيان / ملاحظة العملية</th>
-                                    <th className="py-2.5 px-3 font-bold">المبلغ الوارد (ج.م)</th>
-                                    <th className="py-2.5 px-3 font-bold">توقيت التسجيل</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                                  {filteredItems.map((item, itemIdx) => (
-                                    <tr 
-                                      key={item.id || itemIdx}
-                                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-                                    >
-                                      <td className="py-2.5 px-3 text-center text-slate-400 font-mono">
-                                        {itemIdx + 1}
-                                      </td>
-                                      <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">
-                                        {item.label ? (
-                                          <span>{item.label}</span>
-                                        ) : (
-                                          <span className="text-slate-400 font-normal italic">وارد بدون بيان</span>
-                                        )}
-                                      </td>
-                                      <td className="py-2.5 px-3 font-black text-slate-900 dark:text-white font-mono text-sm">
-                                        {formatCurrency(item.amount)}
-                                      </td>
-                                      <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400 font-mono">
-                                        {item.date ? formatTimeArabic(item.date) : '—'}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                                <tfoot>
-                                  <tr className="bg-slate-50 dark:bg-slate-800/60 font-bold border-t border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
-                                    <td colSpan={2} className="py-2.5 px-3 text-left">
-                                      المجموع الإجمالي لبنود الوردية:
-                                    </td>
-                                    <td className="py-2.5 px-3 font-black font-mono text-sm">
-                                      {formatCurrency(shift.totalAmount)}
-                                    </td>
-                                    <td className="py-2.5 px-3 text-emerald-600 dark:text-emerald-400 font-mono">
-                                      الصافي: {formatCurrency(shift.amountAfterCommission)}
-                                    </td>
-                                  </tr>
-                                </tfoot>
-                              </table>
-                            </div>
-                          )}
-
-                        </div>
-                      )}
-
-                    </div>
-                  );
-                })}
-              </div>
-            ) : !activeInboundShift ? (
-              <div className="py-10 text-center px-4 bg-slate-50/60 dark:bg-slate-800/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
-                <ArrowDownToLine className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2.5" />
-                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  لا توجد وردية وارد له مقفلة مسجلة لهذا اليوم ({formatDateArabic(selectedDate)})
-                </h4>
-                <p className="text-xs text-slate-400 max-w-md mx-auto mb-3">
-                  يتم حفظ وتثبيت التقرير تلقائياً فور الضغط على "إنهاء اليوم وتصفير الكشف" في صفحة الوارد له، ويكون مرتبطاً باليوم المختار في التقويم.
-                </p>
-                {onNavigateToInbound && (
-                  <button
-                    onClick={onNavigateToInbound}
-                    className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>فتح حاسبة الوارد له</span>
-                  </button>
-                )}
-              </div>
-            ) : null}
-
-          </div>
-        )}
-
+        <button
+          onClick={() => setActiveDailyStream('audit')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'audit'
+              ? 'bg-slate-900 text-white dark:bg-red-600 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <FileCheck className="w-4 h-4 text-purple-400" />
+          <span>📋 جرد وإقفال اليومية</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${dayAudit ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700'}`}>
+            {dayAudit ? 'معتمد' : 'معلق'}
+          </span>
+        </button>
       </div>
 
       {/* Search within Day */}
@@ -1031,10 +915,10 @@ export default function DailyLogView({ onNavigateToInbound }) {
         <Search className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
-          placeholder="بحث في معاملات هذا اليوم (برقم المستلم، رقم المحفظة، اسم العميل، كود المعاملة)..."
+          placeholder="بحث شامل في أحداث هذا اليوم (بالعميل، المورد، رقم التليفون، الصنف، كود العملية، الملاحظات)..."
           value={searchDaily}
           onChange={(e) => setSearchDaily(e.target.value)}
-          className="w-full pl-4 pr-10 py-3 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/40 shadow-sm"
+          className="w-full pl-4 pr-10 py-3 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-red-500/40 shadow-xs"
         />
         {searchDaily && (
           <button
@@ -1046,429 +930,677 @@ export default function DailyLogView({ onNavigateToInbound }) {
         )}
       </div>
 
-      {/* Transactions Table & Mobile Cards */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        
-        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center justify-between sm:justify-start gap-2.5">
-            <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
-              سجل المبيعات والعمليات التفصيلي
-            </h3>
-            <span className="px-2.5 py-0.5 text-xs font-bold font-mono rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shrink-0">
-              {filteredDayTransactions.length} عملية
+      {/* =========================================================================
+          4. Stream Content Presentation
+      ========================================================================= */}
+
+      {/* STREAM A: UNIFIED TIMELINE (شريط الوقت الموحد) */}
+      {activeDailyStream === 'timeline' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Clock className="w-5 h-5 text-red-600" />
+              <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
+                شريط الوقت الموحد لكل حركات وأحداث اليوم ({filteredTimelineItems.length})
+              </h3>
+            </div>
+            <span className="text-xs text-slate-400">
+              تسلسل زمني لحظي بالدقائق والثواني
             </span>
           </div>
 
-          <span className="text-[11px] sm:text-xs text-slate-400 dark:text-slate-500">
-            يتم خصم التحويل مباشرة وتحديث المتبقي
-          </span>
-        </div>
+          {filteredTimelineItems.length === 0 ? (
+            <div className="py-16 text-center px-4">
+              <Clock className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+              <h4 className="text-base font-bold text-slate-700 dark:text-slate-300 mb-1">
+                لا توجد حركات مسجلة في هذا اليوم
+              </h4>
+              <p className="text-xs sm:text-sm text-slate-400 max-w-sm mx-auto">
+                {searchDaily ? 'لا توجد نتائج تطابق نص البحث.' : 'ابدأ اليوم بإجراء تحويل أو تسجيل مشتريات أو تحصيل.'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {paginatedTimeline.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-4 sm:p-5 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-start gap-3.5">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+                      item.stream === 'purchases'
+                        ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600'
+                        : item.stream === 'sales'
+                        ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-600'
+                        : item.stream === 'collections'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600'
+                        : item.stream === 'treasury'
+                        ? 'bg-teal-100 dark:bg-teal-950/60 text-teal-600'
+                        : 'bg-red-100 dark:bg-red-950/60 text-red-600'
+                    }`}>
+                      {item.stream === 'purchases' ? (
+                        <ShoppingBag className="w-5 h-5" />
+                      ) : item.stream === 'sales' ? (
+                        <Smartphone className="w-5 h-5" />
+                      ) : item.stream === 'collections' ? (
+                        <Coins className="w-5 h-5" />
+                      ) : item.stream === 'treasury' ? (
+                        <Building2 className="w-5 h-5" />
+                      ) : (
+                        <Send className="w-5 h-5 rotate-180" />
+                      )}
+                    </div>
 
-        {filteredDayTransactions.length === 0 ? (
-          <div className="py-16 text-center px-4">
-            <Clock className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-            <h4 className="text-base font-bold text-slate-700 dark:text-slate-300 mb-1">
-              لا توجد عمليات مسجلة في هذا اليوم
-            </h4>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-sm mx-auto">
-              {searchDaily 
-                ? 'لا توجد نتائج تطابق نص البحث، جرب البحث بكلمات أخرى.'
-                : 'يمكنك تسجيل تحويلة جديدة بالضغط على زر "تحويل جديد" بالأعلى.'}
-            </p>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-slate-900 dark:text-white text-sm">
+                          {item.title}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          item.isInflow 
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                        }`}>
+                          {item.isInflow ? 'داخل للمحل (+)' : 'خارج من المحل (-)'}
+                        </span>
+                      </div>
+
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-2">
+                        <span>{item.dateStr ? formatTimeArabic(item.dateStr) : '—'}</span>
+                        {item.party && <span>• {item.party}</span>}
+                        {item.phone && <span className="font-mono" dir="ltr">{formatPhone(item.phone)}</span>}
+                        {item.notes && <span className="italic text-slate-400">({item.notes})</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-3 self-end sm:self-auto">
+                    <div className="text-right">
+                      <div className={`text-base sm:text-lg font-black font-mono ${
+                        item.isInflow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                      }`}>
+                        {item.isInflow ? '+' : '-'} {formatCurrency(item.amount)}
+                      </div>
+                      {item.fee > 0 && (
+                        <div className="text-[10px] text-emerald-600 font-bold">
+                          عمولة: +{formatCurrency(item.fee)}
+                        </div>
+                      )}
+                    </div>
+
+                    {item.raw && item.stream === 'transfers' && (
+                      <button
+                        onClick={() => handlePrintReceipt(item.raw)}
+                        className="p-2 text-slate-400 hover:text-red-600 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+                        title="طباعة إيصال"
+                      >
+                        <Receipt className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Timeline Pagination */}
+          {filteredTimelineItems.length > ITEMS_PER_PAGE && (
+            <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                عرض {(safeCurrentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(filteredTimelineItems.length, safeCurrentPage * ITEMS_PER_PAGE)} من إجمالي {filteredTimelineItems.length} حركة
+              </div>
+              <div className="flex items-center gap-1.5" dir="rtl">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={safeCurrentPage === 1}
+                  className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-40"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                  <span>السابق</span>
+                </button>
+                <span className="text-xs font-mono font-bold px-2">
+                  {safeCurrentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={safeCurrentPage === totalPages}
+                  className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold disabled:opacity-40"
+                >
+                  <span>التالي</span>
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STREAM B: TRANSFERS (تحويلات الكاش) */}
+      {activeDailyStream === 'transfers' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Send className="w-5 h-5 text-red-600 rotate-180" />
+              <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
+                سجل تحويلات الكاش التفصيلي ({dayTransferTxs.length})
+              </h3>
+            </div>
+            <span className="text-xs font-bold text-rose-600 font-mono">
+              إجمالي التحويل: {formatCurrency(dayTotalTransfers)}
+            </span>
           </div>
-        ) : (
-          <div>
-            {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto">
+
+          {dayTransferTxs.length === 0 ? (
+            <div className="py-16 text-center px-4">
+              <Send className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3 rotate-180" />
+              <h4 className="text-base font-bold text-slate-700 dark:text-slate-300">
+                لا توجد تحويلات كاش مسجلة في هذا اليوم
+              </h4>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
               <table className="w-full text-right border-collapse text-sm">
                 <thead>
-                  <tr className="bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs font-bold border-b border-slate-200 dark:border-slate-800">
-                    <th className="py-3.5 px-4">التوقيت</th>
-                    <th className="py-3.5 px-4">المحفظة والعميل (الراسل)</th>
-                    <th className="py-3.5 px-4">المبلغ المخصوم</th>
-                    <th className="py-3.5 px-4">الليميت المتبقي</th>
-                    <th className="py-3.5 px-4">رقم المحول إليه (المستلم)</th>
-                    <th className="py-3.5 px-4">كود العملية</th>
-                    <th className="py-3.5 px-4">الرسوم والملاحظات</th>
-                    <th className="py-3.5 px-4 text-center">إجراءات</th>
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 text-xs font-bold border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-3 px-4">التوقيت</th>
+                    <th className="py-3 px-4">العميل والمحفظة الراسلة</th>
+                    <th className="py-3 px-4">المبلغ المخصوم</th>
+                    <th className="py-3 px-4">المحول إليه</th>
+                    <th className="py-3 px-4">الليميت المتبقي</th>
+                    <th className="py-3 px-4">كود العملية</th>
+                    <th className="py-3 px-4">العمولة</th>
+                    <th className="py-3 px-4 text-center">إجراءات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {paginatedTransactions.map((tx) => (
-                    <tr 
-                      key={tx.id} 
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group"
-                    >
-                      {/* Time */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-bold text-slate-800 dark:text-slate-200">
-                          {formatTimeArabic(tx.date)}
-                        </span>
+                  {dayTransferTxs.map(tx => (
+                    <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4 font-bold text-xs">{formatTimeArabic(tx.date)}</td>
+                      <td className="py-3 px-4">
+                        <span className="font-bold block text-slate-900 dark:text-white">{tx.customerName}</span>
+                        <span className="text-xs font-mono text-slate-400" dir="ltr">{formatPhone(tx.walletPhone)}</span>
                       </td>
-
-                      {/* Sender Wallet & Client */}
-                      <td className="py-3.5 px-4">
-                        {tx.type === 'product_sale' ? (
-                          <div>
-                            <span className="font-bold text-slate-900 dark:text-white block">
-                              {tx.customerName || 'عميل نقدي'}
-                            </span>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-600 dark:text-purple-400">
-                              <Smartphone className="w-3 h-3 shrink-0" />
-                              {tx.productName}
-                            </span>
-                          </div>
-                        ) : (
-                          <div>
-                            <span className="font-bold text-slate-900 dark:text-white block">
-                              {tx.customerName}
-                            </span>
-                            <span className="text-xs font-mono text-slate-500 dark:text-slate-400" dir="ltr">
-                              {formatPhone(tx.walletPhone)}
-                            </span>
-                            {tx.walletLabel && (
-                              <span className="text-[10px] text-slate-400 block">
-                                ({tx.walletLabel})
-                              </span>
-                            )}
-                          </div>
-                        )}
+                      <td className="py-3 px-4 font-black font-mono text-rose-600 text-sm">
+                        {formatCurrency(tx.amount)}
                       </td>
-
-                      {/* Transferred Amount */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {tx.type === 'recharge' ? (
-                          <span className="font-black text-blue-600 dark:text-blue-400 text-base font-mono">
-                            + {formatCurrency(tx.amount)}
-                          </span>
-                        ) : tx.type === 'client_payment' ? (
-                          <span className={`font-black text-base font-mono ${
-                            tx.isCreditorPayout ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
-                          }`}>
-                            {tx.isCreditorPayout ? '- ' : '+ '}{formatCurrency(tx.amount)} {tx.isCreditorPayout ? '(صرف لدائن)' : '(سداد)'}
-                          </span>
-                        ) : tx.type === 'product_sale' ? (
-                          <span className="font-black text-emerald-600 dark:text-emerald-400 text-base font-mono">
-                            + {formatCurrency(tx.amount)}
-                          </span>
-                        ) : (
-                          <span className="font-black text-rose-600 dark:text-rose-400 text-base font-mono">
-                            - {formatCurrency(tx.amount)}
-                          </span>
-                        )}
+                      <td className="py-3 px-4 font-mono text-xs" dir="ltr">
+                        {formatPhone(tx.recipientPhone) || '—'}
                       </td>
-
-                      {/* Remaining Limit After Transfer */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {tx.type === 'client_payment' || tx.type === 'product_sale' ? (
-                          <span className="text-xs text-slate-400 font-bold">—</span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-mono">
-                            {formatCurrency(tx.limitAfter)}
-                          </span>
-                        )}
+                      <td className="py-3 px-4 font-mono text-xs text-slate-500">
+                        {tx.limitAfter !== undefined ? formatCurrency(tx.limitAfter) : '—'}
                       </td>
-
-                      {/* Recipient Phone */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {tx.type === 'recharge' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50">
-                            شحن وإيداع رصيد
-                          </span>
-                        ) : tx.type === 'client_payment' ? (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                            tx.isCreditorPayout
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-900/50'
-                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50'
-                          }`}>
-                            {tx.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من العميل'} ({tx.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : tx.paymentMethod === 'instapay' ? 'إنستاباي' : tx.paymentMethod === 'bank' ? 'بنكي' : 'نقدي'})
-                          </span>
-                        ) : tx.type === 'product_sale' ? (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-900/50">
-                              <ShoppingBag className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />
-                              بيع جهاز / هاتف
-                            </span>
-                            {tx.variantColor && (
-                              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                                (لون: {tx.variantColor})
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold font-mono text-slate-800 dark:text-slate-200" dir="ltr">
-                                {formatPhone(tx.recipientPhone) || '—'}
-                              </span>
-                              {tx.recipientPhone && (
-                                <button
-                                  onClick={() => handleCopy(tx.recipientPhone, `rec-${tx.id}`)}
-                                  className="p-1 text-slate-400 hover:text-slate-600 rounded"
-                                  title="نسخ رقم المستلم"
-                                >
-                                  {copiedId === `rec-${tx.id}` ? (
-                                    <Check className="w-3 h-3 text-emerald-600" />
-                                  ) : (
-                                    <Copy className="w-3 h-3" />
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                            {tx.recipientClientName && (
-                              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                                <span>العميل:</span>
-                                <span className="font-black">{tx.recipientClientName}</span>
-                              </span>
-                            )}
-                          </div>
-                        )}
+                      <td className="py-3 px-4 font-mono text-xs text-slate-400">
+                        {tx.transactionCode || '—'}
                       </td>
-
-                      {/* Transaction Code */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="font-mono text-xs text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                          {tx.transactionCode || (tx.type === 'product_sale' ? 'DEV-SALE' : 'VF-AUTO')}
-                        </span>
+                      <td className="py-3 px-4 font-mono text-xs text-emerald-600 font-bold">
+                        +{formatCurrency(tx.fee || 0)}
                       </td>
-
-                      {/* Fees & Notes */}
-                      <td className="py-3.5 px-4 max-w-xs">
-                        {tx.type === 'product_sale' ? (
-                          <div className="text-xs">
-                            <span className="font-semibold text-slate-800 dark:text-slate-200 block">
-                              الكمية: {tx.quantity || 1} قطعة × {formatCurrency(tx.unitPrice)}
-                            </span>
-                            <span className="text-slate-500 dark:text-slate-400 truncate block">
-                              {tx.notes || '—'}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="text-xs">
-                            {tx.fee > 0 && (
-                              <span className="text-emerald-600 font-semibold block">
-                                عمولة: {formatCurrency(tx.fee)}
-                              </span>
-                            )}
-                            <span className="text-slate-500 dark:text-slate-400 truncate block">
-                              {tx.notes || '—'}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handlePrintReceipt(tx)}
-                            className="btn-interactive p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                            title="عرض وطباعة إيصال التحويل"
+                            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                            title="إيصال"
                           >
                             <Receipt className="w-4 h-4" />
                           </button>
-                          
                           <button
-                            onClick={() => handleDelete(tx)}
-                            className="btn-interactive p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                            title="حذف المعاملة وإرجاع المبلغ لليميت"
+                            onClick={() => handleDeleteTx(tx)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                            title="حذف"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
-
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      )}
 
-            {/* Mobile Cards View */}
-            <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-800">
-              {paginatedTransactions.map((tx) => (
-                <div key={tx.id} className="p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-slate-400 font-medium">
-                        {formatTimeArabic(tx.date)}
-                      </span>
-                      <h4 className="font-bold text-slate-900 dark:text-white text-base">
-                        {tx.customerName || (tx.type === 'product_sale' ? 'عميل نقدي' : '')}
-                      </h4>
-                      {tx.type === 'product_sale' ? (
-                        <div className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 font-medium mt-0.5">
-                          <Smartphone className="w-3.5 h-3.5" />
-                          <span>{tx.productName} (لون: {tx.variantColor || 'قياسي'})</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          <span className="text-slate-400">من:</span>
-                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300" dir="ltr">
-                            {formatPhone(tx.walletPhone)}
-                          </span>
-                          {tx.walletLabel && (
-                            <span className="text-[11px] text-slate-400">({tx.walletLabel})</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
+      {/* STREAM C: PURCHASES (المشتريات ومصروفات المحل) */}
+      {activeDailyStream === 'purchases' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-amber-500" />
+              <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
+                فواتير المشتريات ومصروفات المحل في هذا اليوم ({dayPurchases.length})
+              </h3>
+            </div>
+            <button
+              onClick={() => setActiveModal('addPurchase')}
+              className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs"
+            >
+              <span>+ إضافة فاتورة</span>
+            </button>
+          </div>
 
-                    <div className="text-left">
-                      {tx.type === 'recharge' ? (
-                        <div className="text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
-                          + {formatCurrency(tx.amount)}
-                        </div>
-                      ) : tx.type === 'client_payment' ? (
-                        <div className={`text-lg font-black font-mono ${
-                          tx.isCreditorPayout ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
+          {dayPurchases.length === 0 ? (
+            <div className="py-16 text-center px-4">
+              <ShoppingBag className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+              <h4 className="text-base font-bold text-slate-700 dark:text-slate-300">
+                لا توجد مشتريات أو مصروفات مسجلة في هذا اليوم
+              </h4>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 text-xs font-bold border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-3 px-4">رقم الفاتورة</th>
+                    <th className="py-3 px-4">المورد / الجهة</th>
+                    <th className="py-3 px-4">التصنيف</th>
+                    <th className="py-3 px-4">إجمالي الفاتورة</th>
+                    <th className="py-3 px-4">المدفوع نقداً</th>
+                    <th className="py-3 px-4">المتبقي (آجل)</th>
+                    <th className="py-3 px-4">طريقة الدفع</th>
+                    <th className="py-3 px-4 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {dayPurchases.map(p => (
+                    <tr key={p.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4 font-mono font-bold text-xs">{p.invoiceNumber || '—'}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">{p.supplierName}</td>
+                      <td className="py-3 px-4 text-xs">
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {p.categoryLabel || p.category}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono font-black text-slate-900 dark:text-white">
+                        {formatCurrency(p.totalAmount)}
+                      </td>
+                      <td className="py-3 px-4 font-mono font-black text-rose-600">
+                        {formatCurrency(p.paidAmount ?? p.totalAmount)}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-xs text-amber-600 font-bold">
+                        {p.remainingDebt > 0 ? formatCurrency(p.remainingDebt) : 'مسددة'}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-500">
+                        {p.paymentMethodLabel || p.paymentMethod || 'كاش الدرج'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => handleDeletePurchaseItem(p)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STREAM D: COLLECTIONS (تحصيلات وسدادات العملاء) */}
+      {activeDailyStream === 'collections' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Coins className="w-5 h-5 text-emerald-500" />
+              <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
+                سدادات وتحصيلات العملاء في هذا اليوم ({dayPaymentTxs.length})
+              </h3>
+            </div>
+            <span className="text-xs font-bold text-emerald-600 font-mono">
+              إجمالي التحصيل: +{formatCurrency(dayTotalCollections)}
+            </span>
+          </div>
+
+          {dayPaymentTxs.length === 0 ? (
+            <div className="py-16 text-center px-4">
+              <Coins className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+              <h4 className="text-base font-bold text-slate-700 dark:text-slate-300">
+                لا توجد سدادات أو تحصيلات مسجلة في هذا اليوم
+              </h4>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 text-xs font-bold border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-3 px-4">التوقيت</th>
+                    <th className="py-3 px-4">العميل</th>
+                    <th className="py-3 px-4">نوع الحركة</th>
+                    <th className="py-3 px-4">المبلغ</th>
+                    <th className="py-3 px-4">طريقة التحصيل / المحفظة</th>
+                    <th className="py-3 px-4">الملاحظات</th>
+                    <th className="py-3 px-4 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {dayPaymentTxs.map(t => (
+                    <tr key={t.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4 font-bold text-xs">{formatTimeArabic(t.date)}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">{t.customerName}</td>
+                      <td className="py-3 px-4 text-xs">
+                        <span className={`px-2 py-0.5 rounded-full font-bold ${
+                          t.isCreditorPayout 
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                         }`}>
-                          {tx.isCreditorPayout ? '- ' : '+ '}{formatCurrency(tx.amount)} {tx.isCreditorPayout ? '(صرف لدائن)' : '(سداد)'}
-                        </div>
-                      ) : tx.type === 'product_sale' ? (
-                        <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                          + {formatCurrency(tx.amount)}
-                        </div>
-                      ) : (
-                        <div className="text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
-                          - {formatCurrency(tx.amount)}
-                        </div>
-                      )}
-                      {tx.type === 'product_sale' ? (
-                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
-                          {tx.quantity || 1} قطعة × {formatCurrency(tx.unitPrice)}
+                          {t.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد دين عميل'}
                         </span>
-                      ) : tx.limitAfter !== undefined ? (
-                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block font-mono">
-                          المتبقي: {formatCurrency(tx.limitAfter)}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
+                      </td>
+                      <td className="py-3 px-4 font-mono font-black text-sm text-emerald-600">
+                        {t.isCreditorPayout ? '- ' : '+ '}{formatCurrency(t.amount)}
+                      </td>
+                      <td className="py-3 px-4 text-xs font-mono text-slate-500">
+                        {t.paymentSourceLabel || t.walletPhone || 'كاش بالدرج'}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-400">{t.notes || '—'}</td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => handleDeleteTx(t)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
-                  <div className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl">
+      {/* STREAM E: SALES (مبيعات الأجهزة والمخزون) */}
+      {activeDailyStream === 'sales' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-5 h-5 text-purple-600" />
+              <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
+                مبيعات الهواتف والإكسسوارات في هذا اليوم ({daySalesTxs.length})
+              </h3>
+            </div>
+            <span className="text-xs font-bold text-purple-600 font-mono">
+              إجمالي المبيعات: {formatCurrency(dayTotalSalesAmount)}
+            </span>
+          </div>
+
+          {daySalesTxs.length === 0 ? (
+            <div className="py-16 text-center px-4">
+              <Smartphone className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+              <h4 className="text-base font-bold text-slate-700 dark:text-slate-300">
+                لا توجد مبيعات أجهزة أو إكسسوارات مسجلة في هذا اليوم
+              </h4>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 text-xs font-bold border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-3 px-4">التوقيت</th>
+                    <th className="py-3 px-4">المنتج / الجهاز</th>
+                    <th className="py-3 px-4">اللون / الفئة</th>
+                    <th className="py-3 px-4">الكمية</th>
+                    <th className="py-3 px-4">سعر البيع الإجمالي</th>
+                    <th className="py-3 px-4">المشتري / العميل</th>
+                    <th className="py-3 px-4 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {daySalesTxs.map(t => (
+                    <tr key={t.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4 font-bold text-xs">{formatTimeArabic(t.date)}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">{t.productName}</td>
+                      <td className="py-3 px-4 text-xs font-mono">{t.variantColor || '—'}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-xs">{t.quantity || 1}</td>
+                      <td className="py-3 px-4 font-mono font-black text-purple-600 text-sm">
+                        {formatCurrency(t.amount)}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-slate-600 dark:text-slate-300">
+                        {t.customerName || 'عميل نقدي'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => handleDeleteTx(t)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STREAM F: INBOUND SHIFTS (ورديات الوارد والعمولة له) */}
+      {activeDailyStream === 'inbound' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ArrowDownToLine className="w-5 h-5 text-blue-600" />
+              <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
+                تقرير ورديات الوارد (له) المقفلة والجارية لهذا اليوم
+              </h3>
+            </div>
+            {onNavigateToInbound && (
+              <button
+                onClick={onNavigateToInbound}
+                className="btn-interactive flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 text-xs font-bold"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>حاسبة الوارد له</span>
+              </button>
+            )}
+          </div>
+
+          <div className="p-4 sm:p-6 space-y-4">
+            {dayInboundShifts.length === 0 && !activeInboundShift ? (
+              <div className="py-12 text-center text-slate-400">
+                <ArrowDownToLine className="w-12 h-12 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                <p className="text-sm font-bold">لا توجد ورديات وارد مقفلة مسجلة في هذا اليوم</p>
+              </div>
+            ) : (
+              dayInboundShifts.map((shift, idx) => (
+                <div key={shift.id || idx} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <span className="text-slate-400 block text-[10px]">
-                        {tx.type === 'product_sale' ? 'نوع العملية:' : tx.type === 'recharge' ? 'نوع العملية:' : tx.type === 'client_payment' ? 'طريقة السداد:' : 'المحول إليه:'}
-                      </span>
-                      {tx.type === 'product_sale' ? (
-                        <span className="font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
-                          <ShoppingBag className="w-3.5 h-3.5" />
-                          بيع جهاز / إكسسوار
-                        </span>
-                      ) : tx.type === 'recharge' ? (
-                        <span className="font-bold text-blue-600 dark:text-blue-400">
-                          شحن وإيداع رصيد
-                        </span>
-                      ) : tx.type === 'client_payment' ? (
-                        <span className={`font-bold ${
-                          tx.isCreditorPayout ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
-                        }`}>
-                          {tx.isCreditorPayout ? 'صرف لمستحق دائن' : 'سداد من العميل'} ({tx.paymentMethod === 'vodafone_cash' ? 'فودافون كاش' : tx.paymentMethod === 'instapay' ? 'إنستاباي' : tx.paymentMethod === 'bank' ? 'بنكي' : 'نقدي'})
-                        </span>
-                      ) : (
-                        <div>
-                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200 block" dir="ltr">
-                            {formatPhone(tx.recipientPhone) || 'غير محدد'}
-                          </span>
-                          {tx.recipientClientName && (
-                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block mt-0.5">
-                              العميل: {tx.recipientClientName}
-                            </span>
-                          )}
+                      <div className="text-sm font-black text-slate-900 dark:text-white">
+                        وردية #{idx + 1} • {shift.startedAtTimeStr || '—'} إلى {shift.endedAtTimeStr || '—'}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {shift.items?.length || 0} عملية مسجلة
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-xs text-slate-400">الصافي بعد العمولة</div>
+                        <div className="text-base font-black text-emerald-600 font-mono">
+                          {formatCurrency(shift.amountAfterCommission)}
                         </div>
-                      )}
+                      </div>
+                      <button
+                        onClick={() => handleExportInboundShift(shift)}
+                        className="btn-interactive p-2 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-200 border border-slate-200 dark:border-slate-600 shadow-2xs"
+                        title="تصدير شيت الوردية"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
                     </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">كود التحويل:</span>
-                      <span className="font-mono text-slate-600 dark:text-slate-400">
-                        {tx.transactionCode}
-                      </span>
+      {/* STREAM G: TREASURY (حركات الخزينة ورأس المال) */}
+      {activeDailyStream === 'treasury' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-teal-600" />
+              <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
+                حركات الخزينة والسيولة ورأس المال في هذا اليوم ({dayTreasuryMovements.length})
+              </h3>
+            </div>
+            <button
+              onClick={() => setActiveModal('adjustCapital')}
+              className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs"
+            >
+              <span>+ حركة خزينة جديدة</span>
+            </button>
+          </div>
+
+          {dayTreasuryMovements.length === 0 ? (
+            <div className="py-16 text-center px-4">
+              <Building2 className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+              <h4 className="text-base font-bold text-slate-700 dark:text-slate-300">
+                لا توجد حركات تسوية أو تحويلات خزينة مسجلة في هذا اليوم
+              </h4>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {dayTreasuryMovements.map(h => (
+                <div key={h.id} className="p-4 sm:p-5 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-bold text-slate-900 dark:text-white text-sm">
+                      {h.description || `حركة: ${h.type}`}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      {h.date ? formatTimeArabic(h.date) : '—'} • القائم بالحركة: {h.performedBy || 'المسؤول'}
                     </div>
                   </div>
 
-                  {tx.notes && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg">
-                      ملاحظة: {tx.notes}
-                    </p>
-                  )}
-
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    <button
-                      onClick={() => handlePrintReceipt(tx)}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300"
-                    >
-                      <Receipt className="w-3.5 h-3.5" />
-                      <span>إيصال</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(tx)}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>حذف</span>
-                    </button>
+                  <div className="text-right">
+                    <div className={`text-base font-black font-mono ${
+                      h.type === 'deposit' ? 'text-emerald-600' : h.type === 'withdraw' ? 'text-rose-600' : 'text-slate-900 dark:text-white'
+                    }`}>
+                      {h.type === 'deposit' ? '+' : h.type === 'withdraw' ? '-' : ''} {formatCurrency(h.amount)}
+                    </div>
                   </div>
-
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
 
-            {/* Pagination Bar (10 operations per page as requested) */}
-            {filteredDayTransactions.length > ITEMS_PER_PAGE && (
-              <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  عرض <span className="font-bold text-slate-800 dark:text-white font-mono">{(safeCurrentPage - 1) * ITEMS_PER_PAGE + 1}</span> - <span className="font-bold text-slate-800 dark:text-white font-mono">{Math.min(filteredDayTransactions.length, safeCurrentPage * ITEMS_PER_PAGE)}</span> من إجمالي <span className="font-bold text-slate-800 dark:text-white font-mono">{filteredDayTransactions.length}</span> عملية
+      {/* STREAM H: AUDIT & CLOSING (جرد وإقفال اليومية) */}
+      {activeDailyStream === 'audit' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-purple-600" />
+                <span>بيانات ومحضر جرد وإقفال اليومية لتاريخ ({selectedDate})</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                مقارنة الرصيد الدفتري المسجل بالسيستم مع الجرد الفعلي لكاش الدرج والخطوط
+              </p>
+            </div>
+
+            <button
+              onClick={() => setActiveModal('dailyAudit')}
+              className="btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-600/25"
+            >
+              <Moon className="w-4 h-4" />
+              <span>{dayAudit ? 'تعديل بيانات الجرد' : 'إجراء الجرد والإقفال الآن'}</span>
+            </button>
+          </div>
+
+          {dayAudit ? (
+            <div className="space-y-6">
+              {/* Result Banner */}
+              <div className={`p-4 sm:p-5 rounded-2xl border flex items-center justify-between ${
+                dayAudit.difference === 0
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                  : dayAudit.difference > 0
+                  ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-900 dark:text-blue-200'
+                  : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+              }`}>
+                <div>
+                  <div className="text-sm sm:text-base font-black">
+                    {dayAudit.difference === 0 ? '✅ الجرد مطابق تماماً (لا يوجد عجز أو زيادة)' : dayAudit.difference > 0 ? `🟡 يوجد فائض بقيمة +${dayAudit.difference.toLocaleString()} ج.م` : `🔴 يوجد عجز بقيمة ${dayAudit.difference.toLocaleString()} ج.م`}
+                  </div>
+                  <div className="text-xs mt-0.5 opacity-80">
+                    تم الجرد بواسطة: {dayAudit.auditorName || 'المسؤول'} • التوقيت: {dayAudit.closedAt ? formatDateTimeArabic(dayAudit.closedAt) : '—'}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1.5" dir="rtl">
-                  {/* Previous Button */}
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={safeCurrentPage === 1}
-                    className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    title="الصفحة السابقة"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                    <span>السابق</span>
-                  </button>
-
-                  {/* Page Numbers */}
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold font-mono transition-all ${
-                          safeCurrentPage === pageNum
-                            ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-sm shadow-red-600/30'
-                            : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Next Button */}
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={safeCurrentPage === totalPages}
-                    className="btn-interactive flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    title="الصفحة التالية"
-                  >
-                    <span>التالي</span>
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
+                <div className="text-xl sm:text-2xl font-black font-mono">
+                  {formatCurrency(dayAudit.actualTotal)}
                 </div>
               </div>
-            )}
 
-          </div>
-        )}
+              {/* Balances Breakdown */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <span className="text-xs text-slate-400 block mb-1">كاش الدرج الفعلي</span>
+                  <div className="text-base font-black text-slate-900 dark:text-white font-mono">
+                    {formatCurrency(dayAudit.actualBalances?.drawerCash || 0)}
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <span className="text-xs text-slate-400 block mb-1">خطوط فودافون كاش</span>
+                  <div className="text-base font-black text-red-600 font-mono">
+                    {formatCurrency(dayAudit.actualBalances?.vodafoneCash || 0)}
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <span className="text-xs text-slate-400 block mb-1">حسابات إنستاباي</span>
+                  <div className="text-base font-black text-purple-600 font-mono">
+                    {formatCurrency(dayAudit.actualBalances?.instapay || 0)}
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <span className="text-xs text-slate-400 block mb-1">الحسابات البنكية</span>
+                  <div className="text-base font-black text-emerald-600 font-mono">
+                    {formatCurrency(dayAudit.actualBalances?.bankAccounts || 0)}
+                  </div>
+                </div>
+              </div>
 
-      </div>
+              {dayAudit.notes && (
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300">
+                  <span className="font-bold block mb-0.5">ملاحظات الجرد:</span>
+                  <span>{dayAudit.notes}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-12 text-center text-slate-400 bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+              <FileCheck className="w-12 h-12 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+              <h4 className="text-base font-bold text-slate-700 dark:text-slate-300 mb-1">
+                لم يتم إقفال أو جرد هذا اليوم حتى الآن
+              </h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto mb-4">
+                يقوم الجرد بحساب الرصيد الدفتري المتوقع ومطابقته مع الكاش الفعلي في الدرج والخطوط لتسجيل أي عجز أو زيادة وتصفير أو بدء اليومية الجديدة.
+              </p>
+              <button
+                onClick={() => setActiveModal('dailyAudit')}
+                className="btn-interactive inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-600/25"
+              >
+                <Moon className="w-4 h-4" />
+                <span>إجراء جرد نهاية اليومية الآن</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

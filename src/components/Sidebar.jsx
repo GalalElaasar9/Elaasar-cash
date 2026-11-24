@@ -53,8 +53,8 @@ export default function Sidebar({
     { id: 'accounts', label: 'حسابات العملاء', shortLabel: 'الحسابات', icon: FileSpreadsheet, isEmerald: true },
     { 
       id: 'daily', 
-      label: 'سجل المبيعات', 
-      shortLabel: 'المبيعات',
+      label: 'دفتر اليومية الشامل', 
+      shortLabel: 'اليومية',
       icon: Calendar, 
       badge: todayTransactions.length > 0 ? todayTransactions.length : null 
     },
@@ -112,18 +112,19 @@ export default function Sidebar({
           
           {/* Brand Header */}
           {isCollapsed ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-3.5 px-2 border-b border-slate-200/80 dark:border-slate-800/80">
-              <div 
-                className="cursor-pointer transition-transform hover:scale-105 active:scale-95 flex items-center justify-center" 
+            <div className="flex flex-col items-center justify-center gap-2 py-3 px-2 border-b border-slate-200/80 dark:border-slate-800/80">
+              <button 
+                type="button"
+                className="cursor-pointer transition-transform hover:scale-105 active:scale-95 flex items-center justify-center p-1 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800/60" 
                 onClick={() => handleSelectTab('clients')}
-                title="منظومة الأعصر كاش - اضغط للانتقال للرئيسية"
+                title="الأعصر كاش - اضغط للانتقال للرئيسية"
               >
                 <ElaasarLogo size="md" hideText={true} />
-              </div>
+              </button>
               <button
                 type="button"
                 onClick={onToggleCollapse}
-                className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center justify-center"
+                className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center justify-center"
                 title="توسيع القائمة الجانبية"
               >
                 <ChevronLeft className="w-4 h-4" />

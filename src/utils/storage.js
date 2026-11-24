@@ -16,6 +16,7 @@ const STORAGE_KEYS = {
   TREASURY: 'elaasar_cash_treasury_v1',
   INSTAPAY_ACCOUNTS: 'elaasar_cash_instapay_accounts_v1',
   DAILY_AUDITS: 'elaasar_cash_daily_audits_v1',
+  DAILY_OPENING_BALANCES: 'elaasar_cash_daily_opening_balances_v1',
 };
 
 // Generates today's date string and some earlier timestamps
@@ -498,6 +499,59 @@ export const INITIAL_DEMO_DAILY_AUDITS = [
       clientsTotalReceivables: 118000,
       netDayVolume: 47500
     }
+  }
+];
+
+export const INITIAL_DEMO_DAILY_OPENING_BALANCES = [
+  {
+    id: 'open-today',
+    dateOnly: getLocalDateOnly(),
+    date: getRecentDate(0, 8, 30),
+    recordedBy: 'محمود الأعصر (صاحب المحل)',
+    drawerCash: 45000,
+    vodafoneCash: 85000,
+    instapay: 65000,
+    bankAccounts: 30000,
+    totalLiquidCash: 225000,
+    shopWallets: [
+      { id: 'wallet-1-1', phoneNumber: '01098765432', label: 'محفظة المبيعات المركزية (المحل)', balance: 30000 },
+      { id: 'wallet-1-2', phoneNumber: '01011223344', label: 'محفظة فرع المحطة (المحل)', balance: 20000 },
+      { id: 'wallet-1-3', phoneNumber: '01055667788', label: 'محفظة كبار العملاء والسيولة (المحل)', balance: 15000 },
+      { id: 'wallet-2-1', phoneNumber: '01023456789', label: 'محفظة إدارة الحسابات (المحل)', balance: 10000 },
+      { id: 'wallet-2-2', phoneNumber: '01034567890', label: 'محفظة المشتريات والتوريدات (المحل)', balance: 5000 },
+      { id: 'wallet-3-1', phoneNumber: '01099887766', label: 'محفظة التحويلات الفورية (المحل)', balance: 5000 }
+    ],
+    instapayAccounts: [
+      { id: 'insta-1', accountName: 'إنستاباي - البنك الأهلي المصري (الرئيسي)', balance: 40000 },
+      { id: 'insta-2', accountName: 'إنستاباي - بنك مصر (فرع المحطة)', balance: 15000 },
+      { id: 'insta-3', accountName: 'إنستاباي - CIB (كبار العملاء والسيولة)', balance: 10000 }
+    ],
+    notes: 'رصيد بداية اليومية المسجل عند فتح المحل صباحاً'
+  },
+  {
+    id: 'open-yesterday',
+    dateOnly: '2026-11-23',
+    date: getRecentDate(1, 8, 30),
+    recordedBy: 'محمود الأعصر (صاحب المحل)',
+    drawerCash: 41250,
+    vodafoneCash: 92000,
+    instapay: 55000,
+    bankAccounts: 30000,
+    totalLiquidCash: 218250,
+    shopWallets: [
+      { id: 'wallet-1-1', phoneNumber: '01098765432', label: 'محفظة المبيعات المركزية (المحل)', balance: 35000 },
+      { id: 'wallet-1-2', phoneNumber: '01011223344', label: 'محفظة فرع المحطة (المحل)', balance: 22000 },
+      { id: 'wallet-1-3', phoneNumber: '01055667788', label: 'محفظة كبار العملاء والسيولة (المحل)', balance: 15000 },
+      { id: 'wallet-2-1', phoneNumber: '01023456789', label: 'محفظة إدارة الحسابات (المحل)', balance: 10000 },
+      { id: 'wallet-2-2', phoneNumber: '01034567890', label: 'محفظة المشتريات والتوريدات (المحل)', balance: 5000 },
+      { id: 'wallet-3-1', phoneNumber: '01099887766', label: 'محفظة التحويلات الفورية (المحل)', balance: 5000 }
+    ],
+    instapayAccounts: [
+      { id: 'insta-1', accountName: 'إنستاباي - البنك الأهلي المصري (الرئيسي)', balance: 35000 },
+      { id: 'insta-2', accountName: 'إنستاباي - بنك مصر (فرع المحطة)', balance: 10000 },
+      { id: 'insta-3', accountName: 'إنستاباي - CIB (كبار العملاء والسيولة)', balance: 10000 }
+    ],
+    notes: 'افتتاحية يوم أمس منقولة من إقفال اليوم السابق'
   }
 ];
 
@@ -1766,9 +1820,32 @@ export const storage = {
     }
   },
 
-  exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives = [], purchases = [], treasury = null, instapayAccounts = [], dailyAudits = []) {
+  getDailyOpeningBalances() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DAILY_OPENING_BALANCES);
+      if (data === null) {
+        localStorage.setItem(STORAGE_KEYS.DAILY_OPENING_BALANCES, JSON.stringify(INITIAL_DEMO_DAILY_OPENING_BALANCES));
+        return INITIAL_DEMO_DAILY_OPENING_BALANCES;
+      }
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DEMO_DAILY_OPENING_BALANCES;
+    } catch (e) {
+      console.error('Error reading daily opening balances from storage:', e);
+      return INITIAL_DEMO_DAILY_OPENING_BALANCES;
+    }
+  },
+
+  saveDailyOpeningBalances(balances) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.DAILY_OPENING_BALANCES, JSON.stringify(balances || []));
+    } catch (e) {
+      console.error('Error saving daily opening balances:', e);
+    }
+  },
+
+  exportFullBackup(clients, transactions, inventory, trash, shopWallets, clientArchives = [], purchases = [], treasury = null, instapayAccounts = [], dailyAudits = [], dailyOpeningBalances = []) {
     const backup = {
-      version: '3.8',
+      version: '4.0',
       system: 'Elaasar Cash & Mobile Shop Management System',
       exportDate: new Date().toISOString(),
       clients,
@@ -1780,7 +1857,8 @@ export const storage = {
       purchases: purchases || [],
       treasury: treasury || INITIAL_DEMO_TREASURY,
       instapayAccounts: instapayAccounts || INITIAL_INSTAPAY_ACCOUNTS,
-      dailyAudits: dailyAudits || INITIAL_DEMO_DAILY_AUDITS
+      dailyAudits: dailyAudits || INITIAL_DEMO_DAILY_AUDITS,
+      dailyOpeningBalances: dailyOpeningBalances || INITIAL_DEMO_DAILY_OPENING_BALANCES
     };
     
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -1802,6 +1880,7 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.TREASURY, JSON.stringify(INITIAL_DEMO_TREASURY));
     localStorage.setItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS, JSON.stringify(INITIAL_INSTAPAY_ACCOUNTS));
     localStorage.setItem(STORAGE_KEYS.DAILY_AUDITS, JSON.stringify(INITIAL_DEMO_DAILY_AUDITS));
+    localStorage.setItem(STORAGE_KEYS.DAILY_OPENING_BALANCES, JSON.stringify(INITIAL_DEMO_DAILY_OPENING_BALANCES));
     localStorage.removeItem(STORAGE_KEYS.TRASH);
     localStorage.removeItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
     return {
@@ -1814,7 +1893,8 @@ export const storage = {
       purchases: INITIAL_DEMO_PURCHASES,
       treasury: INITIAL_DEMO_TREASURY,
       instapayAccounts: INITIAL_INSTAPAY_ACCOUNTS,
-      dailyAudits: INITIAL_DEMO_DAILY_AUDITS
+      dailyAudits: INITIAL_DEMO_DAILY_AUDITS,
+      dailyOpeningBalances: INITIAL_DEMO_DAILY_OPENING_BALANCES
     };
   },
 
@@ -1830,6 +1910,7 @@ export const storage = {
     localStorage.removeItem(STORAGE_KEYS.TREASURY);
     localStorage.removeItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS);
     localStorage.removeItem(STORAGE_KEYS.DAILY_AUDITS);
+    localStorage.removeItem(STORAGE_KEYS.DAILY_OPENING_BALANCES);
     return {
       clients: [],
       transactions: [],
@@ -1840,7 +1921,8 @@ export const storage = {
       purchases: [],
       treasury: { drawerCash: 0, vodafoneCash: 0, instapay: 0, bankAccounts: 0, history: [] },
       instapayAccounts: [],
-      dailyAudits: []
+      dailyAudits: [],
+      dailyOpeningBalances: []
     };
   }
 };
