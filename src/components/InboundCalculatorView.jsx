@@ -1174,7 +1174,7 @@ export default function InboundCalculatorView() {
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-right-sheet-backdrop"
             onClick={() => setIsEndDayModalOpen(false)}
           />
-          <div className="fixed inset-x-0 bottom-0 top-auto max-h-[90dvh] rounded-t-3xl border-t sm:inset-y-0 sm:right-0 sm:left-auto sm:top-0 sm:bottom-0 sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 lg:fixed lg:inset-0 lg:m-auto lg:top-0 lg:bottom-0 lg:left-0 lg:right-0 lg:h-fit lg:max-h-[90vh] lg:rounded-3xl lg:border lg:shadow-2xl z-10 w-full max-w-lg bg-white dark:bg-slate-900 shadow-2xl border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-bottom-sheet sm:animate-right-sheet lg:animate-in lg:zoom-in-95">
+          <div className="fixed inset-y-0 right-0 z-50 h-full w-full max-w-full sm:max-w-lg bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl animate-right-sheet">
             
             {/* Mobile Drag Handle Indicator */}
             <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -1305,7 +1305,7 @@ export default function InboundCalculatorView() {
               setSelectedArchiveDay(null);
             }}
           />
-          <div className="fixed inset-x-0 bottom-0 top-auto max-h-[90dvh] rounded-t-3xl border-t sm:inset-y-0 sm:right-0 sm:left-auto sm:top-0 sm:bottom-0 sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 lg:fixed lg:inset-0 lg:m-auto lg:top-0 lg:bottom-0 lg:left-0 lg:right-0 lg:h-fit lg:max-h-[90vh] lg:rounded-3xl lg:border lg:shadow-2xl z-10 w-full max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-bottom-sheet sm:animate-right-sheet lg:animate-in lg:zoom-in-95">
+          <div className="fixed inset-y-0 right-0 z-50 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl animate-right-sheet">
             
             {/* Mobile Drag Handle Indicator */}
             <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
