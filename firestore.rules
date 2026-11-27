@@ -1,0 +1,318 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: users
+// Document ID: {userId} (must match Firebase Auth request.auth.uid)
+// Fields:
+//   - uid: string (optional, immutable, must equal userId, max 128 chars) - Owner Firebase Auth UID
+//   - email: string (optional, valid email format, max 254 chars) - Authenticated user email
+//   - displayName: string (optional, max 120 chars) - User display name
+//   - photoURL: string (optional, empty or valid http/https URL, max 2048 chars) - Avatar URL
+//   - shopName: string (optional, max 150 chars) - Business/shop display name
+//   - provider: string (optional, max 50 chars) - Auth provider identifier
+//   - createdAt: timestamp | ISO-8601 string (optional, immutable, max 40 chars) - Creation time
+//   - updatedAt: timestamp | ISO-8601 string (optional, max 40 chars) - Last update time
+//   - lastLoginAt: timestamp | ISO-8601 string (optional, max 40 chars) - Last login time
+//
+// Collection: users/{userId}/store
+// Document ID: {docId} (1..128 chars, e.g., clients, transactions, inventory, shopWallets,
+//              purchases, treasury, instapayAccounts, dailyAudits, dailyOpeningBalances,
+//              clientArchives, dismissedArchiveIds, trash, inboundLedger, settings)
+// Fields:
+//   - items: list (optional, max 20000 items) - Collection array payload
+//   - entries: list (optional, max 20000 items) - Ledger array payload
+//   - data: map (max 100 top-level keys) | list (max 20000 items) (optional) - Structured store payload
+//   - wallets / clients / products / history / walletsBreakdown: list (optional, bounded)
+//   - drawerCash / vodafoneCash / instapay / bankAccounts: number (optional, bounded)
+//   - theme: string (optional, 'light' | 'dark' | 'system')
+//   - notes: string (optional, max 5000 chars)
+//   - id / type / updatedBy: string (optional, bounded)
+//   - version / schemaVersion: int | string (optional, bounded)
+//   - uid / ownerId / userId: string (optional, immutable, must equal userId)
+//   - createdAt: timestamp | ISO-8601 string (optional, immutable, max 40 chars)
+//   - updatedAt: timestamp | ISO-8601 string (optional, max 40 chars)
+//   - Privilege fields (role, roles, isAdmin, admin, permissions, claims) are strictly forbidden.
+//
+// Collection: users/{userId}/{subcollection}/{docPath=**} (subcollection != 'store')
+// Document ID: {docPath} (user-private subcollections such as clients, transactions, inventory, meta)
+// Fields:
+//   - Strict owner isolation (request.auth.uid == userId), map/key bounds, type & size sanity checks,
+//     immutable ownership/createdAt fields, and forbidden privilege escalation fields.
+//
+// All other paths outside users/{userId}/** are strictly denied by default.
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated (Google Sign-In or Email/Password)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource (for user-owned paths)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if user is owner based on existing document's uid field
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    // Verify UID hasn't been tampered with on create
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure uid field is not modified on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    // Ensure any ownership fields present in payload match the authenticated path owner
+    function ownerFieldMatchesAuth(userId, data) {
+      return (!('uid' in data) || (data.uid is string && data.uid == userId)) &&
+             (!('ownerId' in data) || (data.ownerId is string && data.ownerId == userId)) &&
+             (!('userId' in data) || (data.userId is string && data.userId == userId));
+    }
+
+    // Prevent clients from injecting privilege or role metadata
+    function hasNoPrivilegeFields(data) {
+      return !data.keys().hasAny([
+        'role', 'roles', 'isAdmin', 'admin', 'permissions', 'customClaims', 'claims'
+      ]);
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that the document contains only the allowed fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate string length
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    // Validate optional string (if present, must be string and within length)
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen);
+    }
+
+    // Validate URL format (must start with https:// or http://)
+    function isValidUrl(url) {
+      return url is string &&
+        url.size() <= 2048 &&
+        (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // Validate email format
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() <= 254 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // Validate ISO 8601 date string format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS...)
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.size() >= 10 &&
+        dateStr.size() <= 40 &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}:\\d{2}.*Z?)?$");
+    }
+
+    // Accept either native Firestore timestamp or bounded ISO date string
+    function isValidTimestampOrDateString(val) {
+      return val is timestamp || isValidDateString(val);
+    }
+
+    // Accept native Firestore timestamp, ISO date string, or non-negative epoch ms integer
+    function isValidTimestampOrEpochOrDateString(val) {
+      return val is timestamp ||
+        isValidDateString(val) ||
+        (val is int && val >= 0);
+    }
+
+    // Validate that a value is positive
+    function isPositive(field) {
+      return request.resource.data[field] is number && request.resource.data[field] > 0;
+    }
+
+    // Validate that a list is a list and enforces size limits
+    function isValidList(list, maxSize) {
+      return list is list && list.size() <= maxSize;
+    }
+
+    // Validate that a map contains only allowed keys
+    function isValidMap(mapData, allowedKeys) {
+      return mapData is map && mapData.keys().hasOnly(allowedKeys);
+    }
+
+    // Validate that immutable fields have not changed on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate that a timestamp is recent (within the last 5 minutes)
+    function isRecent(time) {
+      return time is timestamp &&
+        time > request.time - duration.value(5, 'm') &&
+        time <= request.time;
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update rules)
+    // ===============================================================
+
+    function isValidUserProfile(userId, data) {
+      return data is map &&
+        data.keys().size() >= 1 &&
+        data.keys().size() <= 9 &&
+        hasOnlyAllowedFields([
+          'uid', 'email', 'displayName', 'photoURL', 'shopName',
+          'provider', 'createdAt', 'updatedAt', 'lastLoginAt'
+        ]) &&
+        uidUnchanged() &&
+        ownerFieldMatchesAuth(userId, data) &&
+        (!('email' in data) || isValidEmail(data.email)) &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 120)) &&
+        (!('photoURL' in data) || (data.photoURL is string && (data.photoURL == '' || isValidUrl(data.photoURL)))) &&
+        (!('shopName' in data) || (data.shopName is string && data.shopName.size() <= 150)) &&
+        (!('provider' in data) || (data.provider is string && data.provider.size() <= 50)) &&
+        (!('createdAt' in data) || isValidTimestampOrDateString(data.createdAt)) &&
+        (!('updatedAt' in data) || isValidTimestampOrDateString(data.updatedAt)) &&
+        (!('lastLoginAt' in data) || isValidTimestampOrDateString(data.lastLoginAt));
+    }
+
+    function isValidStoreDocument(userId, docId, data) {
+      return docId is string &&
+        docId.size() >= 1 &&
+        docId.size() <= 128 &&
+        data is map &&
+        data.keys().size() >= 1 &&
+        data.keys().size() <= 50 &&
+        hasNoPrivilegeFields(data) &&
+        uidUnchanged() &&
+        ownerFieldMatchesAuth(userId, data) &&
+        (!('id' in data) || (data.id is string && data.id.size() >= 1 && data.id.size() <= 128)) &&
+        (!('type' in data) || (data.type is string && data.type.size() >= 1 && data.type.size() <= 64)) &&
+        (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 128)) &&
+        (!('version' in data) || (data.version is int || (data.version is string && data.version.size() <= 32))) &&
+        (!('schemaVersion' in data) || (data.schemaVersion is int || (data.schemaVersion is string && data.schemaVersion.size() <= 32))) &&
+        (!('createdAt' in data) || isValidTimestampOrDateString(data.createdAt)) &&
+        (!('updatedAt' in data) || isValidTimestampOrDateString(data.updatedAt)) &&
+        (!('items' in data) || isValidList(data.items, 20000)) &&
+        (!('entries' in data) || isValidList(data.entries, 20000)) &&
+        (!('data' in data) || (
+          (data.data is map && data.data.keys().size() <= 100) ||
+          isValidList(data.data, 20000)
+        )) &&
+        (!('wallets' in data) || isValidList(data.wallets, 5000)) &&
+        (!('clients' in data) || isValidList(data.clients, 10000)) &&
+        (!('products' in data) || isValidList(data.products, 10000)) &&
+        (!('history' in data) || isValidList(data.history, 20000)) &&
+        (!('walletsBreakdown' in data) || isValidList(data.walletsBreakdown, 500)) &&
+        (!('drawerCash' in data) || (data.drawerCash is number && data.drawerCash >= -1000000000 && data.drawerCash <= 1000000000)) &&
+        (!('vodafoneCash' in data) || (data.vodafoneCash is number && data.vodafoneCash >= -1000000000 && data.vodafoneCash <= 1000000000)) &&
+        (!('instapay' in data) || (data.instapay is number && data.instapay >= -1000000000 && data.instapay <= 1000000000)) &&
+        (!('bankAccounts' in data) || (data.bankAccounts is number && data.bankAccounts >= -1000000000 && data.bankAccounts <= 1000000000)) &&
+        (!('theme' in data) || (data.theme is string && data.theme in ['light', 'dark', 'system'])) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000));
+    }
+
+    function isValidUserSubdocument(userId, data) {
+      return data is map &&
+        data.keys().size() >= 1 &&
+        data.keys().size() <= 60 &&
+        hasNoPrivilegeFields(data) &&
+        uidUnchanged() &&
+        ownerFieldMatchesAuth(userId, data) &&
+        (!('id' in data) || (data.id is string && data.id.size() >= 1 && data.id.size() <= 128)) &&
+        (!('name' in data) || (data.name is string && data.name.size() <= 200)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000)) &&
+        (!('createdAt' in data) || isValidTimestampOrDateString(data.createdAt)) &&
+        (!('updatedAt' in data) || isValidTimestampOrDateString(data.updatedAt)) &&
+        (!('date' in data) || isValidTimestampOrDateString(data.date)) &&
+        (!('timestamp' in data) || isValidTimestampOrEpochOrDateString(data.timestamp)) &&
+        (!('items' in data) || isValidList(data.items, 20000)) &&
+        (!('entries' in data) || isValidList(data.entries, 20000)) &&
+        (!('wallets' in data) || isValidList(data.wallets, 1000)) &&
+        (!('images' in data) || isValidList(data.images, 50)) &&
+        (!('variants' in data) || isValidList(data.variants, 100)) &&
+        (!('payments' in data) || isValidList(data.payments, 1000)) &&
+        (!('data' in data) || (
+          (data.data is map && data.data.keys().size() <= 100) ||
+          isValidList(data.data, 20000)
+        )) &&
+        (!('amount' in data) || (data.amount is number && data.amount >= 0 && data.amount <= 1000000000)) &&
+        (!('fee' in data) || (data.fee is number && data.fee >= 0 && data.fee <= 100000000));
+    }
+
+    // ===============================================================
+    // Strict Per-User Isolated Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+        isValidUserProfile(userId, request.resource.data);
+      allow update: if isOwner(userId) &&
+        isValidUserProfile(userId, request.resource.data) &&
+        areImmutableFieldsUnchanged(['uid', 'createdAt']);
+      allow delete: if isOwner(userId);
+
+      // Primary business dataset store documents: users/{userId}/store/{docId}
+      match /store/{docId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+          isValidStoreDocument(userId, docId, request.resource.data);
+        allow update: if isOwner(userId) &&
+          isValidStoreDocument(userId, docId, request.resource.data) &&
+          areImmutableFieldsUnchanged(['uid', 'ownerId', 'userId', 'createdAt']);
+        allow delete: if isOwner(userId);
+      }
+
+      // Additional user-private subcollections under users/{userId}/...
+      match /{subcollection}/{docPath=**} {
+        allow read: if subcollection != 'store' && isOwner(userId);
+        allow create: if subcollection != 'store' &&
+          isOwner(userId) &&
+          isValidUserSubdocument(userId, request.resource.data);
+        allow update: if subcollection != 'store' &&
+          isOwner(userId) &&
+          isValidUserSubdocument(userId, request.resource.data) &&
+          areImmutableFieldsUnchanged(['uid', 'ownerId', 'userId', 'createdAt']);
+        allow delete: if subcollection != 'store' && isOwner(userId);
+      }
+    }
+
+    // ===============================================================
+    // Strict Deny-by-Default Fallback
+    // ===============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

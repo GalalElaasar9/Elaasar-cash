@@ -1,20 +1,25 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  auth, 
-  db, 
-  googleProvider, 
-  isFirebaseConfigured, 
-  initFirebase, 
+import {
+  auth,
+  googleProvider,
+  isFirebaseConfigured,
+  initFirebase,
   saveStoredFirebaseConfig,
   getStoredFirebaseConfig
 } from '../firebase/config';
-import { 
-  signInWithPopup, 
+import {
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  signOut, 
-  onAuthStateChanged 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+  signOut,
+  onAuthStateChanged
 } from 'firebase/auth';
+
+const AuthContext = createContext();
 
 function getFriendlyFirebaseAuthError(error) {
   const code = error?.code || '';
@@ -24,32 +29,42 @@ function getFriendlyFirebaseAuthError(error) {
     case 'auth/unauthorized-domain':
       return `النطاق الحالي (${host}) غير مضاف في Authorized Domains بلوحة تحكم Firebase (Authentication > Settings > Authorized domains).`;
     case 'auth/operation-not-allowed':
-      return 'تسجيل الدخول بحساب Google غير مفعّل في Firebase Console (Authentication > Sign-in method > Google).';
+      return 'طريقة الدخول هذه غير مفعّلة في Firebase Console.';
     case 'auth/popup-closed-by-user':
     case 'auth/cancelled-popup-request':
       return 'تم إغلاق نافذة تسجيل الدخول بجوجل قبل إتمام التسجيل.';
     case 'auth/popup-blocked':
-      return 'قام المتصفح بحظر النافذة المنبثقة. سيتم التحويل إلى صفحة جوجل مباشرة أو اسمح بالنوافذ المنبثقة.';
+      return 'قام المتصفح بحظر النافذة المنبثقة. سيتم التحويل لصفحة Google مباشرة.';
+    case 'auth/invalid-email':
+      return 'صيغة البريد الإلكتروني غير صحيحة.';
+    case 'auth/invalid-credential':
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+      return 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
+    case 'auth/email-already-in-use':
+      return 'هذا البريد الإلكتروني مسجل بالفعل — جرّب تسجيل الدخول بدلاً من إنشاء حساب جديد.';
+    case 'auth/weak-password':
+      return 'كلمة المرور ضعيفة جداً — يجب أن لا تقل عن 6 أحرف أو أرقام.';
+    case 'auth/too-many-requests':
+      return 'تم حظر المحاولات مؤقتاً لكثرة المحاولات الخاطئة. يرجى الانتظار قليلاً.';
     case 'auth/network-request-failed':
-      return 'تعذر الاتصال بخوادم جوجل، يرجى التحقق من اتصال الإنترنت.';
+      return 'تعذر الاتصال بخوادم Firebase، يرجى التحقق من اتصال الإنترنت.';
     case 'auth/invalid-api-key':
     case 'auth/configuration-not-found':
-      return 'بيانات إعداد Firebase (apiKey / Auth) غير مكتملة أو تحتاج تفعيل Authentication أولاً.';
+      return 'بيانات إعداد Firebase (apiKey / Auth) غير مكتملة.';
     default:
-      return error?.message || 'حدث خطأ أثناء تسجيل الدخول بحساب جوجل.';
+      return error?.message || 'حدث خطأ أثناء تسجيل الدخول.';
   }
 }
-
-const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState('offline'); // 'live' | 'syncing' | 'offline' | 'unconfigured'
   const [isConfigured, setIsConfigured] = useState(() => isFirebaseConfigured());
-  const [shopId, setShopId] = useState(() => localStorage.getItem('elaasar_shop_id') || 'elaasar_main');
+  const [shopId, setShopId] = useState('elaasar_main');
 
-  // Listen to Auth state
+  // Listen to Auth state & bind shopId strictly to authenticated user's UID
   useEffect(() => {
     if (!auth) {
       setIsConfigured(false);
@@ -60,11 +75,11 @@ export function AuthProvider({ children }) {
 
     setIsConfigured(true);
 
-    // Complete redirect flow if fallback redirect sign-in occurred
     getRedirectResult(auth)
       .then((res) => {
         if (res?.user) {
           setCurrentUser(res.user);
+          setShopId(res.user.uid);
           setSyncStatus('live');
         }
       })
@@ -75,14 +90,10 @@ export function AuthProvider({ children }) {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       if (user) {
+        setShopId(user.uid);
         setSyncStatus('live');
-        // If shopId is default, bind to user uid or keep custom
-        if (!localStorage.getItem('elaasar_shop_id')) {
-          const defaultShop = user.email ? user.email.replace(/[^a-zA-Z0-9]/g, '_') : user.uid;
-          setShopId(defaultShop);
-          localStorage.setItem('elaasar_shop_id', defaultShop);
-        }
       } else {
+        setShopId('guest');
         setSyncStatus('offline');
       }
       setLoading(false);
@@ -91,15 +102,16 @@ export function AuthProvider({ children }) {
     return () => unsubscribe();
   }, [isConfigured]);
 
-  // Google Login (Popup primary with Redirect fallback when popups are blocked)
+  // Google Sign-In
   const loginWithGoogle = async () => {
     if (!auth) {
-      throw new Error('يرجى ضبط إعدادات فايربيس (Firebase Config) أولاً.');
+      throw new Error('إعدادات Firebase غير مهيأة.');
     }
     try {
       setSyncStatus('syncing');
       const result = await signInWithPopup(auth, googleProvider);
       setCurrentUser(result.user);
+      setShopId(result.user.uid);
       setSyncStatus('live');
       return result.user;
     } catch (error) {
@@ -113,23 +125,75 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Email & Password Login
+  const loginWithEmail = async (email, password) => {
+    if (!auth) {
+      throw new Error('إعدادات Firebase غير مهيأة.');
+    }
+    try {
+      setSyncStatus('syncing');
+      const result = await signInWithEmailAndPassword(auth, email.trim(), password);
+      setCurrentUser(result.user);
+      setShopId(result.user.uid);
+      setSyncStatus('live');
+      return result.user;
+    } catch (error) {
+      console.error('Email Login Error:', error);
+      setSyncStatus(currentUser ? 'live' : 'offline');
+      throw new Error(getFriendlyFirebaseAuthError(error));
+    }
+  };
+
+  // Email & Password Registration
+  const registerWithEmail = async (displayName, email, password) => {
+    if (!auth) {
+      throw new Error('إعدادات Firebase غير مهيأة.');
+    }
+    try {
+      setSyncStatus('syncing');
+      const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (displayName && displayName.trim()) {
+        await updateProfile(result.user, { displayName: displayName.trim() });
+      }
+      const refreshedUser = { ...result.user, displayName: displayName?.trim() || result.user.displayName };
+      setCurrentUser(result.user);
+      setShopId(result.user.uid);
+      setSyncStatus('live');
+      return refreshedUser;
+    } catch (error) {
+      console.error('Email Register Error:', error);
+      setSyncStatus(currentUser ? 'live' : 'offline');
+      throw new Error(getFriendlyFirebaseAuthError(error));
+    }
+  };
+
+  // Password Reset Email
+  const resetPassword = async (email) => {
+    if (!auth) {
+      throw new Error('إعدادات Firebase غير مهيأة.');
+    }
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+    } catch (error) {
+      throw new Error(getFriendlyFirebaseAuthError(error));
+    }
+  };
+
   // Logout
   const logout = async () => {
     if (auth) {
       await signOut(auth);
     }
     setCurrentUser(null);
+    setShopId('guest');
     setSyncStatus('offline');
   };
 
-  // Change / Set Shop ID for device linking
   const updateShopId = (newId) => {
-    const cleanId = (newId || 'elaasar_main').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const cleanId = (newId || currentUser?.uid || 'elaasar_main').trim();
     setShopId(cleanId);
-    localStorage.setItem('elaasar_shop_id', cleanId);
   };
 
-  // Update Firebase Configuration dynamically
   const updateFirebaseConfig = (configObj) => {
     saveStoredFirebaseConfig(configObj);
     const result = initFirebase();
@@ -148,6 +212,9 @@ export function AuthProvider({ children }) {
     shopId,
     updateShopId,
     loginWithGoogle,
+    loginWithEmail,
+    registerWithEmail,
+    resetPassword,
     logout,
     updateFirebaseConfig,
     storedConfig: getStoredFirebaseConfig()
