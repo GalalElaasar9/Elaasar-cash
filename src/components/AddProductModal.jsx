@@ -215,7 +215,7 @@ export const STORAGE_PRESETS = [
 ];
 
 export default function AddProductModal() {
-  const { activeModal, setActiveModal, modalData, addProduct, updateProduct, showToast } = useCash();
+  const { activeModal, setActiveModal, modalData, addProduct, updateProduct, askConfirm, showToast } = useCash();
   const dialogRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -403,7 +403,12 @@ export default function AddProductModal() {
 
   const totalQuantity = variants.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0);
 
-  const handleSubmit = (e) => {
+  const costVal = Number(costPrice) || 0;
+  const saleVal = salePrice !== '' && !isNaN(Number(salePrice)) ? Number(salePrice) : null;
+  const isBelowCostLoss = costVal > 0 && saleVal !== null && saleVal < costVal;
+  const unitMargin = saleVal !== null ? saleVal - costVal : 0;
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
       showToast('يرجى كتابة اسم وموديل المنتج', 'error');
@@ -418,6 +423,18 @@ export default function AddProductModal() {
     if (totalQuantity <= 0) {
       showToast('يرجى تحديد كمية أكبر من صفر للألوان المضافة', 'error');
       return;
+    }
+
+    if (isBelowCostLoss) {
+      const confirmed = await askConfirm({
+        title: '⚠️ تحذير: سعر البيع أقل من سعر الشراء (خسارة)',
+        message: `سعر البيع المحدد (${formatCurrency(saleVal)}) أقل من سعر الشراء (${formatCurrency(costVal)})!`,
+        details: `هذا يعني خسارة بقيمة ${formatCurrency(Math.abs(unitMargin))} في كل قطعة تُباع (إجمالي خسارة متوقعة للكمية الحالية: ${formatCurrency(Math.abs(unitMargin) * totalQuantity)}). هل تريد الحفظ بهذا السعر؟`,
+        type: 'danger',
+        confirmText: 'نعم، حفظ المنتج بالسعر الحالي',
+        cancelText: 'تراجع وتعديل السعر'
+      });
+      if (!confirmed) return;
     }
 
     const payload = {
@@ -854,13 +871,41 @@ export default function AddProductModal() {
                 placeholder="0"
                 value={salePrice}
                 onChange={(e) => setSalePrice(e.target.value)}
-                className="w-full pl-10 pr-3.5 py-2 text-base font-black bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className={`w-full pl-10 pr-3.5 py-2 text-base font-black bg-white dark:bg-slate-900 border rounded-xl focus:outline-none focus:ring-2 ${
+                  isBelowCostLoss
+                    ? 'border-rose-500 text-rose-600 dark:text-rose-400 focus:ring-rose-500/40'
+                    : 'border-slate-200 dark:border-slate-700 text-emerald-600 dark:text-emerald-400 focus:ring-emerald-500/40'
+                }`}
               />
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                 ج.م
               </span>
             </div>
           </div>
+
+          {isBelowCostLoss && (
+            <div className="sm:col-span-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-400 dark:border-rose-700 text-rose-800 dark:text-rose-200 flex items-start gap-2 text-xs font-bold">
+              <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div className="flex-1 flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  ⚠️ تحذير خسارة: سعر البيع أقل من سعر الشراء بمقدار{' '}
+                  <strong className="font-mono">{formatCurrency(Math.abs(unitMargin))}</strong> للقطعة!
+                </span>
+                {totalQuantity > 0 && (
+                  <span className="font-mono text-[11px] bg-rose-100 dark:bg-rose-900/60 px-2 py-0.5 rounded-lg">
+                    خسارة إجمالية محتملة ({totalQuantity} قطعة): -{formatCurrency(Math.abs(unitMargin) * totalQuantity)}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!isBelowCostLoss && costVal > 0 && saleVal !== null && unitMargin > 0 && (
+            <div className="sm:col-span-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-between text-xs font-bold">
+              <span>هامش الربح المتوقع للقطعة:</span>
+              <span className="font-mono font-black">+{formatCurrency(unitMargin)}</span>
+            </div>
+          )}
         </div>
 
         {/* ======================================================== */}

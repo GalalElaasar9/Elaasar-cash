@@ -11,11 +11,24 @@ import {
   Palette,
   DollarSign,
   User,
-  Minus
+  Minus,
+  Wallet,
+  Building2,
+  TrendingDown,
+  TrendingUp
 } from 'lucide-react';
 
 export default function SellProductModal() {
-  const { activeModal, setActiveModal, modalData, sellProductVariant, showToast } = useCash();
+  const {
+    activeModal,
+    setActiveModal,
+    modalData,
+    sellProductVariant,
+    shopWallets = [],
+    instapayAccounts = [],
+    askConfirm,
+    showToast
+  } = useCash();
   const dialogRef = useRef(null);
 
   const product = modalData?.product;
@@ -24,6 +37,9 @@ export default function SellProductModal() {
   const [quantity, setQuantity] = useState(1);
   const [salePrice, setSalePrice] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [selectedWalletId, setSelectedWalletId] = useState('');
+  const [selectedInstapayId, setSelectedInstapayId] = useState('');
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -39,6 +55,9 @@ export default function SellProductModal() {
         setQuantity(1);
         setSalePrice(product.salePrice || '');
         setCustomerName('');
+        setPaymentMethod('cash');
+        setSelectedWalletId(shopWallets[0]?.id || '');
+        setSelectedInstapayId(instapayAccounts[0]?.id || '');
       }
     } else {
       if (dialog.open) dialog.close();
@@ -55,7 +74,15 @@ export default function SellProductModal() {
   const availableInColor = currentVariant ? currentVariant.quantity : 0;
   const isOutOfStock = availableInColor <= 0;
 
-  const handleSubmit = (e) => {
+  const unitCost = Number(product?.costPrice) || 0;
+  const effectiveUnitPrice = salePrice !== '' && !isNaN(Number(salePrice))
+    ? Number(salePrice)
+    : (Number(product?.salePrice) || 0);
+  const unitMargin = effectiveUnitPrice - unitCost;
+  const totalMargin = unitMargin * (Number(quantity) || 1);
+  const isLossSale = unitCost > 0 && effectiveUnitPrice < unitCost;
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedColor) {
       showToast('يرجى اختيار اللون المباع', 'error');
@@ -67,12 +94,39 @@ export default function SellProductModal() {
       return;
     }
 
+    if (paymentMethod === 'vodafone_cash' && shopWallets.length > 0 && !selectedWalletId) {
+      showToast('يرجى اختيار خط فودافون كاش الذي سيتم استلام المبلغ عليه', 'error');
+      return;
+    }
+
+    if (paymentMethod === 'instapay' && instapayAccounts.length > 0 && !selectedInstapayId) {
+      showToast('يرجى اختيار حساب إنستاباي الذي سيتم التحويل إليه', 'error');
+      return;
+    }
+
+    if (isLossSale) {
+      const confirmed = await askConfirm({
+        title: '⚠️ تحذير: البيع بأقل من سعر الشراء (خسارة)',
+        message: `أنت على وشك بيع "${product.name}" بسعر (${formatCurrency(effectiveUnitPrice)}) وهو أقل من سعر الشراء (${formatCurrency(unitCost)})!`,
+        details: `ستتحمل خسارة قدرها ${formatCurrency(Math.abs(unitMargin))} للقطعة الواحدة (إجمالي خسارة: ${formatCurrency(Math.abs(totalMargin))} لعدد ${quantity} قطعة). هل تريد الاستمرار وتأكيد البيع بالخسارة؟`,
+        type: 'danger',
+        confirmText: 'نعم، تأكيد البيع رغم الخسارة',
+        cancelText: 'تراجع وتعديل السعر'
+      });
+      if (!confirmed) return;
+    }
+
     const ok = sellProductVariant(
       product.id,
       selectedColor,
       Number(quantity),
       customerName.trim(),
-      salePrice ? Number(salePrice) : product.salePrice
+      effectiveUnitPrice,
+      {
+        paymentMethod,
+        shopWalletId: paymentMethod === 'vodafone_cash' ? selectedWalletId : null,
+        instapayAccountId: paymentMethod === 'instapay' ? selectedInstapayId : null
+      }
     );
 
     if (ok) {
@@ -244,13 +298,94 @@ export default function SellProductModal() {
           />
         </div>
 
+        {/* Loss Warning or Profit Preview Banner */}
+        {isLossSale ? (
+          <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-400 dark:border-rose-700 text-rose-800 dark:text-rose-200 space-y-1 animate-pulse">
+            <div className="flex items-center gap-2 text-xs font-black">
+              <TrendingDown className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+              <span>⚠️ تحذير: سعر البيع أقل من سعر الشراء ({formatCurrency(unitCost)}) — هذه العملية ستحقق خسارة!</span>
+            </div>
+            <div className="text-[11px] font-bold flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              <span>خسارة القطعة: <strong className="font-mono text-rose-700 dark:text-rose-300">-{formatCurrency(Math.abs(unitMargin))}</strong></span>
+              <span>إجمالي الخسارة المتوقعة: <strong className="font-mono text-rose-700 dark:text-rose-300">-{formatCurrency(Math.abs(totalMargin))}</strong></span>
+            </div>
+          </div>
+        ) : unitCost > 0 && unitMargin > 0 ? (
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-900/50 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+            <span className="flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+              <span>صافي الربح المضاف لرأس المال:</span>
+            </span>
+            <span className="font-mono font-black">+{formatCurrency(totalMargin)} ({formatCurrency(unitMargin)}/قطعة)</span>
+          </div>
+        ) : null}
+
+        {/* Treasury / Capital Collection Channel */}
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2.5">
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>استلام المبلغ وإضافته إلى رأس المال (الخزينة):</span>
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            {[
+              { id: 'cash', label: 'كاش الدرج' },
+              { id: 'vodafone_cash', label: 'فودافون كاش' },
+              { id: 'instapay', label: 'إنستاباي' },
+              { id: 'bank', label: 'تحويل بنكي' }
+            ].map(ch => (
+              <button
+                key={ch.id}
+                type="button"
+                onClick={() => setPaymentMethod(ch.id)}
+                className={`py-2 px-2 rounded-xl text-[11px] font-bold border transition-all ${
+                  paymentMethod === ch.id
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {ch.label}
+              </button>
+            ))}
+          </div>
+
+          {paymentMethod === 'vodafone_cash' && shopWallets.length > 0 && (
+            <select
+              value={selectedWalletId}
+              onChange={(e) => setSelectedWalletId(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-bold bg-white dark:bg-slate-900 border border-red-300 dark:border-red-900 rounded-xl text-slate-900 dark:text-white"
+            >
+              <option value="">-- اختر خط فودافون كاش المستلم --</option>
+              {shopWallets.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.label} ({w.phoneNumber}) — رصيد: {formatCurrency(w.balance)}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {paymentMethod === 'instapay' && instapayAccounts.length > 0 && (
+            <select
+              value={selectedInstapayId}
+              onChange={(e) => setSelectedInstapayId(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-bold bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-900 rounded-xl text-slate-900 dark:text-white"
+            >
+              <option value="">-- اختر حساب إنستاباي المستلم --</option>
+              {instapayAccounts.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.accountName} ({a.ipaAddress || a.phoneNumber || 'IPA'}) — رصيد: {formatCurrency(a.balance)}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
         {/* Total Sale Value Banner */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50">
           <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
             إجمالي المبلغ المحصل:
           </span>
           <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
-            {formatCurrency((Number(salePrice) || product.salePrice) * quantity)}
+            {formatCurrency(effectiveUnitPrice * quantity)}
           </span>
         </div>
 

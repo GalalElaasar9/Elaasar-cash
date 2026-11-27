@@ -70,6 +70,7 @@ export default function AddPurchaseModal() {
     transactions,
     addPurchase, 
     uniqueSuppliers,
+    askConfirm,
     showToast 
   } = useCash();
 
@@ -302,7 +303,7 @@ export default function AddPurchaseModal() {
     setActiveModal(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (purchaseType === 'inventory_goods') {
@@ -457,6 +458,24 @@ export default function AddPurchaseModal() {
       updateInventory: purchaseType === 'inventory_goods' ? updateInventory : false,
       notes: notes.trim()
     };
+
+    if (purchaseType === 'inventory_goods') {
+      const losingItems = items.filter(
+        it => (Number(it.unitCost) || 0) > 0 && it.suggestedSalePrice !== '' && !isNaN(Number(it.suggestedSalePrice)) && Number(it.suggestedSalePrice) < Number(it.unitCost)
+      );
+      if (losingItems.length > 0) {
+        const namesList = losingItems.map(it => `"${it.name}" (شراء ${formatCurrency(it.unitCost)} ← بيع ${formatCurrency(it.suggestedSalePrice)})`).join('، ');
+        const confirmed = await askConfirm({
+          title: '⚠️ تحذير: سعر البيع أقل من سعر الشراء (خسارة)',
+          message: `يوجد (${losingItems.length}) صنف في الفاتورة سعر بيعه المقترح أقل من سعر شرائه!`,
+          details: `الأصناف: ${namesList}. هل تريد تسجيل فاتورة المشتريات بهذه الأسعار؟`,
+          type: 'danger',
+          confirmText: 'نعم، تسجيل الفاتورة رغم الخسارة',
+          cancelText: 'تراجع وتعديل الأسعار'
+        });
+        if (!confirmed) return;
+      }
+    }
 
     addPurchase(purchasePayload);
     handleClose();
@@ -964,11 +983,17 @@ export default function AddPurchaseModal() {
                         </div>
                       </div>
 
-                      {/* Profit Margin Preview if sale price provided */}
+                      {/* Profit Margin / Loss Warning Preview if sale price provided */}
                       {margin > 0 && (
                         <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-lg">
                           <span>هامش الربح المتوقع للقطعة: +{formatCurrency(margin)}</span>
                           <span className="text-[10px] text-slate-400">({Math.round((margin / (Number(item.unitCost) || 1)) * 100)}% ربح)</span>
+                        </div>
+                      )}
+                      {item.suggestedSalePrice !== '' && (Number(item.unitCost) || 0) > 0 && margin < 0 && (
+                        <div className="text-[11px] text-rose-700 dark:text-rose-300 font-black flex items-center justify-between gap-2 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 px-2.5 py-1.5 rounded-lg">
+                          <span>⚠️ تحذير خسارة: سعر البيع أقل من سعر الشراء!</span>
+                          <span className="font-mono">خسارة: -{formatCurrency(Math.abs(margin))}/قطعة</span>
                         </div>
                       )}
                     </div>

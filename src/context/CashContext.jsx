@@ -1804,6 +1804,44 @@ export function CashProvider({ children }) {
           return next;
         });
       }
+
+      // Reverse treasury & sub-account revenue if product sale had credited a channel
+      const saleAmt = Number(tx.amount) || 0;
+      const revChannel = tx.paidChannel || (
+        tx.paymentMethod === 'vodafone_cash' ? 'vodafoneCash' :
+        tx.paymentMethod === 'instapay' ? 'instapay' :
+        tx.paymentMethod === 'bank' ? 'bankAccounts' :
+        tx.paymentMethod === 'cash' ? 'drawerCash' : null
+      );
+      if (revChannel && saleAmt > 0) {
+        if (revChannel === 'vodafoneCash' && tx.shopWalletId) {
+          setShopWallets(prev => prev.map(w =>
+            w.id === tx.shopWalletId ? { ...w, balance: Math.max(0, (Number(w.balance) || 0) - saleAmt) } : w
+          ));
+        } else if (revChannel === 'instapay' && tx.instapayAccountId) {
+          setInstapayAccounts(prev => prev.map(a =>
+            a.id === tx.instapayAccountId ? { ...a, balance: Math.max(0, (Number(a.balance) || 0) - saleAmt) } : a
+          ));
+        }
+        setTreasury(prev => ({
+          ...prev,
+          [revChannel]: Math.max(0, (Number(prev[revChannel]) || 0) - saleAmt),
+          lastUpdated: new Date().toISOString(),
+          history: [
+            {
+              id: `mov-${Date.now()}-rev-sale`,
+              date: new Date().toISOString(),
+              type: 'product_sale_reversal',
+              channel: revChannel,
+              amount: saleAmt,
+              isIncrease: false,
+              notes: `عكس مبيعات محذوفة: ${tx.productName || 'منتج'} (${formatCurrency(saleAmt)})`
+            },
+            ...(prev.history || [])
+          ]
+        }));
+      }
+
       showToast(`تم حذف حركة البيع وإعادة (${tx.quantity || 1}) قطعة إلى مخزون "${tx.productName || 'المنتج'}"`, 'info');
     } else if (tx.type === 'transfer_out' && tx.paymentMethod === 'instapay' && tx.instapayAccountId) {
       const amt = Number(tx.amount) || 0;
@@ -1920,9 +1958,15 @@ export function CashProvider({ children }) {
   };
 
   /**
-   * Sell / deduct product variant from stock
+   * Sell / deduct product variant from stock and add revenue to liquid capital / treasury
    */
-  const sellProductVariant = (productId, colorName, quantitySold = 1, notes = '', customSalePrice = null) => {
+  const sellProductVariant = (productId, colorName, quantitySold = 1, notes = '', customSalePrice = null, paymentOptions = {}) => {
+    const {
+      paymentMethod = 'cash',
+      shopWalletId = null,
+      instapayAccountId = null
+    } = paymentOptions || {};
+
     const prod = inventory.find(p => p.id === productId);
     if (!prod) {
       showToast('المنتج غير موجود بالمخزون', 'error');
@@ -1952,6 +1996,40 @@ export function CashProvider({ children }) {
       return false;
     }
 
+    const effectivePrice = customSalePrice !== null && !isNaN(Number(customSalePrice)) ? Number(customSalePrice) : Number(prod.salePrice);
+    const totalSaleAmount = effectivePrice * qtyToDeduct;
+    const unitCost = Number(prod.costPrice) || 0;
+    const totalProfit = totalSaleAmount - (unitCost * qtyToDeduct);
+
+    const channelMap = {
+      cash: 'drawerCash',
+      vodafone_cash: 'vodafoneCash',
+      instapay: 'instapay',
+      bank: 'bankAccounts'
+    };
+    const channelLabels = {
+      drawerCash: 'كاش الدرج',
+      vodafoneCash: 'فودافون كاش',
+      instapay: 'إنستاباي',
+      bankAccounts: 'الحساب البنكي'
+    };
+    const paidChannel = channelMap[paymentMethod] || 'drawerCash';
+    const selectedWallet = paidChannel === 'vodafoneCash' && shopWalletId
+      ? shopWallets.find(w => w.id === shopWalletId)
+      : null;
+    const selectedInsta = paidChannel === 'instapay' && instapayAccountId
+      ? instapayAccounts.find(a => a.id === instapayAccountId)
+      : null;
+
+    if (paidChannel === 'vodafoneCash' && shopWallets.length > 0 && shopWalletId && !selectedWallet) {
+      showToast('يرجى اختيار خط فودافون كاش صحيح لاستلام المبلغ', 'error');
+      return false;
+    }
+    if (paidChannel === 'instapay' && instapayAccounts.length > 0 && instapayAccountId && !selectedInsta) {
+      showToast('يرجى اختيار حساب إنستاباي صحيح لاستلام المبلغ', 'error');
+      return false;
+    }
+
     const newTotal = updatedVariants.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0);
 
     setInventory(prev => {
@@ -1971,9 +2049,44 @@ export function CashProvider({ children }) {
       return next;
     });
 
+    // Credit revenue to liquid treasury and sub-account so total capital increases by profit
+    if (totalSaleAmount > 0) {
+      if (selectedWallet) {
+        setShopWallets(prev => prev.map(w =>
+          w.id === selectedWallet.id ? { ...w, balance: (Number(w.balance) || 0) + totalSaleAmount } : w
+        ));
+      } else if (selectedInsta) {
+        setInstapayAccounts(prev => prev.map(a =>
+          a.id === selectedInsta.id ? { ...a, balance: (Number(a.balance) || 0) + totalSaleAmount } : a
+        ));
+      }
+
+      const channelDesc = selectedInsta
+        ? `${channelLabels[paidChannel]} (${selectedInsta.accountName})`
+        : selectedWallet
+        ? `${channelLabels[paidChannel]} (${selectedWallet.label})`
+        : channelLabels[paidChannel];
+
+      setTreasury(prev => ({
+        ...prev,
+        [paidChannel]: (Number(prev[paidChannel]) || 0) + totalSaleAmount,
+        lastUpdated: new Date().toISOString(),
+        history: [
+          {
+            id: `mov-${Date.now()}-sale`,
+            date: new Date().toISOString(),
+            type: 'product_sale',
+            channel: paidChannel,
+            amount: totalSaleAmount,
+            isIncrease: true,
+            notes: `مبيعات: (${qtyToDeduct}) ${prod.name} [${colorName}] -> ${channelDesc}`
+          },
+          ...(prev.history || [])
+        ]
+      }));
+    }
+
     triggerConfetti();
-    const effectivePrice = customSalePrice !== null && !isNaN(Number(customSalePrice)) ? Number(customSalePrice) : Number(prod.salePrice);
-    const totalSaleAmount = effectivePrice * qtyToDeduct;
 
     // Record product sale transaction in daily ledger immediately
     const dateObj = new Date();
@@ -1991,7 +2104,13 @@ export function CashProvider({ children }) {
       variantColor: colorName,
       quantity: qtyToDeduct,
       unitPrice: effectivePrice,
+      costPrice: unitCost,
+      profit: totalProfit,
       amount: totalSaleAmount,
+      paymentMethod,
+      paidChannel,
+      shopWalletId: selectedWallet?.id || null,
+      instapayAccountId: selectedInsta?.id || null,
       customerName: custName,
       transactionCode: `DEV-${Math.floor(100000 + Math.random() * 900000)}`,
       notes: notes.trim()
@@ -2008,7 +2127,7 @@ export function CashProvider({ children }) {
       syncTransactionToCloud(shopId, saleTx);
     }
 
-    showToast(`تم تسجيل بيع (${qtyToDeduct}) قطعة [لون: ${colorName}] بقيمة ${formatCurrency(totalSaleAmount)} وتوثيقها في المبيعات`);
+    showToast(`تم تسجيل بيع (${qtyToDeduct}) قطعة [لون: ${colorName}] بقيمة ${formatCurrency(totalSaleAmount)} وإضافتها لرأس المال`);
 
     // Check low stock alert (< 5)
     const alertThreshold = prod.minStockAlert !== undefined ? prod.minStockAlert : 5;
@@ -2960,7 +3079,7 @@ export function CashProvider({ children }) {
     }
 
     // 4. Save audit log
-    setDailyAudits(prev => [newAudit, ...prev]);
+    setDailyAudits(prev => [newAudit, ...(Array.isArray(prev) ? prev : [])]);
 
     showToast(
       status === 'matched' 

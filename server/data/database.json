@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastUpdated": "2026-11-27T15:36:23.270Z",
+  "lastUpdated": "2026-11-27T16:23:54.998Z",
   "shopInfo": {
     "name": "الأعصر لخدمات المحمول",
     "syncId": "elaasar_main"
@@ -281,6 +281,72 @@
   ],
   "transactions": [
     {
+      "id": "tx-sale-1795796634992",
+      "type": "product_sale",
+      "productId": "prod-1",
+      "productName": "Samsung Galaxy A55 5G",
+      "brand": "سامسونج (Samsung)",
+      "category": "phones",
+      "variantColor": "أزرق ثلجي",
+      "quantity": 1,
+      "unitPrice": 18200,
+      "costPrice": 16500,
+      "profit": 1700,
+      "amount": 18200,
+      "paymentMethod": "cash",
+      "paidChannel": "drawerCash",
+      "shopWalletId": null,
+      "instapayAccountId": null,
+      "customerName": "عميل نقدي (مبيعات أجهزة)",
+      "transactionCode": "DEV-812246",
+      "notes": "بيع (1) Samsung Galaxy A55 5G [لون: أزرق ثلجي]",
+      "date": "2026-11-27T16:23:54.991Z",
+      "dateOnly": "2026-11-27",
+      "time": "٠٦:٢٣ م"
+    },
+    {
+      "id": "tx-sale-1795796618651",
+      "type": "product_sale",
+      "productId": "prod-1",
+      "productName": "Samsung Galaxy A55 5G",
+      "brand": "سامسونج (Samsung)",
+      "category": "phones",
+      "variantColor": "أزرق ثلجي",
+      "quantity": 1,
+      "unitPrice": 18200,
+      "costPrice": 16500,
+      "profit": 1700,
+      "amount": 18200,
+      "paymentMethod": "cash",
+      "paidChannel": "drawerCash",
+      "shopWalletId": null,
+      "instapayAccountId": null,
+      "customerName": "عميل نقدي (مبيعات أجهزة)",
+      "transactionCode": "DEV-798543",
+      "notes": "بيع (1) Samsung Galaxy A55 5G [لون: أزرق ثلجي]",
+      "date": "2026-11-27T16:23:38.648Z",
+      "dateOnly": "2026-11-27",
+      "time": "٠٦:٢٣ م"
+    },
+    {
+      "id": "tx-sale-1795796046745",
+      "type": "product_sale",
+      "productId": "prod-1795795926689-69cu",
+      "productName": "حشيش",
+      "brand": "عام",
+      "category": "accessories",
+      "variantColor": "بنى قريب من الأسود",
+      "quantity": 1,
+      "unitPrice": 1500,
+      "amount": 1500,
+      "customerName": "عميل نقدي (مبيعات أجهزة)",
+      "transactionCode": "DEV-845180",
+      "notes": "بيع (1) حشيش [لون: بنى قريب من الأسود]",
+      "date": "2026-11-27T16:14:06.740Z",
+      "dateOnly": "2026-11-27",
+      "time": "٠٦:١٤ م"
+    },
+    {
       "id": "tx-1795180638139",
       "walletId": "wallet-1795180618122",
       "walletPhone": "01099909123",
@@ -429,6 +495,26 @@
   ],
   "inventory": [
     {
+      "id": "prod-1795795926689-69cu",
+      "category": "accessories",
+      "name": "حشيش",
+      "brand": "عام",
+      "storage": "",
+      "costPrice": 1000,
+      "salePrice": 1500,
+      "minStockAlert": 5,
+      "notes": "تمت الإضافة تلقائياً من فاتورة شراء PUR-2026-937",
+      "createdAt": "2026-11-27T16:12:06.689Z",
+      "images": [],
+      "variants": [
+        {
+          "color": "بنى قريب من الأسود",
+          "quantity": 0
+        }
+      ],
+      "totalQuantity": 0
+    },
+    {
       "id": "prod-1",
       "category": "phones",
       "name": "Samsung Galaxy A55 5G",
@@ -448,7 +534,7 @@
         {
           "color": "أزرق ثلجي",
           "hex": "#38bdf8",
-          "quantity": 3
+          "quantity": 1
         },
         {
           "color": "أسود كحلي",
@@ -461,7 +547,7 @@
           "quantity": 3
         }
       ],
-      "totalQuantity": 10
+      "totalQuantity": 8
     },
     {
       "id": "prod-2",

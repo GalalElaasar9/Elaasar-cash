@@ -137,6 +137,11 @@ export default function DailyLogView({ onNavigateToInbound }) {
     return getClosingAuditForDate ? getClosingAuditForDate(selectedDate) : null;
   }, [selectedDate, getClosingAuditForDate, dailyAudits]);
 
+  // Normalized audit fields (supports both current audit schema and legacy fields)
+  const auditDiff = Number(dayAudit?.variances?.totalLiquidCash ?? dayAudit?.difference ?? 0);
+  const auditActualTotal = Number(dayAudit?.actualBalances?.totalLiquidCash ?? dayAudit?.actualTotal ?? 0);
+  const auditClosedAt = dayAudit?.closedAt || dayAudit?.createdAt || dayAudit?.date;
+
   // 4. Purchases for the selected date
   const dayPurchases = useMemo(() => {
     return (purchases || []).filter(p => {
@@ -736,13 +741,13 @@ export default function DailyLogView({ onNavigateToInbound }) {
             </span>
             {dayAudit ? (
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                dayAudit.difference === 0 
+                auditDiff === 0 
                   ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                  : dayAudit.difference > 0
+                  : auditDiff > 0
                   ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
                   : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
               }`}>
-                {dayAudit.difference === 0 ? 'مطابق تماماً 🟢' : dayAudit.difference > 0 ? `فائض: +${dayAudit.difference.toLocaleString()}` : `عجز: ${dayAudit.difference.toLocaleString()}`}
+                {auditDiff === 0 ? 'مطابق تماماً 🟢' : auditDiff > 0 ? `فائض: +${auditDiff.toLocaleString()}` : `عجز: ${auditDiff.toLocaleString()}`}
               </span>
             ) : (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
@@ -753,7 +758,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
 
           <div>
             <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 font-mono">
-              {formatCurrency(dayAudit ? dayAudit.actualTotal : theoreticalClosing)}
+              {formatCurrency(dayAudit ? auditActualTotal : theoreticalClosing)}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 truncate">
               {dayAudit 
@@ -766,8 +771,8 @@ export default function DailyLogView({ onNavigateToInbound }) {
             <button
               onClick={() => {
                 if (dayAudit) {
-                  setModalData(dayAudit);
-                  setActiveModal('dailyAuditDetails');
+                  setModalData({ audit: dayAudit });
+                  setActiveModal('auditDetails');
                 } else {
                   setActiveModal('dailyAudit');
                 }
@@ -1526,23 +1531,23 @@ export default function DailyLogView({ onNavigateToInbound }) {
             <div className="space-y-6">
               {/* Result Banner */}
               <div className={`p-4 sm:p-5 rounded-2xl border flex items-center justify-between ${
-                dayAudit.difference === 0
+                auditDiff === 0
                   ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-                  : dayAudit.difference > 0
+                  : auditDiff > 0
                   ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800 text-blue-900 dark:text-blue-200'
                   : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
               }`}>
                 <div>
                   <div className="text-sm sm:text-base font-black">
-                    {dayAudit.difference === 0 ? '✅ الجرد مطابق تماماً (لا يوجد عجز أو زيادة)' : dayAudit.difference > 0 ? `🟡 يوجد فائض بقيمة +${dayAudit.difference.toLocaleString()} ج.م` : `🔴 يوجد عجز بقيمة ${dayAudit.difference.toLocaleString()} ج.م`}
+                    {auditDiff === 0 ? '✅ الجرد مطابق تماماً (لا يوجد عجز أو زيادة)' : auditDiff > 0 ? `🟡 يوجد فائض بقيمة +${auditDiff.toLocaleString()} ج.م` : `🔴 يوجد عجز بقيمة ${auditDiff.toLocaleString()} ج.م`}
                   </div>
                   <div className="text-xs mt-0.5 opacity-80">
-                    تم الجرد بواسطة: {dayAudit.auditorName || 'المسؤول'} • التوقيت: {dayAudit.closedAt ? formatDateTimeArabic(dayAudit.closedAt) : '—'}
+                    تم الجرد بواسطة: {dayAudit.auditorName || 'المسؤول'} • التوقيت: {auditClosedAt ? formatDateTimeArabic(auditClosedAt) : '—'}
                   </div>
                 </div>
 
                 <div className="text-xl sm:text-2xl font-black font-mono">
-                  {formatCurrency(dayAudit.actualTotal)}
+                  {formatCurrency(auditActualTotal)}
                 </div>
               </div>
 
