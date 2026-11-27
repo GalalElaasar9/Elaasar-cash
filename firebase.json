@@ -1,11 +1,14 @@
 {
   "auth": {
     "providers": {
+      "emailPassword": true,
       "googleSignIn": {
         "oAuthBrandDisplayName": "Elaasar Cash",
         "supportEmail": "galalelaaser101@gmail.com",
         "authorizedRedirectUris": [
           "https://elaasar-cash-app.firebaseapp.com/__/auth/handler",
+          "https://elaasar.vercel.app/__/auth/handler",
+          "https://elaasar.vercel.app",
           "http://localhost:3000"
         ]
       }
