@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastUpdated": "2026-11-27T20:57:22.703Z",
+  "lastUpdated": "2026-11-27T22:13:16.693Z",
   "shopInfo": {
     "name": "الأعصر لخدمات المحمول",
     "syncId": "elaasar_main"
@@ -10,6 +10,17 @@
     "email": "elaasar.cash@gmail.com"
   },
   "clients": [
+    {
+      "id": "client-1795817596541",
+      "name": "جلال",
+      "notes": "",
+      "clientType": "عادي",
+      "whatsappPhone": "",
+      "createdAt": "2026-11-27T22:13:16.541Z",
+      "wallets": [],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
     {
       "id": "client-12",
       "name": "شركة الفتح للشحن السريع",

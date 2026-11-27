@@ -1,0 +1,14 @@
+{
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Elaasar Cash",
+        "supportEmail": "galalelaaser101@gmail.com",
+        "authorizedRedirectUris": [
+          "https://elaasar-cash-app.firebaseapp.com/__/auth/handler",
+          "http://localhost:3000"
+        ]
+      }
+    }
+  }
+}
