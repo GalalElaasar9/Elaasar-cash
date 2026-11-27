@@ -23,7 +23,18 @@ class RealtimeService {
     return `${proto}//${host}/ws`;
   }
 
+  isCloudHosted() {
+    if (typeof window === 'undefined') return false;
+    const h = window.location.hostname || '';
+    return h.endsWith('.vercel.app') || h.endsWith('.web.app') || h.endsWith('.firebaseapp.com');
+  }
+
   connect() {
+    if (this.isCloudHosted()) {
+      this.setStatus('disconnected');
+      return;
+    }
+
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -99,6 +110,7 @@ class RealtimeService {
   }
 
   send(type, payload) {
+    if (this.isCloudHosted()) return false;
     const data = JSON.stringify({ type, payload });
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(data);

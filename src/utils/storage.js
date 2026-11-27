@@ -1503,14 +1503,14 @@ export const INITIAL_DEMO_PURCHASES = [
   }
 ];
 
-export const EMPTY_TREASURY = {
-  drawerCash: 0,
-  vodafoneCash: 0,
-  instapay: 0,
-  bankAccounts: 0,
-  walletsBreakdown: [],
-  history: []
-};
+// export const EMPTY_TREASURY = {
+//   drawerCash: 0,
+//   vodafoneCash: 0,
+//   instapay: 0,
+//   bankAccounts: 0,
+//   walletsBreakdown: [],
+//   history: []
+// };
 
 export const INITIAL_DEMO_TREASURY = {
   drawerCash: 45000,
@@ -1557,16 +1557,108 @@ export const INITIAL_DEMO_TREASURY = {
   ]
 };
 
+export const EMPTY_TREASURY = {
+  drawerCash: 0,
+  vodafoneCash: 0,
+  instapay: 0,
+  bankAccounts: 0,
+  walletsBreakdown: [],
+  history: []
+};
+
+// Active authenticated user namespace for strict local per-account isolation
+let activeUserId = null;
+
+function getScopedStorageKey(baseKey) {
+  if (!activeUserId) return `elaasar_guest_${baseKey}`;
+  return `elaasar_u_${activeUserId}_${baseKey}`;
+}
+
+const SCOPED_DATA_KEYS = [
+  STORAGE_KEYS.CLIENTS,
+  STORAGE_KEYS.TRANSACTIONS,
+  STORAGE_KEYS.INVENTORY,
+  STORAGE_KEYS.TRASH,
+  STORAGE_KEYS.SHOP_WALLETS,
+  STORAGE_KEYS.CLIENT_ARCHIVES,
+  STORAGE_KEYS.DISMISSED_ARCHIVE_IDS,
+  STORAGE_KEYS.PURCHASES,
+  STORAGE_KEYS.TREASURY,
+  STORAGE_KEYS.INSTAPAY_ACCOUNTS,
+  STORAGE_KEYS.DAILY_AUDITS,
+  STORAGE_KEYS.DAILY_OPENING_BALANCES
+];
+
 export const storage = {
+  setActiveUserScope(uid) {
+    activeUserId = uid ? String(uid) : null;
+  },
+
+  getActiveUserScope() {
+    return activeUserId;
+  },
+
+  /**
+   * Migrates pre-auth legacy localStorage data ONCE into the first signed-in owner account
+   * (specifically preferring the shop owner's email or first unclaimed browser session)
+   * while guaranteeing any subsequent accounts start completely clean and isolated.
+   */
+  migrateLegacyDataIfNeeded(uid, email = '') {
+    if (!uid) return false;
+    try {
+      const legacyOwnerKey = 'elaasar_legacy_migrated_uid';
+      const alreadyClaimed = localStorage.getItem(legacyOwnerKey);
+      if (alreadyClaimed) return false;
+
+      const hasLegacyData = localStorage.getItem(STORAGE_KEYS.CLIENTS) !== null;
+      if (!hasLegacyData) {
+        localStorage.setItem(legacyOwnerKey, uid);
+        return false;
+      }
+
+      // If an explicit owner email exists on this machine, prefer claiming for owner
+      const normalizedEmail = String(email || '').toLowerCase();
+      if (normalizedEmail && normalizedEmail !== 'galalelaaser101@gmail.com') {
+        // Leave unclaimed for the owner on first login, or only migrate if user explicitly imports
+        return false;
+      }
+
+      SCOPED_DATA_KEYS.forEach((baseKey) => {
+        const scoped = `elaasar_u_${uid}_${baseKey}`;
+        if (localStorage.getItem(scoped) === null) {
+          const val = localStorage.getItem(baseKey);
+          if (val !== null) {
+            localStorage.setItem(scoped, val);
+          }
+        }
+      });
+
+      localStorage.setItem(legacyOwnerKey, uid);
+      return true;
+    } catch (e) {
+      console.warn('Legacy storage migration skipped:', e);
+      return false;
+    }
+  },
+
+  hasAnyUserData(uid = activeUserId) {
+    if (!uid) return false;
+    try {
+      return SCOPED_DATA_KEYS.some((k) => localStorage.getItem(`elaasar_u_${uid}_${k}`) !== null);
+    } catch {
+      return false;
+    }
+  },
+
   getClients() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.CLIENTS);
-      if (!data) {
-        localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(INITIAL_DEMO_CLIENTS));
-        return INITIAL_DEMO_CLIENTS;
+      const key = getScopedStorageKey(STORAGE_KEYS.CLIENTS);
+      const data = localStorage.getItem(key);
+      if (data === null) {
+        return [];
       }
       const parsed = JSON.parse(data);
-      // Migrate legacy 60,000 limits to new 200,000 default limit
+      if (!Array.isArray(parsed)) return [];
       let migrated = false;
       const updated = parsed.map(c => ({
         ...c,
@@ -1579,18 +1671,19 @@ export const storage = {
         })
       }));
       if (migrated) {
-        localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(updated));
+        localStorage.setItem(key, JSON.stringify(updated));
       }
       return updated;
     } catch (e) {
       console.error('Error reading clients from storage:', e);
-      return INITIAL_DEMO_CLIENTS;
+      return [];
     }
   },
 
   saveClients(clients) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clients));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.CLIENTS), JSON.stringify(clients || []));
     } catch (e) {
       console.error('Error saving clients:', e);
     }
@@ -1598,21 +1691,20 @@ export const storage = {
 
   getTransactions() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-      if (!data) {
-        localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(INITIAL_DEMO_TRANSACTIONS));
-        return INITIAL_DEMO_TRANSACTIONS;
-      }
-      return JSON.parse(data);
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.TRANSACTIONS));
+      if (data === null) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error reading transactions from storage:', e);
-      return INITIAL_DEMO_TRANSACTIONS;
+      return [];
     }
   },
 
   saveTransactions(transactions) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.TRANSACTIONS), JSON.stringify(transactions || []));
     } catch (e) {
       console.error('Error saving transactions:', e);
     }
@@ -1620,21 +1712,20 @@ export const storage = {
 
   getInventory() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.INVENTORY);
-      if (!data) {
-        localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(INITIAL_DEMO_INVENTORY));
-        return INITIAL_DEMO_INVENTORY;
-      }
-      return JSON.parse(data);
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.INVENTORY));
+      if (data === null) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error reading inventory from storage:', e);
-      return INITIAL_DEMO_INVENTORY;
+      return [];
     }
   },
 
   saveInventory(inventory) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(inventory));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.INVENTORY), JSON.stringify(inventory || []));
     } catch (e) {
       console.error('Error saving inventory:', e);
     }
@@ -1642,21 +1733,20 @@ export const storage = {
 
   getShopWallets() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.SHOP_WALLETS);
-      if (!data) {
-        localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(INITIAL_SHOP_WALLETS));
-        return INITIAL_SHOP_WALLETS;
-      }
-      return JSON.parse(data);
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.SHOP_WALLETS));
+      if (data === null) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error reading shop wallets from storage:', e);
-      return INITIAL_SHOP_WALLETS;
+      return [];
     }
   },
 
   saveShopWallets(wallets) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(wallets));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.SHOP_WALLETS), JSON.stringify(wallets || []));
     } catch (e) {
       console.error('Error saving shop wallets:', e);
     }
@@ -1672,7 +1762,7 @@ export const storage = {
 
   getTrash() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.TRASH);
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.TRASH));
       if (!data) return { wallets: [], clients: [], products: [] };
       const parsed = JSON.parse(data);
       return {
@@ -1687,8 +1777,9 @@ export const storage = {
   },
 
   saveTrash(trash) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.TRASH, JSON.stringify(trash));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.TRASH), JSON.stringify(trash || { wallets: [], clients: [], products: [] }));
     } catch (e) {
       console.error('Error saving trash:', e);
     }
@@ -1696,14 +1787,10 @@ export const storage = {
 
   getClientArchives() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.CLIENT_ARCHIVES);
-      if (data === null) {
-        localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
-        return INITIAL_DEMO_ARCHIVES;
-      }
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.CLIENT_ARCHIVES));
+      if (data === null) return [];
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) return parsed;
-      return [];
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error reading client archives from storage:', e);
       return [];
@@ -1711,8 +1798,9 @@ export const storage = {
   },
 
   saveClientArchives(archives) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(archives || []));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.CLIENT_ARCHIVES), JSON.stringify(archives || []));
     } catch (e) {
       console.error('Error saving client archives:', e);
     }
@@ -1720,7 +1808,7 @@ export const storage = {
 
   getDismissedArchiveIds() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS));
       if (!data) return [];
       const parsed = JSON.parse(data);
       return Array.isArray(parsed) ? parsed : [];
@@ -1731,8 +1819,9 @@ export const storage = {
   },
 
   saveDismissedArchiveIds(ids) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS, JSON.stringify(ids || []));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS), JSON.stringify(ids || []));
     } catch (e) {
       console.error('Error saving dismissed archive ids:', e);
     }
@@ -1740,22 +1829,20 @@ export const storage = {
 
   getPurchases() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.PURCHASES);
-      if (data === null) {
-        localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(INITIAL_DEMO_PURCHASES));
-        return INITIAL_DEMO_PURCHASES;
-      }
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.PURCHASES));
+      if (data === null) return [];
       const parsed = JSON.parse(data);
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error reading purchases from storage:', e);
-      return INITIAL_DEMO_PURCHASES;
+      return [];
     }
   },
 
   savePurchases(purchases) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases || []));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.PURCHASES), JSON.stringify(purchases || []));
     } catch (e) {
       console.error('Error saving purchases:', e);
     }
@@ -1763,22 +1850,20 @@ export const storage = {
 
   getTreasury() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.TREASURY);
-      if (data === null) {
-        localStorage.setItem(STORAGE_KEYS.TREASURY, JSON.stringify(INITIAL_DEMO_TREASURY));
-        return INITIAL_DEMO_TREASURY;
-      }
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.TREASURY));
+      if (data === null) return EMPTY_TREASURY;
       const parsed = JSON.parse(data);
-      return parsed && typeof parsed === 'object' ? parsed : INITIAL_DEMO_TREASURY;
+      return parsed && typeof parsed === 'object' ? parsed : EMPTY_TREASURY;
     } catch (e) {
       console.error('Error reading treasury from storage:', e);
-      return INITIAL_DEMO_TREASURY;
+      return EMPTY_TREASURY;
     }
   },
 
   saveTreasury(treasury) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.TREASURY, JSON.stringify(treasury || INITIAL_DEMO_TREASURY));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.TREASURY), JSON.stringify(treasury || EMPTY_TREASURY));
     } catch (e) {
       console.error('Error saving treasury:', e);
     }
@@ -1786,22 +1871,20 @@ export const storage = {
 
   getInstapayAccounts() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS);
-      if (data === null) {
-        localStorage.setItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS, JSON.stringify(INITIAL_INSTAPAY_ACCOUNTS));
-        return INITIAL_INSTAPAY_ACCOUNTS;
-      }
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.INSTAPAY_ACCOUNTS));
+      if (data === null) return [];
       const parsed = JSON.parse(data);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_INSTAPAY_ACCOUNTS;
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error reading instapay accounts from storage:', e);
-      return INITIAL_INSTAPAY_ACCOUNTS;
+      return [];
     }
   },
 
   saveInstapayAccounts(accounts) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS, JSON.stringify(accounts || INITIAL_INSTAPAY_ACCOUNTS));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.INSTAPAY_ACCOUNTS), JSON.stringify(accounts || []));
     } catch (e) {
       console.error('Error saving instapay accounts:', e);
     }
@@ -1809,22 +1892,20 @@ export const storage = {
 
   getDailyAudits() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.DAILY_AUDITS);
-      if (data === null) {
-        localStorage.setItem(STORAGE_KEYS.DAILY_AUDITS, JSON.stringify(INITIAL_DEMO_DAILY_AUDITS));
-        return INITIAL_DEMO_DAILY_AUDITS;
-      }
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.DAILY_AUDITS));
+      if (data === null) return [];
       const parsed = JSON.parse(data);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DEMO_DAILY_AUDITS;
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error reading daily audits from storage:', e);
-      return INITIAL_DEMO_DAILY_AUDITS;
+      return [];
     }
   },
 
   saveDailyAudits(audits) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.DAILY_AUDITS, JSON.stringify(audits || []));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.DAILY_AUDITS), JSON.stringify(audits || []));
     } catch (e) {
       console.error('Error saving daily audits:', e);
     }
@@ -1832,22 +1913,20 @@ export const storage = {
 
   getDailyOpeningBalances() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.DAILY_OPENING_BALANCES);
-      if (data === null) {
-        localStorage.setItem(STORAGE_KEYS.DAILY_OPENING_BALANCES, JSON.stringify(INITIAL_DEMO_DAILY_OPENING_BALANCES));
-        return INITIAL_DEMO_DAILY_OPENING_BALANCES;
-      }
+      const data = localStorage.getItem(getScopedStorageKey(STORAGE_KEYS.DAILY_OPENING_BALANCES));
+      if (data === null) return [];
       const parsed = JSON.parse(data);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DEMO_DAILY_OPENING_BALANCES;
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error reading daily opening balances from storage:', e);
-      return INITIAL_DEMO_DAILY_OPENING_BALANCES;
+      return [];
     }
   },
 
   saveDailyOpeningBalances(balances) {
+    if (!activeUserId) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.DAILY_OPENING_BALANCES, JSON.stringify(balances || []));
+      localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.DAILY_OPENING_BALANCES), JSON.stringify(balances || []));
     } catch (e) {
       console.error('Error saving daily opening balances:', e);
     }
@@ -1865,10 +1944,10 @@ export const storage = {
       shopWallets: shopWallets || [],
       clientArchives: clientArchives || [],
       purchases: purchases || [],
-      treasury: treasury || INITIAL_DEMO_TREASURY,
-      instapayAccounts: instapayAccounts || INITIAL_INSTAPAY_ACCOUNTS,
-      dailyAudits: dailyAudits || INITIAL_DEMO_DAILY_AUDITS,
-      dailyOpeningBalances: dailyOpeningBalances || INITIAL_DEMO_DAILY_OPENING_BALANCES
+      treasury: treasury || EMPTY_TREASURY,
+      instapayAccounts: instapayAccounts || [],
+      dailyAudits: dailyAudits || [],
+      dailyOpeningBalances: dailyOpeningBalances || []
     };
     
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -1881,18 +1960,18 @@ export const storage = {
   },
 
   resetToDemo() {
-    localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(INITIAL_DEMO_CLIENTS));
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(INITIAL_DEMO_TRANSACTIONS));
-    localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(INITIAL_DEMO_INVENTORY));
-    localStorage.setItem(STORAGE_KEYS.SHOP_WALLETS, JSON.stringify(INITIAL_SHOP_WALLETS));
-    localStorage.setItem(STORAGE_KEYS.CLIENT_ARCHIVES, JSON.stringify(INITIAL_DEMO_ARCHIVES));
-    localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(INITIAL_DEMO_PURCHASES));
-    localStorage.setItem(STORAGE_KEYS.TREASURY, JSON.stringify(INITIAL_DEMO_TREASURY));
-    localStorage.setItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS, JSON.stringify(INITIAL_INSTAPAY_ACCOUNTS));
-    localStorage.setItem(STORAGE_KEYS.DAILY_AUDITS, JSON.stringify(INITIAL_DEMO_DAILY_AUDITS));
-    localStorage.setItem(STORAGE_KEYS.DAILY_OPENING_BALANCES, JSON.stringify(INITIAL_DEMO_DAILY_OPENING_BALANCES));
-    localStorage.removeItem(STORAGE_KEYS.TRASH);
-    localStorage.removeItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.CLIENTS), JSON.stringify(INITIAL_DEMO_CLIENTS));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.TRANSACTIONS), JSON.stringify(INITIAL_DEMO_TRANSACTIONS));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.INVENTORY), JSON.stringify(INITIAL_DEMO_INVENTORY));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.SHOP_WALLETS), JSON.stringify(INITIAL_SHOP_WALLETS));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.CLIENT_ARCHIVES), JSON.stringify(INITIAL_DEMO_ARCHIVES));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.PURCHASES), JSON.stringify(INITIAL_DEMO_PURCHASES));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.TREASURY), JSON.stringify(INITIAL_DEMO_TREASURY));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.INSTAPAY_ACCOUNTS), JSON.stringify(INITIAL_INSTAPAY_ACCOUNTS));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.DAILY_AUDITS), JSON.stringify(INITIAL_DEMO_DAILY_AUDITS));
+    localStorage.setItem(getScopedStorageKey(STORAGE_KEYS.DAILY_OPENING_BALANCES), JSON.stringify(INITIAL_DEMO_DAILY_OPENING_BALANCES));
+    localStorage.removeItem(getScopedStorageKey(STORAGE_KEYS.TRASH));
+    localStorage.removeItem(getScopedStorageKey(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS));
     return {
       clients: INITIAL_DEMO_CLIENTS,
       transactions: INITIAL_DEMO_TRANSACTIONS,
@@ -1909,18 +1988,9 @@ export const storage = {
   },
 
   clearAll() {
-    localStorage.removeItem(STORAGE_KEYS.CLIENTS);
-    localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-    localStorage.removeItem(STORAGE_KEYS.INVENTORY);
-    localStorage.removeItem(STORAGE_KEYS.SHOP_WALLETS);
-    localStorage.removeItem(STORAGE_KEYS.TRASH);
-    localStorage.removeItem(STORAGE_KEYS.CLIENT_ARCHIVES);
-    localStorage.removeItem(STORAGE_KEYS.DISMISSED_ARCHIVE_IDS);
-    localStorage.removeItem(STORAGE_KEYS.PURCHASES);
-    localStorage.removeItem(STORAGE_KEYS.TREASURY);
-    localStorage.removeItem(STORAGE_KEYS.INSTAPAY_ACCOUNTS);
-    localStorage.removeItem(STORAGE_KEYS.DAILY_AUDITS);
-    localStorage.removeItem(STORAGE_KEYS.DAILY_OPENING_BALANCES);
+    SCOPED_DATA_KEYS.forEach((baseKey) => {
+      localStorage.removeItem(getScopedStorageKey(baseKey));
+    });
     return {
       clients: [],
       transactions: [],
@@ -1929,7 +1999,7 @@ export const storage = {
       trash: { wallets: [], clients: [], products: [] },
       clientArchives: [],
       purchases: [],
-      treasury: { drawerCash: 0, vodafoneCash: 0, instapay: 0, bankAccounts: 0, history: [] },
+      treasury: EMPTY_TREASURY,
       instapayAccounts: [],
       dailyAudits: [],
       dailyOpeningBalances: []

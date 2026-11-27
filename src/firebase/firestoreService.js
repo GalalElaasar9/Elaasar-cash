@@ -3,156 +3,170 @@ import {
   collection,
   doc,
   setDoc,
+  deleteDoc,
   onSnapshot,
-  writeBatch,
-  getDocs
+  writeBatch
 } from 'firebase/firestore';
 
-const DEVICE_SESSION_ID = `dev_${Math.random().toString(36).slice(2, 10)}`;
-
-export const USER_STORE_KEYS = [
-  'clients',
-  'transactions',
-  'inventory',
-  'purchases',
-  'treasury',
-  'shopWallets',
-  'instapayAccounts',
-  'dailyAudits',
-  'dailyOpeningBalances',
-  'clientArchives',
-  'trash',
-  'dismissedArchiveIds'
-];
-
 /**
- * Ensure user profile document exists under users/{uid}
+ * Sync User Profile Metadata under users/{uid}
  */
-export async function syncUserProfileToCloud(user) {
+export async function syncUserProfile(user) {
   if (!db || !user?.uid) return;
   try {
-    const profileRef = doc(db, 'users', user.uid);
     const nowIso = new Date().toISOString();
-    await setDoc(
-      profileRef,
-      {
-        uid: user.uid,
-        ...(user.email ? { email: user.email } : {}),
-        ...(user.displayName ? { displayName: user.displayName } : {}),
-        ...(user.photoURL ? { photoURL: user.photoURL } : {}),
-        lastLoginAt: nowIso,
-        updatedAt: nowIso
-      },
-      { merge: true }
-    );
+    const providerId = user.providerData?.[0]?.providerId || 'password';
+    const docRef = doc(db, 'users', user.uid);
+    await setDoc(docRef, {
+      uid: user.uid,
+      email: user.email || '',
+      displayName: user.displayName || '',
+      photoURL: user.photoURL || '',
+      provider: providerId,
+      updatedAt: nowIso,
+      lastLoginAt: nowIso
+    }, { merge: true });
   } catch (err) {
-    console.warn('Could not sync user profile:', err?.code || err?.message);
+    // Non-fatal if Firestore API is still being enabled by project owner
+    console.warn('User profile sync skipped:', err?.code || err?.message);
   }
 }
 
 /**
- * Subscribe in real time to ALL store documents owned strictly by `uid` (`users/{uid}/store/{docId}`).
+ * Subscribe to ALL account-private data documents under users/{uid}/store
+ * Each document holds either { uid, items: [...] } or { uid, data: {...} }.
  */
-export function subscribeUserStore(uid, onSnapshotData, onError) {
+export function subscribeToUserStore(uid, onUpdate, onError) {
   if (!db || !uid) return () => {};
-  const storeCol = collection(db, 'users', uid, 'store');
-
+  const colRef = collection(db, 'users', uid, 'store');
   return onSnapshot(
-    storeCol,
+    colRef,
     (snapshot) => {
-      const updates = {};
+      const storeMap = {};
       snapshot.docs.forEach((docSnap) => {
         const d = docSnap.data();
-        if (!d) return;
-        // Skip local pending echoes written by this exact browser tab
-        if (snapshot.metadata.hasPendingWrites && d.updatedBy === DEVICE_SESSION_ID) {
-          return;
-        }
-        if (Array.isArray(d.items)) {
-          updates[docSnap.id] = d.items;
-        } else if (d.data !== undefined) {
-          updates[docSnap.id] = d.data;
+        if (d && Array.isArray(d.items)) {
+          storeMap[docSnap.id] = d.items;
+        } else if (d && d.data !== undefined) {
+          storeMap[docSnap.id] = d.data;
         }
       });
-      onSnapshotData(updates, snapshot.empty, snapshot.metadata.hasPendingWrites);
+      onUpdate(storeMap, snapshot.metadata.hasPendingWrites);
     },
     (err) => {
-      console.error('Per-user Firestore listener error:', err?.code || err?.message);
+      console.warn('Firestore user store listener error:', err?.code || err?.message);
       if (onError) onError(err);
     }
   );
 }
 
 /**
- * Persist a single store slice under `users/{uid}/store/{docKey}` complying strictly with firestore.rules.
+ * Write a single store slice under users/{uid}/store/{docId}
  */
-export async function syncUserStoreSlice(uid, docKey, value) {
-  if (!db || !uid || !docKey) return;
-  const ref = doc(db, 'users', uid, 'store', docKey);
+export async function saveUserStoreDoc(uid, docId, payload) {
+  if (!db || !uid || !docId) return;
   const nowIso = new Date().toISOString();
-
-  const payload = Array.isArray(value)
-    ? {
-        uid,
-        id: docKey,
-        items: value,
-        updatedAt: nowIso,
-        updatedBy: DEVICE_SESSION_ID,
-        version: 1
-      }
-    : {
-        uid,
-        id: docKey,
-        data: value || {},
-        updatedAt: nowIso,
-        updatedBy: DEVICE_SESSION_ID,
-        version: 1
-      };
-
-  await setDoc(ref, payload);
+  const docRef = doc(db, 'users', uid, 'store', String(docId));
+  const body = Array.isArray(payload)
+    ? { uid, items: payload, updatedAt: nowIso }
+    : { uid, data: payload, updatedAt: nowIso };
+  await setDoc(docRef, body, { merge: false });
 }
 
 /**
- * Upload complete account dataset in one batch to `users/{uid}/store/*`
+ * Atomically push all store slices for a user account to Cloud Firestore
  */
-export async function uploadAllLocalDataToCloud(uid, stateMap) {
-  if (!db || !uid) throw new Error('يرجى تسجيل الدخول بحسابك أولاً');
-
-  const batch = writeBatch(db);
+export async function uploadAllUserStoreData(uid, storeBundle) {
+  if (!db || !uid) return;
   const nowIso = new Date().toISOString();
+  const batch = writeBatch(db);
 
-  USER_STORE_KEYS.forEach((docKey) => {
-    if (!(docKey in stateMap)) return;
-    const val = stateMap[docKey];
-    const ref = doc(db, 'users', uid, 'store', docKey);
-    const payload = Array.isArray(val)
-      ? {
-          uid,
-          id: docKey,
-          items: val,
-          updatedAt: nowIso,
-          updatedBy: DEVICE_SESSION_ID,
-          version: 1
-        }
-      : {
-          uid,
-          id: docKey,
-          data: val || {},
-          updatedAt: nowIso,
-          updatedBy: DEVICE_SESSION_ID,
-          version: 1
-        };
-    batch.set(ref, payload);
+  Object.entries(storeBundle || {}).forEach(([docId, payload]) => {
+    if (payload === undefined) return;
+    const docRef = doc(db, 'users', uid, 'store', String(docId));
+    const body = Array.isArray(payload)
+      ? { uid, items: payload, updatedAt: nowIso }
+      : { uid, data: payload, updatedAt: nowIso };
+    batch.set(docRef, body);
   });
 
   await batch.commit();
 }
 
-/**
- * Check whether user already has any saved documents in Firestore
- */
-export async function checkUserHasCloudData(uid) {
-  if (!db || !uid) return false;
-  const snap = await getDocs(collection(db, 'users', uid, 'store'));
-  return !snap.empty;
+// =========================================================================
+// Legacy / Shop-scoped helpers preserved for backward compatibility
+// =========================================================================
+
+export function subscribeToClients(shopId, onUpdate, onError) {
+  if (!db || !shopId) return () => {};
+  const colRef = collection(db, 'shops', shopId, 'clients');
+  return onSnapshot(colRef, (snapshot) => {
+    const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    onUpdate(list);
+  }, (err) => {
+    if (onError) onError(err);
+  });
+}
+
+export function subscribeToTransactions(shopId, onUpdate, onError) {
+  if (!db || !shopId) return () => {};
+  const colRef = collection(db, 'shops', shopId, 'transactions');
+  return onSnapshot(colRef, (snapshot) => {
+    const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    list.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    onUpdate(list);
+  }, (err) => {
+    if (onError) onError(err);
+  });
+}
+
+export function subscribeToInventory(shopId, onUpdate, onError) {
+  if (!db || !shopId) return () => {};
+  const colRef = collection(db, 'shops', shopId, 'inventory');
+  return onSnapshot(colRef, (snapshot) => {
+    const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    onUpdate(list);
+  }, (err) => {
+    if (onError) onError(err);
+  });
+}
+
+export async function syncClientToCloud(shopId, client) {
+  if (!db || !shopId || !client?.id) return;
+  const docRef = doc(db, 'shops', shopId, 'clients', String(client.id));
+  await setDoc(docRef, { ...client, updatedAt: new Date().toISOString() }, { merge: true });
+}
+
+export async function deleteClientFromCloud(shopId, clientId) {
+  if (!db || !shopId || !clientId) return;
+  const docRef = doc(db, 'shops', shopId, 'clients', String(clientId));
+  await deleteDoc(docRef);
+}
+
+export async function syncTransactionToCloud(shopId, tx) {
+  if (!db || !shopId || !tx?.id) return;
+  const docRef = doc(db, 'shops', shopId, 'transactions', String(tx.id));
+  await setDoc(docRef, { ...tx, updatedAt: new Date().toISOString() }, { merge: true });
+}
+
+export async function deleteTransactionFromCloud(shopId, txId) {
+  if (!db || !shopId || !txId) return;
+  const docRef = doc(db, 'shops', shopId, 'transactions', String(txId));
+  await deleteDoc(docRef);
+}
+
+export async function syncProductToCloud(shopId, product) {
+  if (!db || !shopId || !product?.id) return;
+  const docRef = doc(db, 'shops', shopId, 'inventory', String(product.id));
+  await setDoc(docRef, { ...product, updatedAt: new Date().toISOString() }, { merge: true });
+}
+
+export async function deleteProductFromCloud(shopId, productId) {
+  if (!db || !shopId || !productId) return;
+  const docRef = doc(db, 'shops', shopId, 'inventory', String(productId));
+  await deleteDoc(docRef);
+}
+
+export async function uploadAllLocalDataToCloud(uidOrShopId, dataBundle) {
+  return uploadAllUserStoreData(uidOrShopId, dataBundle);
 }
