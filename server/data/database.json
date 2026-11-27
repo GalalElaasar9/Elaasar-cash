@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastUpdated": "2026-11-27T16:23:54.998Z",
+  "lastUpdated": "2026-11-27T18:44:58.582Z",
   "shopInfo": {
     "name": "الأعصر لخدمات المحمول",
     "syncId": "elaasar_main"
@@ -494,26 +494,6 @@
     }
   ],
   "inventory": [
-    {
-      "id": "prod-1795795926689-69cu",
-      "category": "accessories",
-      "name": "حشيش",
-      "brand": "عام",
-      "storage": "",
-      "costPrice": 1000,
-      "salePrice": 1500,
-      "minStockAlert": 5,
-      "notes": "تمت الإضافة تلقائياً من فاتورة شراء PUR-2026-937",
-      "createdAt": "2026-11-27T16:12:06.689Z",
-      "images": [],
-      "variants": [
-        {
-          "color": "بنى قريب من الأسود",
-          "quantity": 0
-        }
-      ],
-      "totalQuantity": 0
-    },
     {
       "id": "prod-1",
       "category": "phones",

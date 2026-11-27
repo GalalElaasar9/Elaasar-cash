@@ -1254,7 +1254,6 @@ export const INITIAL_DEMO_INVENTORY = [
     notes: 'نسخة دولية أصلية جديدة متبرشمة بضمان آبل',
     createdAt: getRecentDate(4),
     images: [
-      'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=600&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=600&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=600&auto=format&fit=crop&q=80'
     ],
@@ -1320,8 +1319,7 @@ export const INITIAL_DEMO_INVENTORY = [
     notes: 'رأس شاحن أصلي معتمد يدعم شحن فائق السرعة',
     createdAt: getRecentDate(12),
     images: [
-      'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1609592424109-dd9892f1b177?w=600&auto=format&fit=crop&q=80'
+      'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&auto=format&fit=crop&q=80'
     ],
     variants: [
       { color: 'أبيض ناصع', hex: '#ffffff', quantity: 8 },

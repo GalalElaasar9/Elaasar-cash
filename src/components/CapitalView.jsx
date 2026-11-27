@@ -3,6 +3,7 @@ import { useCash } from '../context/CashContext';
 import { 
   formatCurrency, 
   formatDateArabic, 
+  formatTimeArabic,
   formatDateTimeArabic, 
   formatPhone,
   getTodayString 
@@ -167,73 +168,77 @@ export default function CapitalView({ onNavigateToTab }) {
     <div className="space-y-6 animate-view-fade">
       
       {/* 1. Header & Actions Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-600 to-red-600 text-white shadow-md shadow-amber-500/25">
+      <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
+        {/* Top Row: Title Identity + Primary Daily Closing CTA */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+            <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-600 to-red-600 text-white shadow-md shadow-amber-500/25 flex items-center justify-center">
               <Coins className="w-6 h-6" />
             </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <span>إدارة رأس المال والسيولة النقدية والخزائن</span>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 font-bold">
-                  مركز مالي مباشر
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-base sm:text-xl font-black text-slate-900 dark:text-slate-100 leading-snug">
+                  إدارة رأس المال والسيولة النقدية والخزائن
+                </h1>
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100/90 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold whitespace-nowrap shrink-0 border border-amber-200/70 dark:border-amber-800/50">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>مركز مالي مباشر</span>
                 </span>
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                متابعة دقيقة لكاش الدرج، أرصدة فودافون كاش، حساب إنستاباي، وأصول بضاعة المحل
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                متابعة دقيقة لكاش الدرج، أرصدة فودافون كاش، حسابات إنستاباي، وأصول بضاعة المحل
               </p>
             </div>
           </div>
-        </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveModal('dailyAudit')}
-            className="btn-interactive flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white text-xs sm:text-sm font-black shadow-md shadow-emerald-600/30 transition-all border border-emerald-500/30"
+            className="btn-interactive shrink-0 whitespace-nowrap flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white text-xs sm:text-sm font-black shadow-md shadow-emerald-600/25 transition-all border border-emerald-500/30"
           >
-            <ShieldCheck className="w-4 h-4 text-emerald-200" />
-            <span>📋 جرد نهاية اليوم وإقفال اليومية</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-100 shrink-0" />
+            <span>جرد نهاية اليوم وإقفال اليومية</span>
           </button>
+        </div>
 
+        {/* Bottom Row: Organized Quick Treasury Toolbar */}
+        <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => {
               setModalData({ type: 'cash_liquidity' });
               setActiveModal('addCashLiquidity');
             }}
-            className="btn-interactive flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white text-xs sm:text-sm font-black shadow-md shadow-red-600/25 transition-all"
+            className="btn-interactive whitespace-nowrap flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 text-rose-700 dark:text-rose-300 text-xs font-bold border border-rose-200 dark:border-rose-900/60 transition-all"
           >
-            <Coins className="w-4 h-4" />
+            <Coins className="w-3.5 h-3.5 shrink-0" />
             <span>+ شراء وتغذية رصيد كاش</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenTransfer()}
-            className="btn-interactive flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs sm:text-sm font-black shadow-md shadow-amber-600/25 transition-all"
+            className="btn-interactive whitespace-nowrap flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-600 hover:text-white dark:hover:bg-amber-600 text-amber-800 dark:text-amber-300 text-xs font-bold border border-amber-200 dark:border-amber-900/60 transition-all"
           >
-            <ArrowRightLeft className="w-4 h-4" />
+            <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" />
             <span>تحويل بين الخزائن</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenAdjust()}
-            className="btn-interactive flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-bold border border-slate-200 dark:border-slate-700 transition-colors"
+            className="btn-interactive whitespace-nowrap flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200/90 dark:border-slate-700 transition-colors"
           >
-            <Scale className="w-4 h-4 text-emerald-600" />
+            <Scale className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span>تسوية وجرد رصيد</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenDepositWithdraw()}
-            className="btn-interactive flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-bold border border-slate-200 dark:border-slate-700 transition-colors"
+            className="btn-interactive whitespace-nowrap flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200/90 dark:border-slate-700 transition-colors"
           >
-            <PlusCircle className="w-4 h-4 text-blue-600" />
+            <PlusCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />
             <span>إيداع / سحب سيولة</span>
           </button>
         </div>
