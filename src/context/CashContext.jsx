@@ -272,6 +272,32 @@ export function CashProvider({ children }) {
     storage.saveInstapayAccounts(instapayAccounts);
   }, [instapayAccounts]);
 
+  // Keep treasury.vodafoneCash & treasury.instapay strictly synchronized with linked sub-accounts
+  useEffect(() => {
+    const hasWallets = Array.isArray(shopWallets) && shopWallets.length > 0;
+    const hasInsta = Array.isArray(instapayAccounts) && instapayAccounts.length > 0;
+    if (!hasWallets && !hasInsta) return;
+
+    const walletsSum = hasWallets
+      ? shopWallets.reduce((sum, w) => sum + (Number(w.balance) || 0), 0)
+      : Number(treasury?.vodafoneCash) || 0;
+    const instaSum = hasInsta
+      ? instapayAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0)
+      : Number(treasury?.instapay) || 0;
+
+    const curVf = Number(treasury?.vodafoneCash) || 0;
+    const curInsta = Number(treasury?.instapay) || 0;
+
+    if ((hasWallets && Math.abs(curVf - walletsSum) > 0.001) || (hasInsta && Math.abs(curInsta - instaSum) > 0.001)) {
+      setTreasury(prev => ({
+        ...prev,
+        vodafoneCash: hasWallets ? walletsSum : prev.vodafoneCash,
+        instapay: hasInsta ? instaSum : prev.instapay,
+        lastUpdated: new Date().toISOString()
+      }));
+    }
+  }, [shopWallets, instapayAccounts, treasury?.vodafoneCash, treasury?.instapay]);
+
   // Sync dailyAudits to localStorage
   useEffect(() => {
     storage.saveDailyAudits(dailyAudits);
@@ -2593,12 +2619,13 @@ export function CashProvider({ children }) {
     const selectedWalletObj = walletId ? shopWallets.find(w => w.id === walletId) : null;
     const selectedInstapayObj = instapayAccountId ? instapayAccounts.find(a => a.id === instapayAccountId) : null;
 
-    let foundPurchase = null;
+    const foundPurchase = purchases.find(p => p.id === purchaseId);
+    if (!foundPurchase) return false;
+
     setPurchases(prev => prev.map(p => {
       if (p.id !== purchaseId) return p;
-      foundPurchase = p;
-      const newPaid = p.paidAmount + payAmt;
-      const newRemaining = Math.max(0, p.totalAmount - newPaid);
+      const newPaid = (Number(p.paidAmount) || 0) + payAmt;
+      const newRemaining = Math.max(0, (Number(p.totalAmount) || 0) - newPaid);
       const newStatus = newRemaining <= 0 ? 'paid' : 'partial';
 
       const newPayment = {
@@ -2622,8 +2649,6 @@ export function CashProvider({ children }) {
         payments: [...(p.payments || []), newPayment]
       };
     }));
-
-    if (!foundPurchase) return false;
 
     if (targetChannel === 'vodafoneCash' && selectedWalletObj) {
       setShopWallets(prev => prev.map(w => 
@@ -3544,14 +3569,157 @@ export function CashProvider({ children }) {
     return (clients || []).reduce((sum, client) => {
       const wallets = client.wallets || [];
       const walletIds = new Set(wallets.map(w => w.id));
-      const recharges = transactions
-        .filter(t => walletIds.has(t.walletId) && (t.type === 'recharge' || t.type === 'limit_reset') && !t.isSettled)
+
+      let clientType = client.clientType;
+      if (!clientType) {
+        try {
+          clientType = localStorage.getItem(`elaasar_client_type_${client.id}`) || 'مدين';
+        } catch {
+          clientType = 'مدين';
+        }
+      }
+
+      let settledAt = client.settledAt;
+      if (!settledAt) {
+        try {
+          settledAt = localStorage.getItem(`elaasar_client_settled_at_${client.id}`);
+        } catch {
+          settledAt = null;
+        }
+      }
+      const settledTimestamp = settledAt ? new Date(settledAt).getTime() : 0;
+
+      let clientExcessDebt = client.excessDebt;
+      let clientExcessDate = client.excessDebtDate;
+      if (clientExcessDebt === undefined || clientExcessDebt === null) {
+        try {
+          const saved = localStorage.getItem(`elaasar_client_excess_debt_${client.id}`);
+          if (saved !== null && saved !== '') {
+            clientExcessDebt = Number(saved);
+            clientExcessDate = localStorage.getItem(`elaasar_client_excess_debt_date_${client.id}`);
+          }
+        } catch {
+          clientExcessDebt = null;
+        }
+      }
+
+      let clientExcessCredit = client.excessCredit;
+      let clientExcessCreditDate = client.excessCreditDate;
+      if (clientExcessCredit === undefined || clientExcessCredit === null) {
+        try {
+          const saved = localStorage.getItem(`elaasar_client_excess_credit_${client.id}`);
+          if (saved !== null && saved !== '') {
+            clientExcessCredit = Number(saved);
+            clientExcessCreditDate = localStorage.getItem(`elaasar_client_excess_credit_date_${client.id}`);
+          }
+        } catch {
+          clientExcessCredit = null;
+        }
+      }
+
+      let hasExcessCredit = false;
+      if (clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0 && clientExcessCreditDate) {
+        const cDate = new Date(clientExcessCreditDate).getTime();
+        const postRechargesSum = (transactions || []).filter(t =>
+          (walletIds.has(t.walletId) || t.customerId === client.id || t.clientId === client.id) &&
+          (t.type === 'recharge' || t.type === 'limit_reset') &&
+          !t.isSettled &&
+          new Date(t.date).getTime() > cDate
+        ).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+
+        const postPayoutsSum = (transactions || []).filter(t =>
+          (t.clientId === client.id || t.customerId === client.id) &&
+          t.type === 'client_payment' &&
+          t.isCreditorPayout &&
+          !t.isSettled &&
+          new Date(t.date).getTime() > cDate
+        ).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+
+        if (clientExcessCredit - postPayoutsSum - postRechargesSum > 0) {
+          hasExcessCredit = true;
+        }
+      } else if (clientType === 'دائن' && typeof clientExcessCredit === 'number' && clientExcessCredit > 0) {
+        hasExcessCredit = true;
+      }
+
+      const hasExcessDebt = !hasExcessCredit && clientType === 'مدين' && typeof clientExcessDebt === 'number' && clientExcessDebt > 0;
+
+      let effectiveCutoff = settledTimestamp;
+      if (hasExcessCredit && clientExcessCreditDate) {
+        effectiveCutoff = new Date(clientExcessCreditDate).getTime();
+      } else if (hasExcessDebt && clientExcessDate) {
+        effectiveCutoff = new Date(clientExcessDate).getTime();
+      }
+
+      const lastPaymentIdx = (transactions || []).findIndex(t =>
+        (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment'
+      );
+
+      const isTxInActiveCycle = (t) => {
+        if (t.isSettled) return false;
+        if (effectiveCutoff === 0) return true;
+        if (new Date(t.date).getTime() > effectiveCutoff) return true;
+        if (t.type === 'recharge' || t.type === 'limit_reset') {
+          if (lastPaymentIdx !== -1 && transactions.indexOf(t) < lastPaymentIdx) return true;
+          if (t.id && Number(String(t.id).replace('tx-rc-', '')) > effectiveCutoff) return true;
+        }
+        return false;
+      };
+
+      const baseAmount = (transactions || [])
+        .filter(t => walletIds.has(t.walletId) && (t.type === 'recharge' || t.type === 'limit_reset') && isTxInActiveCycle(t))
         .reduce((s, t) => s + (Number(t.amount) || 0), 0);
-      const payments = transactions
-        .filter(t => (t.clientId === client.id || t.customerId === client.id) && t.type === 'client_payment')
-        .reduce((s, t) => s + (Number(t.amount) || 0), 0);
-      const debt = Math.max(0, recharges - payments);
-      return sum + debt;
+
+      let commissionMode = client.commissionMode;
+      if (!commissionMode) {
+        try {
+          commissionMode = localStorage.getItem(`elaasar_client_commission_mode_${client.id}`) || 'deduct';
+        } catch {
+          commissionMode = 'deduct';
+        }
+      }
+
+      let commissionPercent = client.commissionPercent;
+      if (commissionPercent === undefined || commissionPercent === null || commissionPercent === '') {
+        try {
+          const saved = localStorage.getItem(`elaasar_client_commission_${client.id}`);
+          commissionPercent = (saved !== null && saved !== '') ? saved : '0.995';
+        } catch {
+          commissionPercent = '0.995';
+        }
+      }
+
+      const factorNum = Number(commissionPercent);
+      let finalAmount = baseAmount;
+      if (!isNaN(factorNum) && factorNum > 0 && baseAmount > 0) {
+        if (factorNum >= 0.5) {
+          finalAmount = baseAmount * factorNum;
+        } else {
+          finalAmount = commissionMode === 'deduct' ? baseAmount * (1 - factorNum) : baseAmount * (1 + factorNum);
+        }
+      }
+
+      const clientPayments = (transactions || []).filter(t =>
+        (t.clientId === client.id || t.customerId === client.id) &&
+        t.type === 'client_payment' &&
+        (effectiveCutoff === 0 || new Date(t.date).getTime() > effectiveCutoff)
+      );
+
+      const paidNet = clientPayments.reduce((s, t) => s + (t.isCreditorPayout ? -Number(t.amount) : Number(t.amount)), 0);
+
+      let remainingDebt = 0;
+      if (hasExcessDebt) {
+        const postPayments = clientPayments.filter(t => !t.isCreditorPayout).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+        remainingDebt = Math.max(0, (clientExcessDebt + baseAmount) - postPayments);
+      } else if (hasExcessCredit) {
+        const postPayouts = clientPayments.filter(t => t.isCreditorPayout).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+        const activeCredit = clientExcessCredit - postPayouts - baseAmount;
+        remainingDebt = activeCredit < 0 ? Math.abs(activeCredit) : 0;
+      } else {
+        remainingDebt = Math.max(0, finalAmount - paidNet);
+      }
+
+      return sum + remainingDebt;
     }, 0);
   }, [clients, transactions]);
 

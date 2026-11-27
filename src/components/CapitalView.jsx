@@ -884,14 +884,18 @@ export default function CapitalView({ onNavigateToTab }) {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            askConfirm({
+                          onClick={async () => {
+                            const confirmed = await askConfirm({
                               title: 'حذف سجل الجرد اليومي',
                               message: `هل أنت متأكد من حذف سجل جرد يومية (${formatDateArabic(audit.dateOnly || audit.date)})؟`,
+                              details: 'سيتم إزالة سجل الجرد من الأرشيف فقط دون تعديل الأرصدة الحالية.',
+                              type: 'danger',
                               confirmText: 'نعم، احذف السجل',
-                              isDangerous: true,
-                              onConfirm: () => deleteDailyAudit(audit.id)
+                              cancelText: 'إلغاء'
                             });
+                            if (confirmed) {
+                              deleteDailyAudit(audit.id);
+                            }
                           }}
                           className="px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all"
                         >

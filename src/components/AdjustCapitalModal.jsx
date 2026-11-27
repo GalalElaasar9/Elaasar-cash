@@ -80,9 +80,14 @@ export default function AdjustCapitalModal() {
       setActiveTab(defaultTab);
 
       const initialCh = modalData?.channel || 'drawerCash';
+      const defaultAdjustSub = getDefaultSubId(initialCh);
       setSelectedChannel(initialCh);
-      setAdjustSubAccountId('');
-      setNewBalance(treasury?.[initialCh] !== undefined ? treasury[initialCh] : '');
+      setAdjustSubAccountId(defaultAdjustSub);
+      setNewBalance(
+        defaultAdjustSub
+          ? getSubAccountBalance(initialCh, defaultAdjustSub)
+          : (treasury?.[initialCh] !== undefined ? treasury[initialCh] : '')
+      );
       setFromChannel(modalData?.channel || 'drawerCash');
       setFromSubAccountId(getDefaultSubId(modalData?.channel || 'drawerCash'));
       const defaultTo = (modalData?.channel || 'drawerCash') === 'instapay' ? 'vodafoneCash' : 'instapay';
@@ -155,6 +160,16 @@ export default function AdjustCapitalModal() {
       return;
     }
 
+    if (selectedChannel === 'vodafoneCash' && shopWallets.length > 0 && !adjustSubAccountId) {
+      showToast('يرجى اختيار خط فودافون كاش المراد تسوية رصيده ليبقى مطابقاً مع الخزينة', 'error');
+      return;
+    }
+
+    if (selectedChannel === 'instapay' && instapayAccounts.length > 0 && !adjustSubAccountId) {
+      showToast('يرجى اختيار حساب إنستاباي المراد تسوية رصيده ليبقى مطابقاً مع الخزينة', 'error');
+      return;
+    }
+
     const success = updateTreasuryBalance(
       selectedChannel,
       val,
@@ -170,6 +185,16 @@ export default function AdjustCapitalModal() {
     const amt = Number(dwAmount);
     if (!amt || amt <= 0) {
       showToast('يرجى إدخال مبلغ صحيح', 'error');
+      return;
+    }
+
+    if (dwChannel === 'vodafoneCash' && shopWallets.length > 0 && !dwSubAccountId) {
+      showToast('يرجى اختيار خط فودافون كاش المستهدف لضمان تطابق السيولة', 'error');
+      return;
+    }
+
+    if (dwChannel === 'instapay' && instapayAccounts.length > 0 && !dwSubAccountId) {
+      showToast('يرجى اختيار حساب إنستاباي المستهدف لضمان تطابق السيولة', 'error');
       return;
     }
 
@@ -454,9 +479,10 @@ export default function AdjustCapitalModal() {
                   value={selectedChannel}
                   onChange={(e) => {
                     const ch = e.target.value;
+                    const defaultSub = getDefaultSubId(ch);
                     setSelectedChannel(ch);
-                    setAdjustSubAccountId('');
-                    setNewBalance(treasury?.[ch] || 0);
+                    setAdjustSubAccountId(defaultSub);
+                    setNewBalance(defaultSub ? getSubAccountBalance(ch, defaultSub) : (treasury?.[ch] || 0));
                   }}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold focus:outline-none"
                 >
@@ -475,12 +501,13 @@ export default function AdjustCapitalModal() {
                       setAdjustSubAccountId(subId);
                       setNewBalance(getSubAccountBalance('vodafoneCash', subId));
                     }}
+                    required
                     className="w-full px-3 py-2 text-xs bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl font-bold text-rose-900 dark:text-rose-200"
                   >
-                    <option value="">-- تعديل الإجمالي العام لفودافون كاش --</option>
+                    <option value="">-- اختر خط فودافون كاش لتسوية رصيده --</option>
                     {shopWallets.map(w => (
                       <option key={w.id} value={w.id}>
-                        خط محدد: {w.label} ({w.phoneNumber}) - الحالي: {formatCurrency(w.balance || 0)}
+                        خط: {w.label} ({w.phoneNumber}) - الحالي: {formatCurrency(w.balance || 0)}
                       </option>
                     ))}
                   </select>
@@ -494,12 +521,13 @@ export default function AdjustCapitalModal() {
                       setAdjustSubAccountId(subId);
                       setNewBalance(getSubAccountBalance('instapay', subId));
                     }}
+                    required
                     className="w-full px-3 py-2 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl font-bold text-amber-900 dark:text-amber-200"
                   >
-                    <option value="">-- تعديل الإجمالي العام لإنستاباي --</option>
+                    <option value="">-- اختر حساب إنستاباي لتسوية رصيده --</option>
                     {instapayAccounts.map(a => (
                       <option key={a.id} value={a.id}>
-                        حساب محدد: {a.accountName} - الحالي: {formatCurrency(a.balance || 0)}
+                        حساب: {a.accountName} - الحالي: {formatCurrency(a.balance || 0)}
                       </option>
                     ))}
                   </select>

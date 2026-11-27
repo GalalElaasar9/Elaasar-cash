@@ -71,15 +71,19 @@ export default function PurchaseDetailsModal() {
     window.open(`https://wa.me/${intlPhone}?text=${msg}`, '_blank');
   };
 
-  const handleDelete = () => {
-    askConfirm(
-      `هل أنت متأكد من حذف فاتورة "${purchase.invoiceNumber}" الخاصة بـ (${purchase.supplierName})؟`,
-      () => {
-        deletePurchase(purchase.id);
-        handleClose();
-      },
-      'تأكيد حذف الفاتورة'
-    );
+  const handleDelete = async () => {
+    const confirmed = await askConfirm({
+      title: 'تأكيد حذف الفاتورة',
+      message: `هل أنت متأكد من حذف فاتورة "${purchase.invoiceNumber}" الخاصة بـ (${purchase.supplierName})؟`,
+      details: 'سيتم حذف الفاتورة وعكس تأثيرها المالي على الخزينة والمورد والمخزون.',
+      type: 'danger',
+      confirmText: 'نعم، احذف الفاتورة',
+      cancelText: 'إلغاء'
+    });
+    if (confirmed) {
+      deletePurchase(purchase.id);
+      handleClose();
+    }
   };
 
   const handleSettlePayment = () => {

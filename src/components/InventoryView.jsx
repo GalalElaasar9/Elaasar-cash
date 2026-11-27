@@ -2277,13 +2277,18 @@ export default function InventoryView() {
 
                       <button
                         type="button"
-                        onClick={() => {
-                          askConfirm(
-                            `هل أنت متأكد من حذف حساب إنستاباي "${acc.accountName}"؟`,
-                            () => {
-                              deleteInstapayAccount(acc.id);
-                            }
-                          );
+                        onClick={async () => {
+                          const confirmed = await askConfirm({
+                            title: 'حذف حساب إنستاباي',
+                            message: `هل أنت متأكد من حذف حساب إنستاباي "${acc.accountName}"؟`,
+                            details: 'سيتم إزالة الحساب وتحديث إجمالي رصيد إنستاباي في الخزينة.',
+                            type: 'danger',
+                            confirmText: 'نعم، احذف الحساب',
+                            cancelText: 'إلغاء'
+                          });
+                          if (confirmed) {
+                            deleteInstapayAccount(acc.id);
+                          }
                         }}
                         className="btn-interactive p-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-bold transition-colors"
                         title="حذف الحساب"

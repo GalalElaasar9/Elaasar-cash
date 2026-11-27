@@ -1509,9 +1509,12 @@ export const INITIAL_DEMO_TREASURY = {
   instapay: 65000,
   bankAccounts: 30000,
   walletsBreakdown: [
-    { id: 'vf-1', name: 'محفظة المبيعات المركزية (01098765432)', balance: 35000 },
-    { id: 'vf-2', name: 'محفظة فرع المحطة (01011223344)', balance: 25000 },
-    { id: 'vf-3', name: 'محفظة كبار العملاء والسيولة (01055667788)', balance: 25000 },
+    { id: 'wallet-1-1', name: 'محفظة المبيعات المركزية (01098765432)', balance: 30000 },
+    { id: 'wallet-1-2', name: 'محفظة فرع المحطة (01011223344)', balance: 20000 },
+    { id: 'wallet-1-3', name: 'محفظة كبار العملاء والسيولة (01055667788)', balance: 15000 },
+    { id: 'wallet-2-1', name: 'محفظة إدارة الحسابات (01023456789)', balance: 10000 },
+    { id: 'wallet-2-2', name: 'محفظة المشتريات والتوريدات (01034567890)', balance: 5000 },
+    { id: 'wallet-3-1', name: 'محفظة التحويلات الفورية (01099887766)', balance: 5000 },
   ],
   history: [
     {
