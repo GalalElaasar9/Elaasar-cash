@@ -197,7 +197,7 @@ export default function RecordOpeningCapitalModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl" onClick={() => setActiveModal(null)}>
+    <div data-modal-overlay="true" className="fixed inset-0 z-50 overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl" onClick={() => setActiveModal(null)}>
       <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-xs animate-right-sheet-backdrop" />
       <div 
         className="fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl bg-white dark:bg-slate-900 sm:rounded-l-3xl border-l border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col animate-responsive-sheet lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border"

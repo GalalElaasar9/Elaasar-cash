@@ -23,7 +23,8 @@ import {
   Send,
   UserPlus,
   ShoppingBag,
-  Coins
+  Coins,
+  LogOut
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -34,7 +35,7 @@ export default function Sidebar({
   isCollapsed = false,
   onToggleCollapse
 }) {
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   const { 
     theme, 
     toggleTheme, 
@@ -277,6 +278,17 @@ export default function Sidebar({
                   </span>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  logout();
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors shrink-0"
+                title="تسجيل الخروج"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 
@@ -435,7 +447,7 @@ export default function Sidebar({
           3. Mobile Drawer Sidebar (Slides from Right)
       ========================================================================= */}
       {mobileDrawerOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
+        <div data-modal-overlay="true" className="lg:hidden fixed inset-0 z-50">
           {/* Backdrop */}
           <div 
             className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs animate-right-sheet-backdrop" 
@@ -515,7 +527,40 @@ export default function Sidebar({
             </div>
 
             {/* Drawer Footer */}
-            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 space-y-2">
+              {currentUser && (
+                <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {currentUser.photoURL ? (
+                      <img src={currentUser.photoURL} alt="" className="w-8 h-8 rounded-full ring-2 ring-emerald-500 shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 flex items-center justify-center font-bold text-xs shrink-0">
+                        {currentUser.displayName?.charAt(0) || 'U'}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {currentUser.displayName || 'مستخدم جوجل'}
+                      </p>
+                      <p className="text-[10px] font-mono text-slate-400 truncate" dir="ltr">
+                        {currentUser.email}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileDrawerOpen(false);
+                      logout();
+                    }}
+                    className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 shrink-0"
+                    title="تسجيل الخروج"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => {

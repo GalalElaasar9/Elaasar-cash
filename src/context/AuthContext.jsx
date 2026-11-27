@@ -10,9 +10,35 @@ import {
 } from '../firebase/config';
 import { 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signOut, 
   onAuthStateChanged 
 } from 'firebase/auth';
+
+function getFriendlyFirebaseAuthError(error) {
+  const code = error?.code || '';
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+
+  switch (code) {
+    case 'auth/unauthorized-domain':
+      return `النطاق الحالي (${host}) غير مضاف في Authorized Domains بلوحة تحكم Firebase (Authentication > Settings > Authorized domains).`;
+    case 'auth/operation-not-allowed':
+      return 'تسجيل الدخول بحساب Google غير مفعّل في Firebase Console (Authentication > Sign-in method > Google).';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'تم إغلاق نافذة تسجيل الدخول بجوجل قبل إتمام التسجيل.';
+    case 'auth/popup-blocked':
+      return 'قام المتصفح بحظر النافذة المنبثقة. سيتم التحويل إلى صفحة جوجل مباشرة أو اسمح بالنوافذ المنبثقة.';
+    case 'auth/network-request-failed':
+      return 'تعذر الاتصال بخوادم جوجل، يرجى التحقق من اتصال الإنترنت.';
+    case 'auth/invalid-api-key':
+    case 'auth/configuration-not-found':
+      return 'بيانات إعداد Firebase (apiKey / Auth) غير مكتملة أو تحتاج تفعيل Authentication أولاً.';
+    default:
+      return error?.message || 'حدث خطأ أثناء تسجيل الدخول بحساب جوجل.';
+  }
+}
 
 const AuthContext = createContext();
 
@@ -33,6 +59,19 @@ export function AuthProvider({ children }) {
     }
 
     setIsConfigured(true);
+
+    // Complete redirect flow if fallback redirect sign-in occurred
+    getRedirectResult(auth)
+      .then((res) => {
+        if (res?.user) {
+          setCurrentUser(res.user);
+          setSyncStatus('live');
+        }
+      })
+      .catch((err) => {
+        console.warn('Redirect sign-in check:', err?.code || err?.message);
+      });
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       if (user) {
@@ -52,7 +91,7 @@ export function AuthProvider({ children }) {
     return () => unsubscribe();
   }, [isConfigured]);
 
-  // Google Login
+  // Google Login (Popup primary with Redirect fallback when popups are blocked)
   const loginWithGoogle = async () => {
     if (!auth) {
       throw new Error('يرجى ضبط إعدادات فايربيس (Firebase Config) أولاً.');
@@ -66,7 +105,11 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error('Google Sign-In Error:', error);
       setSyncStatus(currentUser ? 'live' : 'offline');
-      throw error;
+      if (error?.code === 'auth/popup-blocked') {
+        await signInWithRedirect(auth, googleProvider);
+        return null;
+      }
+      throw new Error(getFriendlyFirebaseAuthError(error));
     }
   };
 

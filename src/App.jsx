@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { CashProvider, useCash } from './context/CashContext';
 import { getPersistedNavValue, setPersistedNavValue } from './utils/storage';
 import Sidebar from './components/Sidebar';
+import LoginScreen from './components/LoginScreen';
 import StatCards from './components/StatCards';
 import ClientCard from './components/ClientCard';
 import DailyLogView from './components/DailyLogView';
@@ -93,6 +94,94 @@ function MainApp() {
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [activeTab]);
+
+  // Prevent underlying page scrolling when any popup, dialog, or sheet is open
+  // without mutating html/body overflow (avoids scrollbar layout shift & scroll jumps).
+  React.useEffect(() => {
+    let touchStartY = 0;
+    let touchStartX = 0;
+
+    const getTopOverlay = () => {
+      const confirmDlg = document.querySelector('dialog[open].confirm-dialog');
+      if (confirmDlg) return confirmDlg;
+      const openDialogs = document.querySelectorAll('dialog[open]');
+      if (openDialogs.length > 0) return openDialogs[openDialogs.length - 1];
+      const customOverlays = document.querySelectorAll('[data-modal-overlay="true"]');
+      if (customOverlays.length > 0) return customOverlays[customOverlays.length - 1];
+      return null;
+    };
+
+    const canTargetConsumeScroll = (target, overlay, deltaY, deltaX) => {
+      let node = target instanceof Element ? target : target?.parentElement;
+      const isHorizontalIntent = Math.abs(deltaX) > Math.abs(deltaY);
+
+      while (node && node !== document.body && node !== document.documentElement) {
+        if (!overlay.contains(node)) break;
+
+        if (node.tagName === 'SELECT') return true;
+
+        const style = window.getComputedStyle(node);
+        if (isHorizontalIntent) {
+          if (
+            (style.overflowX === 'auto' || style.overflowX === 'scroll') &&
+            node.scrollWidth > node.clientWidth + 1
+          ) {
+            return true;
+          }
+        } else {
+          if (
+            (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+            node.scrollHeight > node.clientHeight + 1
+          ) {
+            if (deltaY < 0 && node.scrollTop > 0) return true;
+            if (deltaY > 0 && node.scrollTop + node.clientHeight < node.scrollHeight - 1) return true;
+            if (deltaY === 0) return true;
+          }
+        }
+
+        if (node === overlay) break;
+        node = node.parentElement;
+      }
+      return false;
+    };
+
+    const handleWheel = (e) => {
+      if (e.ctrlKey) return; // Allow browser pinch-zoom
+      const overlay = getTopOverlay();
+      if (!overlay) return;
+      if (!canTargetConsumeScroll(e.target, overlay, e.deltaY, e.deltaX)) {
+        if (e.cancelable) e.preventDefault();
+      }
+    };
+
+    const handleTouchStart = (e) => {
+      if (e.touches && e.touches.length === 1) {
+        touchStartY = e.touches[0].clientY;
+        touchStartX = e.touches[0].clientX;
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      const overlay = getTopOverlay();
+      if (!overlay) return;
+      if (!e.touches || e.touches.length !== 1) return;
+      const deltaY = touchStartY - e.touches[0].clientY;
+      const deltaX = touchStartX - e.touches[0].clientX;
+      if (!canTargetConsumeScroll(e.target, overlay, deltaY, deltaX)) {
+        if (e.cancelable) e.preventDefault();
+      }
+    };
+
+    document.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+    document.addEventListener('touchstart', handleTouchStart, { passive: true, capture: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
+
+    return () => {
+      document.removeEventListener('wheel', handleWheel, { capture: true });
+      document.removeEventListener('touchstart', handleTouchStart, { capture: true });
+      document.removeEventListener('touchmove', handleTouchMove, { capture: true });
+    };
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
@@ -115,6 +204,7 @@ function MainApp() {
   };
 
   const { clients, setActiveModal } = useCash();
+  const { currentUser, loading: authLoading } = useAuth();
 
   // Global display mode for client wallets/numbers: 'grid' | 'table'
   const [globalWalletsView, setGlobalWalletsView] = useState(() => {
@@ -163,6 +253,16 @@ function MainApp() {
     const matchPhone = (c.wallets || []).some(w => w.phoneNumber?.includes(q) || w.label?.toLowerCase().includes(q));
     return matchName || matchNotes || matchPhone;
   });
+
+  // Mandatory Google Auth Gate: lock application until signed in with Google
+  if (authLoading || !currentUser) {
+    return (
+      <>
+        <LoginScreen />
+        <Toast />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 relative selection:bg-red-500 selection:text-white flex flex-col lg:flex-row">

@@ -2544,9 +2544,9 @@ ${balanceLine}
       </div>
       )}
 
-      {/* 5. Responsive Overlay: Centered Popup on Laptop (>=1024px), Right Sheet on Mobile/Tablet */}
+      {/* 5. Always Right Sheet Drawer starting flush at top-right: Detailed Account Statement for Single Client */}
       {selectedClientForStatement && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
+        <div data-modal-overlay="true" className="fixed inset-0 z-[9999] overflow-hidden" dir="rtl">
           {/* Backdrop Overlay */}
           <div 
             className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity ${
@@ -2555,8 +2555,8 @@ ${balanceLine}
             onClick={handleCloseStatementSheet}
           />
 
-          <div className={`fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border ${
-            closingStatementSheet ? 'animate-responsive-sheet-out' : 'animate-responsive-sheet'
+          <div className={`fixed top-0 bottom-0 right-0 z-10 h-full max-h-dvh w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-5xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden rounded-none sm:rounded-l-3xl ${
+            closingStatementSheet ? 'animate-right-sheet-out' : 'animate-right-sheet'
           }`}>
               {/* Mobile Drag Handle Indicator */}
               <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -2620,7 +2620,7 @@ ${balanceLine}
               </div>
 
               {/* Scrollable Sheet Body */}
-              <div className="p-4 sm:p-6 space-y-4 flex-1 lg:flex-auto flex flex-col overflow-y-auto min-h-0">
+              <div className="p-4 sm:p-6 space-y-4 flex-1 flex flex-col overflow-y-auto overflow-x-hidden min-h-0">
                 {/* Financial Summary: 3 Clean KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
               {/* 1. Total Recharges */}
@@ -2740,7 +2740,7 @@ ${balanceLine}
             </div>
 
             {/* Modal Body: Active Tab Content ONLY (No Duplication!) */}
-            <div className="overflow-auto flex-1 min-h-[220px] border border-slate-200 dark:border-slate-800 rounded-2xl">
+            <div className="overflow-auto flex-1 w-full min-w-0 min-h-[220px] border border-slate-200 dark:border-slate-800 rounded-2xl">
               
               {/* TAB 1: Sequential Steps Ledger (تسلسل وترتيب العمليات خطوة بخطوة) */}
               {statementModalTab === 'steps' && (
@@ -3056,9 +3056,9 @@ ${balanceLine}
       document.body
     )}
 
-      {/* 6. Responsive Overlay: Detailed Archive Statement (Centered Popup on Laptop >=1024px, Right Sheet on Mobile/Tablet) */}
+      {/* 6. Always Right Sheet Drawer starting flush at top-right: Detailed Archive Statement for a Client */}
       {activeSelectedArchiveGroup && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
+        <div data-modal-overlay="true" className="fixed inset-0 z-[9999] overflow-hidden" dir="rtl">
           {/* Backdrop Overlay */}
           <div 
             className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity ${
@@ -3067,8 +3067,8 @@ ${balanceLine}
             onClick={handleCloseArchiveSheet}
           />
 
-          <div className={`fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border ${
-            closingArchiveSheet ? 'animate-responsive-sheet-out' : 'animate-responsive-sheet'
+          <div className={`fixed top-0 bottom-0 right-0 z-10 h-full max-h-dvh w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-5xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden rounded-none sm:rounded-l-3xl ${
+            closingArchiveSheet ? 'animate-right-sheet-out' : 'animate-right-sheet'
           }`}>
               {/* Mobile Drag Handle Indicator */}
               <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -3120,7 +3120,7 @@ ${balanceLine}
               </div>
 
               {/* Scrollable Sheet Body */}
-              <div className="p-4 sm:p-6 space-y-4 flex-1 lg:flex-auto flex flex-col overflow-y-auto min-h-0">
+              <div className="p-4 sm:p-6 space-y-4 flex-1 flex flex-col overflow-y-auto overflow-x-hidden min-h-0">
                 {/* Stats Summary: 3 Clean KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
               <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between">
@@ -3236,7 +3236,7 @@ ${balanceLine}
             </div>
 
             {/* Modal Body: Active Tab Content ONLY (Zero Duplication!) */}
-            <div className="flex-1 overflow-auto border border-slate-200 dark:border-slate-800 rounded-2xl min-h-[220px]">
+            <div className="flex-1 w-full min-w-0 overflow-auto border border-slate-200 dark:border-slate-800 rounded-2xl min-h-[220px]">
               
               {/* TAB 1: Sequential Steps */}
               {archiveModalTab === 'steps' && (

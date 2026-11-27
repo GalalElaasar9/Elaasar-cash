@@ -29,9 +29,27 @@
   dialog::backdrop {
     overflow: hidden;
     overscroll-behavior: contain;
+    touch-action: none;
     background: rgba(15, 23, 42, 0.65);
     backdrop-filter: blur(4px);
     animation: backdropFade 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  [data-modal-overlay="true"] {
+    overscroll-behavior: contain;
+  }
+
+  [data-modal-overlay="true"] > div:first-child {
+    overflow: hidden;
+    overscroll-behavior: contain;
+    touch-action: none;
+  }
+
+  [data-modal-overlay="true"] .overflow-y-auto,
+  [data-modal-overlay="true"] .overflow-auto,
+  dialog[open] .overflow-y-auto,
+  dialog[open] .overflow-auto {
+    overscroll-behavior: contain;
   }
 
   /* Responsive Sheets (<1024px): Right Sheet Drawer sliding from right side */

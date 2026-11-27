@@ -1168,7 +1168,7 @@ export default function InboundCalculatorView() {
 
       {/* 6. MODAL: End Day Confirmation (Right Sheet on Responsive, Centered Popup on Laptop) */}
       {isEndDayModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
+        <div data-modal-overlay="true" className="fixed inset-0 z-50 overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
           {/* Backdrop Overlay */}
           <div 
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-right-sheet-backdrop"
@@ -1294,9 +1294,9 @@ export default function InboundCalculatorView() {
         </div>
       )}
 
-      {/* 7. MODAL: Archive of Past Closed Days (Right Sheet on Responsive, Centered Popup on Laptop) */}
+      {/* 7. MODAL: Archive of Past Closed Days (Always Right Sheet starting flush at top-right) */}
       {isArchiveModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
+        <div data-modal-overlay="true" className="fixed inset-0 z-50 overflow-hidden" dir="rtl">
           {/* Backdrop Overlay */}
           <div 
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-right-sheet-backdrop"
@@ -1305,7 +1305,7 @@ export default function InboundCalculatorView() {
               setSelectedArchiveDay(null);
             }}
           />
-          <div className="fixed inset-y-0 right-0 z-50 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl animate-responsive-sheet lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border">
+          <div className="fixed top-0 bottom-0 right-0 z-50 h-full max-h-dvh w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-5xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden rounded-none sm:rounded-l-3xl animate-right-sheet">
             
             {/* Mobile Drag Handle Indicator */}
             <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -1352,7 +1352,7 @@ export default function InboundCalculatorView() {
             </div>
 
             {/* Archive Body: List of Days or Day Details */}
-            <div className="overflow-y-auto flex-1 lg:flex-auto p-5 sm:p-6 space-y-4 max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-none min-h-0">
+            <div className="overflow-y-auto overflow-x-hidden flex-1 p-5 sm:p-6 space-y-4 min-h-0">
               
               {/* If viewing details of a selected day */}
               {selectedArchiveDay ? (
