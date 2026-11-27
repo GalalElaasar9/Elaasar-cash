@@ -1,0 +1,114 @@
+
+src\components\AddClientModal.jsx:109:    <dialog
+src\components\AddClientModal.jsx:139:      <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 max-h-[80vh] 
+overflow-y-auto">
+src\components\AddClientModal.jsx:349:        <div className="flex items-center justify-end gap-3 pt-4 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\AddInstapayAccountModal.jsx:137:    <dialog
+src\components\AddInstapayAccountModal.jsx:169:      <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 
+max-h-[80vh] overflow-y-auto">
+src\components\AddInstapayAccountModal.jsx:312:        <div className="pt-2 flex items-center justify-end gap-2.5 
+border-t border-slate-100 dark:border-slate-800">
+src\components\AddProductModal.jsx:470:    <dialog
+src\components\AddProductModal.jsx:502:      <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5 
+max-h-[80vh] overflow-y-auto">
+src\components\AddProductModal.jsx:1006:                        className="btn-interactive h-9 w-9 flex items-center 
+justify-center text-slate-400 hover:text-rose-600 rounded-xl bg-slate-50 dark:bg-slate-800 sm:bg-transparent border 
+border-slate-200 dark:border-slate-700 sm:border-transparent hover:bg-rose-50 dark:hover:bg-rose-950/40 
+transition-colors shrink-0"
+src\components\AddProductModal.jsx:1074:        <div className="flex items-center justify-end gap-3 pt-3 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\AddPurchaseModal.jsx:510:    <dialog
+src\components\AddPurchaseModal.jsx:600:        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 
+sm:p-6 space-y-5 custom-scrollbar">
+src\components\AddWalletModal.jsx:78:    <dialog
+src\components\AddWalletModal.jsx:108:      <form onSubmit={handleSubmit} className="p-5 space-y-4">
+src\components\AddWalletModal.jsx:208:        <div className="flex items-center justify-end gap-2.5 pt-3 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\AdjustCapitalModal.jsx:219:    <dialog
+src\components\AdjustCapitalModal.jsx:298:            <form onSubmit={handleTransferSubmit} className="space-y-4">
+src\components\AdjustCapitalModal.jsx:447:              <div className="flex items-center justify-end gap-2 pt-2 
+border-t border-slate-100 dark:border-slate-800">
+src\components\AdjustCapitalModal.jsx:468:            <form onSubmit={handleAdjustSubmit} className="space-y-4">
+src\components\AdjustCapitalModal.jsx:587:              <div className="flex items-center justify-end gap-2 pt-2 
+border-t border-slate-100 dark:border-slate-800">
+src\components\AdjustCapitalModal.jsx:608:            <form onSubmit={handleDwSubmit} className="space-y-4">
+src\components\AdjustCapitalModal.jsx:717:              <div className="flex items-center justify-end gap-2 pt-2 
+border-t border-slate-100 dark:border-slate-800">
+src\components\BackupModal.jsx:59:    <dialog
+src\components\BackupModal.jsx:202:      <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 
+dark:border-slate-700 flex justify-end">
+src\components\ClientPaymentModal.jsx:532:    <dialog
+src\components\ClientPaymentModal.jsx:578:      <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 
+max-h-[80vh] overflow-y-auto">
+src\components\ClientPaymentModal.jsx:1014:                    <p className="text-[11px] text-rose-800/80 
+dark:text-rose-300/80 pt-1 border-t border-rose-200 dark:border-rose-800">
+src\components\ClientPaymentModal.jsx:1081:                    <p className="text-[11px] text-emerald-800/80 
+dark:text-emerald-300/80 pt-1 border-t border-emerald-200 dark:border-emerald-800">
+src\components\ClientPaymentModal.jsx:1146:        <div className="pt-3 border-t border-slate-200 
+dark:border-slate-800 flex items-center justify-end gap-2.5">
+src\components\CloudSyncModal.jsx:154:    <dialog
+src\components\CloudSyncModal.jsx:381:        <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+src\components\CloudSyncModal.jsx:397:            <form onSubmit={handleSaveConfig} className="mt-3 space-y-3 
+animate-fadeIn">
+src\components\ConfirmModal.jsx:38:    <dialog
+src\components\DailyAuditDetailsModal.jsx:71:    <dialog
+src\components\DailyAuditDetailsModal.jsx:363:          <div className="flex justify-end pt-2 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\DailyAuditModal.jsx:302:    <dialog
+src\components\DailyAuditModal.jsx:351:        <form onSubmit={handleSubmitAudit} className="flex-1 overflow-y-auto 
+p-4 sm:p-6 space-y-6">
+src\components\DailyAuditModal.jsx:937:            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t 
+border-slate-200/60 dark:border-slate-800 text-xs">
+src\components\DailyAuditModal.jsx:973:          <div className="flex flex-col-reverse sm:flex-row sm:items-center 
+justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+src\components\EditLimitModal.jsx:80:    <dialog
+src\components\EditLimitModal.jsx:110:      <form onSubmit={handleSubmit} className="p-5 space-y-4">
+src\components\EditLimitModal.jsx:213:        <div className="flex items-center justify-end gap-2.5 pt-3 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\NewTransferModal.jsx:159:  // Manage native <dialog>
+src\components\NewTransferModal.jsx:479:    <dialog
+src\components\NewTransferModal.jsx:529:      <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 
+max-h-[80vh] overflow-y-auto">
+src\components\NewTransferModal.jsx:1005:                <div className="pt-2 border-t border-slate-200/80 
+dark:border-slate-700/80 flex items-center justify-between">
+src\components\NewTransferModal.jsx:1237:        <div className="flex items-center justify-end gap-3 pt-3 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\ProductDetailsModal.jsx:82:    <dialog
+src\components\ProductDetailsModal.jsx:234:              <div className="col-span-2 pt-2 border-t border-slate-200/60 
+dark:border-slate-700/60 flex items-center justify-between text-xs">
+src\components\ProductDetailsModal.jsx:328:        <div className="flex flex-wrap items-center justify-between gap-2 
+pt-3 border-t border-slate-200 dark:border-slate-800">
+src\components\PurchaseDetailsModal.jsx:94:    <dialog
+src\components\PurchaseDetailsModal.jsx:342:        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t 
+border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+src\components\ReceiptModal.jsx:37:    <dialog
+src\components\ReceiptModal.jsx:159:        <div className="text-center pt-3 border-t border-dashed border-slate-300 
+text-[10px] text-slate-400">
+src\components\ReceiptModal.jsx:170:      <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center 
+justify-end gap-2 no-print">
+src\components\RechargeWalletModal.jsx:90:    <dialog
+src\components\RechargeWalletModal.jsx:122:      <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
+src\components\RechargeWalletModal.jsx:310:        <div className="flex items-center justify-end gap-2.5 pt-3 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\RecordOpeningCapitalModal.jsx:237:        <form onSubmit={handleSubmit} className="flex-1 
+overflow-y-auto p-4 sm:p-6 space-y-6">
+src\components\RecordOpeningCapitalModal.jsx:528:          <div className="pt-3 border-t border-slate-200 
+dark:border-slate-800 flex items-center justify-end gap-3">
+src\components\RestockModal.jsx:59:    <dialog
+src\components\RestockModal.jsx:89:      <form onSubmit={handleSubmit} className="p-5 space-y-4">
+src\components\RestockModal.jsx:147:        <div className="flex items-center justify-end gap-2 pt-3 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\SellProductModal.jsx:138:    <dialog
+src\components\SellProductModal.jsx:204:      <form onSubmit={handleSubmit} className="p-5 space-y-4">
+src\components\SellProductModal.jsx:393:        <div className="flex items-center justify-end gap-2 pt-2 border-t 
+border-slate-200 dark:border-slate-800">
+src\components\SupplierPaymentModal.jsx:162:    <dialog
+src\components\SupplierPaymentModal.jsx:195:        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 
+overflow-y-auto">
+src\components\SupplierPaymentModal.jsx:211:            <div className="grid grid-cols-3 gap-2 pt-1 border-t 
+border-slate-200/60 dark:border-slate-700/60 text-center">
+src\components\SupplierPaymentModal.jsx:432:          <div className="flex items-center justify-end gap-2 pt-2 
+border-t border-slate-100 dark:border-slate-800">
+
+

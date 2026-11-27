@@ -25,7 +25,7 @@ export default function StatCards({ onSelectDailyTab }) {
     : 0;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-5 sm:mb-8 animate-view-fade">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-5 mb-5 sm:mb-8 animate-view-fade">
       
       {/* 1. Total Remaining Limit Across All Wallets */}
       <div className="card-hover relative overflow-hidden bg-white dark:bg-slate-900/90 p-3 sm:p-5 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm transition-all duration-300">

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastUpdated": "2026-11-27T19:31:18.084Z",
+  "lastUpdated": "2026-11-27T20:57:22.703Z",
   "shopInfo": {
     "name": "الأعصر لخدمات المحمول",
     "syncId": "elaasar_main"
@@ -49,7 +49,7 @@
     {
       "id": "client-9",
       "name": "معرض الإيمان للأجهزة الكهربائية",
-      "clientType": "مدين",
+      "clientType": "عادي",
       "notes": "معرض أجهزة - عليه مديونية 6,800 ج.م",
       "createdAt": "2026-11-17T08:30:00.000Z",
       "wallets": [
@@ -62,7 +62,12 @@
         }
       ],
       "commissionMode": "deduct",
-      "commissionPercent": 0.995
+      "commissionPercent": 0.995,
+      "settledAt": "2026-11-27T20:57:18.909Z",
+      "excessDebt": null,
+      "excessDebtDate": null,
+      "excessCredit": null,
+      "excessCreditDate": null
     },
     {
       "id": "client-8",
@@ -133,7 +138,7 @@
     {
       "id": "client-5",
       "name": "كابتن حسام حسن",
-      "clientType": "مدين",
+      "clientType": "عادي",
       "notes": "عميل آجل - سدد دفعة جزئية (4,000 ج.م) ومتبقي 3,000 ج.م",
       "createdAt": "2026-11-20T08:30:00.000Z",
       "wallets": [
@@ -146,12 +151,17 @@
         }
       ],
       "commissionMode": "deduct",
-      "commissionPercent": 0.995
+      "commissionPercent": 0.995,
+      "settledAt": "2026-11-27T20:57:22.692Z",
+      "excessDebt": null,
+      "excessDebtDate": null,
+      "excessCredit": null,
+      "excessCreditDate": null
     },
     {
       "id": "client-4",
       "name": "م / طارق عبد الرحمن (مركز اتصالات)",
-      "clientType": "مدين",
+      "clientType": "عادي",
       "notes": "مركز اتصالات - مديونية شحن نشطة",
       "createdAt": "2026-11-15T08:30:00.000Z",
       "wallets": [
@@ -164,7 +174,12 @@
         }
       ],
       "commissionMode": "deduct",
-      "commissionPercent": 0.995
+      "commissionPercent": 0.995,
+      "settledAt": "2026-11-27T20:57:20.209Z",
+      "excessDebt": null,
+      "excessDebtDate": null,
+      "excessCredit": null,
+      "excessCreditDate": null
     },
     {
       "id": "client-1",
@@ -196,7 +211,12 @@
       ],
       "commissionMode": "deduct",
       "commissionPercent": 0.995,
-      "clientType": "مدين"
+      "clientType": "عادي",
+      "settledAt": "2026-11-27T20:57:21.443Z",
+      "excessDebt": null,
+      "excessDebtDate": null,
+      "excessCredit": null,
+      "excessCreditDate": null
     },
     {
       "id": "client-2",

@@ -617,7 +617,7 @@ export default function NewTransferModal() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
                   <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
                     <span className="text-[10px] text-slate-400 block">الرصيد المتاح حالياً</span>
                     <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 font-mono">

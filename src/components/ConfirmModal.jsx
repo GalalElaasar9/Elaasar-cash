@@ -39,7 +39,7 @@ export default function ConfirmModal() {
       ref={dialogRef}
       onClick={handleBackdropClick}
       aria-labelledby="confirm-modal-title"
-      className="fixed inset-0 m-auto z-50 w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-0 border border-slate-200 dark:border-slate-800 shadow-2xl backdrop:bg-slate-950/65 overflow-hidden flex flex-col justify-center"
+      className="confirm-dialog fixed inset-0 m-auto z-50 w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-0 border border-slate-200 dark:border-slate-800 shadow-2xl backdrop:bg-slate-950/65 overflow-hidden flex flex-col justify-center"
     >
       <div className="p-6 text-center space-y-4 my-auto">
         

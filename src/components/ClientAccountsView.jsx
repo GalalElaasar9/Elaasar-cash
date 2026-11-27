@@ -2544,9 +2544,9 @@ ${balanceLine}
       </div>
       )}
 
-      {/* 5. Right Sheet Drawer: Detailed Account Statement for Single Client */}
+      {/* 5. Responsive Overlay: Centered Popup on Laptop (>=1024px), Right Sheet on Mobile/Tablet */}
       {selectedClientForStatement && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-hidden" dir="rtl">
+        <div className="fixed inset-0 z-[9999] overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
           {/* Backdrop Overlay */}
           <div 
             className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity ${
@@ -2555,8 +2555,8 @@ ${balanceLine}
             onClick={handleCloseStatementSheet}
           />
 
-          <div className={`fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl ${
-            closingStatementSheet ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          <div className={`fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border ${
+            closingStatementSheet ? 'animate-responsive-sheet-out' : 'animate-responsive-sheet'
           }`}>
               {/* Mobile Drag Handle Indicator */}
               <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -2619,8 +2619,8 @@ ${balanceLine}
                 </div>
               </div>
 
-              {/* Scrollable Sheet Body with Responsive Max-Height */}
-              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+              {/* Scrollable Sheet Body */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 lg:flex-auto flex flex-col overflow-y-auto min-h-0">
                 {/* Financial Summary: 3 Clean KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
               {/* 1. Total Recharges */}
@@ -2680,7 +2680,7 @@ ${balanceLine}
             </div>
 
             {/* Sub-tab Navigation: 3 Distinct, Mutually-Exclusive Tabs */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-bold shrink-0">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-bold shrink-0 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => {
@@ -2740,7 +2740,7 @@ ${balanceLine}
             </div>
 
             {/* Modal Body: Active Tab Content ONLY (No Duplication!) */}
-            <div className="overflow-y-auto flex-1 min-h-[220px] max-h-[50vh] border border-slate-200 dark:border-slate-800 rounded-2xl">
+            <div className="overflow-auto flex-1 min-h-[220px] border border-slate-200 dark:border-slate-800 rounded-2xl">
               
               {/* TAB 1: Sequential Steps Ledger (تسلسل وترتيب العمليات خطوة بخطوة) */}
               {statementModalTab === 'steps' && (
@@ -2988,6 +2988,7 @@ ${balanceLine}
               )}
 
             </div>
+            </div>
 
             {/* Pagination Controls inside Sheet */}
             <div className="shrink-0 pt-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
@@ -3001,7 +3002,7 @@ ${balanceLine}
             </div>
 
             {/* Fixed Sheet Footer */}
-            <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 backdrop-blur-md flex items-center justify-between flex-wrap gap-2 shrink-0">
+            <div className="p-3.5 sm:p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -3051,14 +3052,13 @@ ${balanceLine}
             </div>
 
           </div>
-        </div>
-      </div>,
+        </div>,
       document.body
     )}
 
-      {/* 6. Right Sheet Drawer: Detailed Archive Statement for a Client */}
+      {/* 6. Responsive Overlay: Detailed Archive Statement (Centered Popup on Laptop >=1024px, Right Sheet on Mobile/Tablet) */}
       {activeSelectedArchiveGroup && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-hidden" dir="rtl">
+        <div className="fixed inset-0 z-[9999] overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
           {/* Backdrop Overlay */}
           <div 
             className={`fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity ${
@@ -3067,8 +3067,8 @@ ${balanceLine}
             onClick={handleCloseArchiveSheet}
           />
 
-          <div className={`fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl ${
-            closingArchiveSheet ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          <div className={`fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border ${
+            closingArchiveSheet ? 'animate-responsive-sheet-out' : 'animate-responsive-sheet'
           }`}>
               {/* Mobile Drag Handle Indicator */}
               <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -3119,8 +3119,8 @@ ${balanceLine}
                 </div>
               </div>
 
-              {/* Scrollable Sheet Body with Responsive Max-Height */}
-              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+              {/* Scrollable Sheet Body */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 lg:flex-auto flex flex-col overflow-y-auto min-h-0">
                 {/* Stats Summary: 3 Clean KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
               <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between">
@@ -3176,7 +3176,7 @@ ${balanceLine}
             </div>
 
             {/* Sub-tab Navigation: 3 Distinct Mutually-Exclusive Tabs */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-bold shrink-0">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-bold shrink-0 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => {
@@ -3236,7 +3236,7 @@ ${balanceLine}
             </div>
 
             {/* Modal Body: Active Tab Content ONLY (Zero Duplication!) */}
-            <div className="flex-1 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl min-h-[220px] max-h-[50vh]">
+            <div className="flex-1 overflow-auto border border-slate-200 dark:border-slate-800 rounded-2xl min-h-[220px]">
               
               {/* TAB 1: Sequential Steps */}
               {archiveModalTab === 'steps' && (
@@ -3560,6 +3560,7 @@ ${balanceLine}
               )}
 
             </div>
+            </div>
 
             {/* Pagination inside Archive Sheet if > 10 records */}
             <div className="shrink-0 pt-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
@@ -3584,8 +3585,7 @@ ${balanceLine}
             </div>
 
           </div>
-        </div>
-      </div>,
+        </div>,
       document.body
     )}
 

@@ -197,9 +197,10 @@ export default function RecordOpeningCapitalModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-50 overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl" onClick={() => setActiveModal(null)}>
+      <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-xs animate-right-sheet-backdrop" />
       <div 
-        className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden transition-all my-6 max-h-[92vh] flex flex-col"
+        className="fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl bg-white dark:bg-slate-900 sm:rounded-l-3xl border-l border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col animate-responsive-sheet lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border"
         onClick={e => e.stopPropagation()}
       >
         {/* Modal Header */}
@@ -234,7 +235,7 @@ export default function RecordOpeningCapitalModal() {
         </div>
 
         {/* Modal Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 lg:flex-auto flex flex-col overflow-y-auto p-4 sm:p-6 space-y-6 min-h-0">
           
           {/* Top Control Bar: Date & Quick Actions */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80">
@@ -525,7 +526,7 @@ export default function RecordOpeningCapitalModal() {
           </div>
 
           {/* Submit & Cancel Buttons */}
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+          <div className="mt-auto pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3 shrink-0">
             <button
               type="button"
               onClick={() => setActiveModal(null)}

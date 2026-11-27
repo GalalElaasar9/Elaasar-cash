@@ -181,12 +181,12 @@ function MainApp() {
       />
 
       {/* Main Content Area - Shifted in Desktop RTL for Sidebar */}
-      <div className={`flex-1 min-w-0 transition-all duration-300 ${
-        isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-64 xl:lg:mr-72'
+      <div className={`flex-1 min-w-0 overflow-x-hidden transition-all duration-300 ${
+        isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-64 xl:mr-72'
       } flex flex-col min-h-screen`}>
 
         {/* Main Content Container - 1550px Width with Mobile Bottom Bar Clearance */}
-        <main className="flex-1 w-full max-w-[1550px] mx-auto px-2.5 sm:px-6 lg:px-8 pt-16 lg:pt-6 pb-28 sm:pb-32 lg:pb-12 relative">
+        <main className="flex-1 w-full max-w-[1550px] mx-auto px-3 sm:px-6 lg:px-8 pt-16 lg:pt-6 pb-24 sm:pb-28 lg:pb-12 relative">
         
         {/* KPI Stat Cards (Only on clients, daily, matrix tabs) */}
         {activeTab !== 'inventory' && activeTab !== 'inbound' && activeTab !== 'trash' && activeTab !== 'accounts' && activeTab !== 'purchases' && activeTab !== 'capital' && (

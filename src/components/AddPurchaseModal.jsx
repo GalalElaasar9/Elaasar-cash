@@ -555,7 +555,7 @@ export default function AddPurchaseModal() {
         </div>
 
         {/* 3-Tab Switcher */}
-        <div className="p-2.5 bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-800 grid grid-cols-3 gap-1.5 shrink-0">
+        <div className="p-2.5 bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => handleSwitchTab('inventory_goods')}

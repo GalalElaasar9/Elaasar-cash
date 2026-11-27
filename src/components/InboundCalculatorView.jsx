@@ -1166,15 +1166,15 @@ export default function InboundCalculatorView() {
 
       </div>
 
-      {/* 6. MODAL: End Day Confirmation (Right Sheet on Tablet/Desktop, Bottom Sheet on Mobile) */}
+      {/* 6. MODAL: End Day Confirmation (Right Sheet on Responsive, Centered Popup on Laptop) */}
       {isEndDayModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden" dir="rtl">
+        <div className="fixed inset-0 z-50 overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
           {/* Backdrop Overlay */}
           <div 
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-right-sheet-backdrop"
             onClick={() => setIsEndDayModalOpen(false)}
           />
-          <div className="fixed inset-y-0 right-0 z-50 h-full w-full max-w-full sm:max-w-lg bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl animate-right-sheet">
+          <div className="fixed inset-y-0 right-0 z-50 h-full w-full max-w-full sm:max-w-lg bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl animate-responsive-sheet lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border">
             
             {/* Mobile Drag Handle Indicator */}
             <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -1204,7 +1204,7 @@ export default function InboundCalculatorView() {
             </div>
 
             {/* Scrollable Body with Responsive Max-Height */}
-            <div className="p-5 sm:p-6 space-y-4 flex-1 overflow-y-auto max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(90vh-140px)] min-h-0">
+            <div className="p-5 sm:p-6 space-y-4 flex-1 lg:flex-auto overflow-y-auto max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-none min-h-0">
               {/* Business Date Lock Banner */}
               <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border border-blue-200 dark:border-blue-900 space-y-1">
                 <div className="flex items-center gap-2 text-xs font-bold text-blue-900 dark:text-blue-200">
@@ -1294,9 +1294,9 @@ export default function InboundCalculatorView() {
         </div>
       )}
 
-      {/* 7. MODAL: Archive of Past Closed Days (Right Sheet on Tablet/Desktop, Bottom Sheet on Mobile) */}
+      {/* 7. MODAL: Archive of Past Closed Days (Right Sheet on Responsive, Centered Popup on Laptop) */}
       {isArchiveModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden" dir="rtl">
+        <div className="fixed inset-0 z-50 overflow-hidden lg:flex lg:items-center lg:justify-center lg:p-4" dir="rtl">
           {/* Backdrop Overlay */}
           <div 
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-right-sheet-backdrop"
@@ -1305,7 +1305,7 @@ export default function InboundCalculatorView() {
               setSelectedArchiveDay(null);
             }}
           />
-          <div className="fixed inset-y-0 right-0 z-50 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl animate-right-sheet">
+          <div className="fixed inset-y-0 right-0 z-50 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl animate-responsive-sheet lg:relative lg:inset-auto lg:h-auto lg:max-h-[90dvh] lg:rounded-3xl lg:border">
             
             {/* Mobile Drag Handle Indicator */}
             <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -1352,7 +1352,7 @@ export default function InboundCalculatorView() {
             </div>
 
             {/* Archive Body: List of Days or Day Details */}
-            <div className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-4 max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(90vh-140px)] min-h-0">
+            <div className="overflow-y-auto flex-1 lg:flex-auto p-5 sm:p-6 space-y-4 max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] lg:max-h-none min-h-0">
               
               {/* If viewing details of a selected day */}
               {selectedArchiveDay ? (
@@ -1406,7 +1406,7 @@ export default function InboundCalculatorView() {
                   </div>
 
                   {/* Metrics Row */}
-                  <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 text-center">
                     <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                       <span className="text-[11px] text-slate-500 block mb-0.5">المجموع (إجمالي الوارد)</span>
                       <strong className="font-mono text-base text-blue-600 dark:text-blue-400">
@@ -1428,7 +1428,7 @@ export default function InboundCalculatorView() {
                   </div>
 
                   {/* Items Table for this day */}
-                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-x-auto">
                     <table className="w-full text-right text-xs">
                       <thead className="bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300">
                         <tr>

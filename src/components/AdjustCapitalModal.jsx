@@ -249,43 +249,43 @@ export default function AdjustCapitalModal() {
         </div>
 
         {/* Tab Switcher */}
-        <div className="p-2.5 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center gap-1.5 shrink-0">
+        <div className="p-2 sm:p-2.5 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center gap-1.5 overflow-x-auto shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('transfer')}
-            className={`flex-1 py-2 px-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 whitespace-nowrap py-2 px-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'transfer'
                 ? 'bg-white dark:bg-slate-900 text-amber-600 shadow-xs font-black'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <ArrowRightLeft className="w-4 h-4" />
+            <ArrowRightLeft className="w-4 h-4 shrink-0" />
             <span>تحويل بين الخزائن</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('adjust')}
-            className={`flex-1 py-2 px-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 whitespace-nowrap py-2 px-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'adjust'
                 ? 'bg-white dark:bg-slate-900 text-amber-600 shadow-xs font-black'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Scale className="w-4 h-4" />
+            <Scale className="w-4 h-4 shrink-0" />
             <span>تسوية وجرد رصيد</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('deposit_withdraw')}
-            className={`flex-1 py-2 px-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 whitespace-nowrap py-2 px-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all ${
               activeTab === 'deposit_withdraw'
                 ? 'bg-white dark:bg-slate-900 text-amber-600 shadow-xs font-black'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <PlusCircle className="w-4 h-4" />
+            <PlusCircle className="w-4 h-4 shrink-0" />
             <span>إيداع / سحب سيولة</span>
           </button>
         </div>

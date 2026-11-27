@@ -537,8 +537,10 @@ export default function Sidebar({
           4. Mobile Bottom Quick Bar (< lg screens)
       ========================================================================= */}
       <nav className="fixed bottom-0 inset-x-0 z-40 lg:hidden w-full max-w-full overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/80 dark:border-slate-800/80 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.3)] pb-[env(safe-area-inset-bottom)]">
-        <div className="grid grid-flow-col auto-cols-fr h-14 w-full max-w-full px-0.5">
-          {navItems.map((item) => {
+        <div className="grid grid-cols-6 h-15 w-full max-w-full px-1">
+          {navItems
+            .filter(item => ['clients', 'accounts', 'daily', 'inventory', 'capital'].includes(item.id))
+            .map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             const displayLabel = item.shortLabel || item.label;
@@ -547,7 +549,7 @@ export default function Sidebar({
               <button
                 key={item.id}
                 onClick={() => handleSelectTab(item.id)}
-                className={`flex flex-col items-center justify-center py-1 px-0.5 min-w-0 max-w-full overflow-hidden relative transition-all duration-150 active:scale-95 ${
+                className={`flex flex-col items-center justify-center py-1.5 px-1 min-w-0 max-w-full overflow-hidden relative transition-all duration-150 active:scale-95 ${
                   isActive 
                     ? 'text-red-600 dark:text-red-500 font-black'
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
@@ -564,7 +566,7 @@ export default function Sidebar({
                   )}
                 </div>
                 
-                <span className="text-[9px] mt-0.5 font-bold tracking-tight truncate w-full text-center leading-tight">
+                <span className="text-[10px] mt-0.5 font-bold tracking-tight truncate w-full text-center leading-tight">
                   {displayLabel}
                 </span>
 
@@ -574,6 +576,35 @@ export default function Sidebar({
               </button>
             );
           })}
+
+          {/* More Menu Button for secondary sections (purchases, matrix, inbound, reports, trash) */}
+          {(() => {
+            const isMoreActive = ['purchases', 'matrix', 'inbound', 'reports', 'trash'].includes(activeTab);
+            return (
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(true)}
+                className={`flex flex-col items-center justify-center py-1.5 px-1 min-w-0 max-w-full overflow-hidden relative transition-all duration-150 active:scale-95 ${
+                  isMoreActive
+                    ? 'text-red-600 dark:text-red-500 font-black'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <div className="relative shrink-0">
+                  <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
+                  {(purchases?.length > 0 || totalTrashCount > 0) && (
+                    <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-red-600" />
+                  )}
+                </div>
+                <span className="text-[10px] mt-0.5 font-bold tracking-tight truncate w-full text-center leading-tight">
+                  المزيد
+                </span>
+                {isMoreActive && (
+                  <span className="w-1 h-1 rounded-full mt-0.5 shrink-0 bg-red-600 dark:bg-red-500" />
+                )}
+              </button>
+            );
+          })()}
         </div>
       </nav>
     </>
