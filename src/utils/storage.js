@@ -1503,6 +1503,15 @@ export const INITIAL_DEMO_PURCHASES = [
   }
 ];
 
+export const EMPTY_TREASURY = {
+  drawerCash: 0,
+  vodafoneCash: 0,
+  instapay: 0,
+  bankAccounts: 0,
+  walletsBreakdown: [],
+  history: []
+};
+
 export const INITIAL_DEMO_TREASURY = {
   drawerCash: 45000,
   vodafoneCash: 85000,

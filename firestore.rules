@@ -225,7 +225,7 @@ service cloud.firestore {
         (!('items' in data) || isValidList(data.items, 20000)) &&
         (!('entries' in data) || isValidList(data.entries, 20000)) &&
         (!('data' in data) || (
-          (data.data is map && data.data.keys().size() <= 100) ||
+          (data.data is map && data.data.keys().size() <= 20000) ||
           isValidList(data.data, 20000)
         )) &&
         (!('wallets' in data) || isValidList(data.wallets, 5000)) &&
@@ -262,7 +262,7 @@ service cloud.firestore {
         (!('variants' in data) || isValidList(data.variants, 100)) &&
         (!('payments' in data) || isValidList(data.payments, 1000)) &&
         (!('data' in data) || (
-          (data.data is map && data.data.keys().size() <= 100) ||
+          (data.data is map && data.data.keys().size() <= 20000) ||
           isValidList(data.data, 20000)
         )) &&
         (!('amount' in data) || (data.amount is number && data.amount >= 0 && data.amount <= 1000000000)) &&

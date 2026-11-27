@@ -1,148 +1,158 @@
 import { db } from './config';
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  deleteDoc, 
-  onSnapshot, 
+import {
+  collection,
+  doc,
+  setDoc,
+  onSnapshot,
   writeBatch,
-  getDocs,
-  query,
-  orderBy 
+  getDocs
 } from 'firebase/firestore';
 
+const DEVICE_SESSION_ID = `dev_${Math.random().toString(36).slice(2, 10)}`;
+
+export const USER_STORE_KEYS = [
+  'clients',
+  'transactions',
+  'inventory',
+  'purchases',
+  'treasury',
+  'shopWallets',
+  'instapayAccounts',
+  'dailyAudits',
+  'dailyOpeningBalances',
+  'clientArchives',
+  'trash',
+  'dismissedArchiveIds'
+];
+
 /**
- * Real-time listeners for Shop Collections
+ * Ensure user profile document exists under users/{uid}
  */
-
-export function subscribeToClients(shopId, onUpdate, onError) {
-  if (!db || !shopId) return () => {};
-  const colRef = collection(db, 'shops', shopId, 'clients');
-  return onSnapshot(colRef, (snapshot) => {
-    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    onUpdate(list);
-  }, (err) => {
-    console.error('Clients real-time listener error:', err);
-    if (onError) onError(err);
-  });
+export async function syncUserProfileToCloud(user) {
+  if (!db || !user?.uid) return;
+  try {
+    const profileRef = doc(db, 'users', user.uid);
+    const nowIso = new Date().toISOString();
+    await setDoc(
+      profileRef,
+      {
+        uid: user.uid,
+        ...(user.email ? { email: user.email } : {}),
+        ...(user.displayName ? { displayName: user.displayName } : {}),
+        ...(user.photoURL ? { photoURL: user.photoURL } : {}),
+        lastLoginAt: nowIso,
+        updatedAt: nowIso
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Could not sync user profile:', err?.code || err?.message);
+  }
 }
 
-export function subscribeToTransactions(shopId, onUpdate, onError) {
-  if (!db || !shopId) return () => {};
-  const colRef = collection(db, 'shops', shopId, 'transactions');
-  return onSnapshot(colRef, (snapshot) => {
-    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    // Sort by timestamp descending
-    list.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-    onUpdate(list);
-  }, (err) => {
-    console.error('Transactions real-time listener error:', err);
-    if (onError) onError(err);
-  });
-}
+/**
+ * Subscribe in real time to ALL store documents owned strictly by `uid` (`users/{uid}/store/{docId}`).
+ */
+export function subscribeUserStore(uid, onSnapshotData, onError) {
+  if (!db || !uid) return () => {};
+  const storeCol = collection(db, 'users', uid, 'store');
 
-export function subscribeToInventory(shopId, onUpdate, onError) {
-  if (!db || !shopId) return () => {};
-  const colRef = collection(db, 'shops', shopId, 'inventory');
-  return onSnapshot(colRef, (snapshot) => {
-    const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    onUpdate(list);
-  }, (err) => {
-    console.error('Inventory real-time listener error:', err);
-    if (onError) onError(err);
-  });
-}
-
-export function subscribeToLedger(shopId, onUpdate, onError) {
-  if (!db || !shopId) return () => {};
-  const docRef = doc(db, 'shops', shopId, 'meta', 'inboundLedger');
-  return onSnapshot(docRef, (docSnap) => {
-    if (docSnap.exists()) {
-      onUpdate(docSnap.data().entries || []);
+  return onSnapshot(
+    storeCol,
+    (snapshot) => {
+      const updates = {};
+      snapshot.docs.forEach((docSnap) => {
+        const d = docSnap.data();
+        if (!d) return;
+        // Skip local pending echoes written by this exact browser tab
+        if (snapshot.metadata.hasPendingWrites && d.updatedBy === DEVICE_SESSION_ID) {
+          return;
+        }
+        if (Array.isArray(d.items)) {
+          updates[docSnap.id] = d.items;
+        } else if (d.data !== undefined) {
+          updates[docSnap.id] = d.data;
+        }
+      });
+      onSnapshotData(updates, snapshot.empty, snapshot.metadata.hasPendingWrites);
+    },
+    (err) => {
+      console.error('Per-user Firestore listener error:', err?.code || err?.message);
+      if (onError) onError(err);
     }
-  }, (err) => {
-    console.error('Ledger real-time listener error:', err);
-    if (onError) onError(err);
-  });
+  );
 }
 
 /**
- * Single document mutations (Write to Cloud)
+ * Persist a single store slice under `users/{uid}/store/{docKey}` complying strictly with firestore.rules.
  */
+export async function syncUserStoreSlice(uid, docKey, value) {
+  if (!db || !uid || !docKey) return;
+  const ref = doc(db, 'users', uid, 'store', docKey);
+  const nowIso = new Date().toISOString();
 
-export async function syncClientToCloud(shopId, client) {
-  if (!db || !shopId || !client?.id) return;
-  const docRef = doc(db, 'shops', shopId, 'clients', String(client.id));
-  await setDoc(docRef, { ...client, updatedAt: new Date().toISOString() }, { merge: true });
-}
+  const payload = Array.isArray(value)
+    ? {
+        uid,
+        id: docKey,
+        items: value,
+        updatedAt: nowIso,
+        updatedBy: DEVICE_SESSION_ID,
+        version: 1
+      }
+    : {
+        uid,
+        id: docKey,
+        data: value || {},
+        updatedAt: nowIso,
+        updatedBy: DEVICE_SESSION_ID,
+        version: 1
+      };
 
-export async function deleteClientFromCloud(shopId, clientId) {
-  if (!db || !shopId || !clientId) return;
-  const docRef = doc(db, 'shops', shopId, 'clients', String(clientId));
-  await deleteDoc(docRef);
-}
-
-export async function syncTransactionToCloud(shopId, tx) {
-  if (!db || !shopId || !tx?.id) return;
-  const docRef = doc(db, 'shops', shopId, 'transactions', String(tx.id));
-  await setDoc(docRef, { ...tx, updatedAt: new Date().toISOString() }, { merge: true });
-}
-
-export async function deleteTransactionFromCloud(shopId, txId) {
-  if (!db || !shopId || !txId) return;
-  const docRef = doc(db, 'shops', shopId, 'transactions', String(txId));
-  await deleteDoc(docRef);
-}
-
-export async function syncProductToCloud(shopId, product) {
-  if (!db || !shopId || !product?.id) return;
-  const docRef = doc(db, 'shops', shopId, 'inventory', String(product.id));
-  await setDoc(docRef, { ...product, updatedAt: new Date().toISOString() }, { merge: true });
-}
-
-export async function deleteProductFromCloud(shopId, productId) {
-  if (!db || !shopId || !productId) return;
-  const docRef = doc(db, 'shops', shopId, 'inventory', String(productId));
-  await deleteDoc(docRef);
-}
-
-export async function syncLedgerToCloud(shopId, entries) {
-  if (!db || !shopId) return;
-  const docRef = doc(db, 'shops', shopId, 'meta', 'inboundLedger');
-  await setDoc(docRef, { entries, updatedAt: new Date().toISOString() }, { merge: true });
+  await setDoc(ref, payload);
 }
 
 /**
- * Bulk upload local dataset to Cloud (Initial Seed / Cloud Push)
+ * Upload complete account dataset in one batch to `users/{uid}/store/*`
  */
-export async function uploadAllLocalDataToCloud(shopId, { clients = [], transactions = [], inventory = [], inboundLedger = [] }) {
-  if (!db || !shopId) return;
+export async function uploadAllLocalDataToCloud(uid, stateMap) {
+  if (!db || !uid) throw new Error('يرجى تسجيل الدخول بحسابك أولاً');
 
   const batch = writeBatch(db);
+  const nowIso = new Date().toISOString();
 
-  // Clients
-  clients.forEach(c => {
-    const r = doc(db, 'shops', shopId, 'clients', String(c.id));
-    batch.set(r, c);
+  USER_STORE_KEYS.forEach((docKey) => {
+    if (!(docKey in stateMap)) return;
+    const val = stateMap[docKey];
+    const ref = doc(db, 'users', uid, 'store', docKey);
+    const payload = Array.isArray(val)
+      ? {
+          uid,
+          id: docKey,
+          items: val,
+          updatedAt: nowIso,
+          updatedBy: DEVICE_SESSION_ID,
+          version: 1
+        }
+      : {
+          uid,
+          id: docKey,
+          data: val || {},
+          updatedAt: nowIso,
+          updatedBy: DEVICE_SESSION_ID,
+          version: 1
+        };
+    batch.set(ref, payload);
   });
-
-  // Transactions
-  transactions.forEach(t => {
-    const r = doc(db, 'shops', shopId, 'transactions', String(t.id));
-    batch.set(r, t);
-  });
-
-  // Inventory
-  inventory.forEach(p => {
-    const r = doc(db, 'shops', shopId, 'inventory', String(p.id));
-    batch.set(r, p);
-  });
-
-  // Inbound Ledger
-  if (inboundLedger && inboundLedger.length > 0) {
-    const lr = doc(db, 'shops', shopId, 'meta', 'inboundLedger');
-    batch.set(lr, { entries: inboundLedger, updatedAt: new Date().toISOString() });
-  }
 
   await batch.commit();
+}
+
+/**
+ * Check whether user already has any saved documents in Firestore
+ */
+export async function checkUserHasCloudData(uid) {
+  if (!db || !uid) return false;
+  const snap = await getDocs(collection(db, 'users', uid, 'store'));
+  return !snap.empty;
 }
