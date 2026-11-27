@@ -1927,3 +1927,21 @@ export const storage = {
     };
   }
 };
+
+export function getPersistedNavValue(key, defaultValue, allowedValues = null) {
+  try {
+    const val = localStorage.getItem(key);
+    if (val && (!allowedValues || allowedValues.includes(val))) return val;
+  } catch {
+    // ignore storage errors
+  }
+  return defaultValue;
+}
+
+export function setPersistedNavValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore storage errors
+  }
+}

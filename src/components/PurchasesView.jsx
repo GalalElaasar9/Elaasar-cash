@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useCash } from '../context/CashContext';
+import { getPersistedNavValue, setPersistedNavValue } from '../utils/storage';
 import { 
   formatCurrency, 
   formatDateArabic, 
@@ -66,7 +67,13 @@ export default function PurchasesView() {
   } = useCash();
 
   // Active top-level subtab: 'invoices' | 'suppliers' | 'analytics'
-  const [activeSubTab, setActiveSubTab] = useState('invoices');
+  const [activeSubTab, setActiveSubTab] = useState(() =>
+    getPersistedNavValue('elaasar_purchases_subtab', 'invoices', ['invoices', 'suppliers', 'analytics'])
+  );
+
+  useEffect(() => {
+    setPersistedNavValue('elaasar_purchases_subtab', activeSubTab);
+  }, [activeSubTab]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');

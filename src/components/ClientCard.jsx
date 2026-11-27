@@ -1000,27 +1000,70 @@ ${balanceLine}
     <div className="card-hover bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative mb-6 transition-all duration-300">
 
       {/* Client Header */}
-      <div className="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200/90 dark:border-slate-800 rounded-t-2xl space-y-3.5">
+      <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 rounded-t-2xl space-y-4">
 
-        {/* Row 1: Client Identity & Action Buttons */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4">
+        {/* Row 1: Clean Identity & Action Controls */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
           <div className="flex items-start sm:items-center gap-3 min-w-0">
-            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-800 dark:from-red-600 dark:to-rose-700 text-white font-bold text-base sm:text-lg flex items-center justify-center shadow-sm shrink-0">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-700 dark:from-red-600 dark:to-rose-700 text-white font-black text-base flex items-center justify-center shadow-xs shrink-0">
               {client.name.charAt(0)}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight truncate">
                   {client.name}
                 </h3>
-                <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
+
+                {/* Compact Classification Pill */}
+                {effectiveClientType === 'دائن' ? (
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800" title="عميل دائن: له رصيد مستحق">
+                    دائن
+                  </span>
+                ) : (
+                  <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[11px] font-bold border border-slate-200/80 dark:border-slate-700">
+                    <button
+                      type="button"
+                      disabled={remainingDebt > 0}
+                      onClick={() => handleSetClientType('عادي')}
+                      className={`px-2 py-0.5 rounded-md transition-all ${
+                        effectiveClientType === 'عادي'
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-2xs font-black'
+                          : remainingDebt > 0
+                          ? 'text-slate-400 opacity-40 cursor-not-allowed'
+                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                      }`}
+                      title={remainingDebt > 0 ? 'لا يمكن التحويل لحساب عادي لوجود مديونية مستحقة' : 'عميل عادي (حساب خالص)'}
+                    >
+                      عادي
+                    </button>
+                    <button
+                      type="button"
+                      disabled={effectiveClientType === 'مدين' || remainingDebt <= 0}
+                      onClick={() => handleSetClientType('مدين')}
+                      className={`px-2 py-0.5 rounded-md transition-all ${
+                        effectiveClientType === 'مدين'
+                          ? 'bg-rose-600 text-white shadow-2xs font-black'
+                          : remainingDebt <= 0
+                          ? 'text-slate-400 opacity-40 cursor-not-allowed'
+                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                      }`}
+                      title={remainingDebt <= 0 ? 'العميل حسابه خالص (0 ج.م)' : 'عميل مدين'}
+                    >
+                      مدين
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Clean Subtle Meta Line: Wallets count + Notes + Inline WhatsApp */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mt-1">
+                <span className="font-semibold text-slate-600 dark:text-slate-300">
                   {wallets.length} {wallets.length === 1 ? 'رقم مسجل' : 'أرقام مسجلة'}
                 </span>
 
-                {/* WhatsApp Phone Badge & Inline Quick Edit */}
                 {isEditingWhatsapp ? (
-                  <div className="inline-flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-emerald-400 dark:border-emerald-500 rounded-xl px-2 py-0.5 shadow-xs shrink-0">
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div className="inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-800 border border-emerald-400 rounded-lg px-2 py-0.5">
+                    <MessageCircle className="w-3 h-3 text-emerald-600 shrink-0" />
                     <input
                       type="tel"
                       dir="ltr"
@@ -1037,40 +1080,31 @@ ${balanceLine}
                         }
                       }}
                       placeholder="010XXXXXXXX"
-                      className="w-28 text-xs font-mono font-bold bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+                      className="w-24 text-[11px] font-mono font-bold bg-transparent outline-none text-slate-800 dark:text-slate-100"
                       autoFocus
                     />
-                    <button
-                      type="button"
-                      onClick={handleSaveWhatsapp}
-                      className="p-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg transition-colors"
-                      title="حفظ رقم الواتساب"
-                    >
-                      <Check className="w-3.5 h-3.5" />
+                    <button type="button" onClick={handleSaveWhatsapp} className="text-emerald-600 hover:text-emerald-700" title="حفظ">
+                      <Check className="w-3 h-3" />
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsEditingWhatsapp(false);
-                        setWhatsappError('');
-                      }}
-                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                      onClick={() => { setIsEditingWhatsapp(false); setWhatsappError(''); }}
+                      className="text-slate-400 hover:text-slate-600"
                       title="إلغاء"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-3 h-3" />
                     </button>
                   </div>
                 ) : client.whatsappPhone ? (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 shadow-2xs shrink-0">
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                    <MessageCircle className="w-3 h-3 shrink-0" />
                     <button
                       type="button"
                       onClick={handleOpenClientWhatsApp}
-                      className="hover:underline flex items-center gap-1 font-mono font-black"
-                      title="فتح شات واتساب مباشرة مع العميل"
+                      className="hover:underline font-mono font-bold"
+                      title="فتح شات واتساب"
                     >
-                      <span>{client.whatsappPhone}</span>
-                      <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                      {client.whatsappPhone}
                     </button>
                     <button
                       type="button"
@@ -1078,12 +1112,12 @@ ${balanceLine}
                         setWhatsappInput(client.whatsappPhone || '');
                         setIsEditingWhatsapp(true);
                       }}
-                      className="p-0.5 text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-200 rounded transition-colors"
+                      className="text-slate-400 hover:text-emerald-600 p-0.5"
                       title="تعديل رقم الواتساب"
                     >
                       <Edit2 className="w-3 h-3" />
                     </button>
-                  </div>
+                  </span>
                 ) : (
                   <button
                     type="button"
@@ -1091,88 +1125,27 @@ ${balanceLine}
                       setWhatsappInput(wallets[0]?.phoneNumber || '');
                       setIsEditingWhatsapp(true);
                     }}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-xl bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 transition-colors shrink-0"
-                    title="إضافة رقم واتساب مخصص لهذا العميل"
+                    className="inline-flex items-center gap-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors font-medium"
                   >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span>+ إضافة واتساب</span>
+                    <MessageCircle className="w-3 h-3" />
+                    <span>+ واتساب</span>
                   </button>
                 )}
 
-                {/* Client Classification Badge / Toggle: دائن لا يتم تفعيله يدوياً بل تلقائياً فقط */}
-                {effectiveClientType === 'دائن' ? (
-                  <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-600 text-white shadow-xs flex items-center gap-1.5" title="عميل دائن: له رصيد مستحق ناتج عن سداد مبلغ أكبر من الدين المستحق">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                    <span>دائن (له رصيد)</span>
+                {client.notes && (
+                  <span className="truncate max-w-xs text-slate-400 dark:text-slate-500">
+                    • {client.notes}
                   </span>
-                ) : (
-                  <div className="flex items-center gap-0.5 bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-xl text-xs font-bold shrink-0 border border-slate-300/60 dark:border-slate-700 shadow-2xs">
-                    <button
-                      type="button"
-                      disabled={remainingDebt > 0}
-                      onClick={() => handleSetClientType('عادي')}
-                      className={`btn-interactive px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
-                        effectiveClientType === 'عادي'
-                          ? 'bg-blue-600 text-white shadow-xs cursor-default'
-                          : remainingDebt > 0
-                          ? 'text-slate-400 dark:text-slate-600 opacity-40 cursor-not-allowed'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                      title={
-                        remainingDebt > 0
-                          ? 'لا يمكن التحويل لحساب عادي لوجود مديونية مستحقة غير مسددة'
-                          : 'عميل عادي (حساب خالص)'
-                      }
-                    >
-                      عادي
-                    </button>
-                    <button
-                      type="button"
-                      disabled={effectiveClientType === 'مدين' || remainingDebt <= 0}
-                      onClick={() => handleSetClientType('مدين')}
-                      className={`btn-interactive px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
-                        effectiveClientType === 'مدين'
-                          ? 'bg-rose-600 text-white shadow-xs cursor-default'
-                          : remainingDebt <= 0
-                          ? 'text-slate-400 dark:text-slate-600 opacity-40 cursor-not-allowed'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                      title={
-                        remainingDebt <= 0
-                          ? 'العميل حسابه خالص (0 ج.م) - لا يمكن تحويله إلى مدين إلا إذا كان عليه فلوس أو تم شحن رصيد له'
-                          : 'عميل مدين (عليه مبالغ آجلة)'
-                      }
-                    >
-                      مدين
-                    </button>
-                  </div>
-                )}
-
-                {clientArchiveList.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowArchiveModal(true)}
-                    className="btn-interactive inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800 shadow-2xs transition-colors shrink-0"
-                    title="عرض أرشيف وتسلسل العمليات والشحنات والتسويات لهذا العميل"
-                  >
-                    <Archive className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                    <span>أرشيف وتسلسل العمليات ({clientArchiveList.length})</span>
-                  </button>
                 )}
               </div>
-              {client.notes && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {client.notes}
-                </p>
-              )}
             </div>
           </div>
 
-          {/* Action buttons on client */}
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          {/* Clean Action Buttons Group */}
+          <div className="flex flex-wrap items-center gap-1.5 self-end xl:self-auto shrink-0">
             <button
               onClick={handleOpenPayment}
-              className="btn-interactive flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
+              className="btn-interactive inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
               title="تسجيل سداد دفعة نقدية لهذا العميل"
             >
               <Wallet className="w-3.5 h-3.5" />
@@ -1180,33 +1153,46 @@ ${balanceLine}
             </button>
 
             <button
-              type="button"
-              onClick={handleSendWhatsAppReport}
-              className="btn-interactive flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-xs transition-colors"
-              title={client.whatsappPhone ? `إرسال كشف الحساب بالواتساب للرقم (${client.whatsappPhone})` : wallets[0]?.phoneNumber ? `إرسال كشف الحساب بالواتساب للرقم (${wallets[0]?.phoneNumber})` : 'إرسال كشف الحساب بالواتساب'}
-            >
-              <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span className="hidden sm:inline">كشف حساب واتساب</span>
-              <span className="sm:hidden">واتساب</span>
-            </button>
-
-            <button
               onClick={handleAddWallet}
-              className="btn-interactive flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/60 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 shadow-xs"
+              className="btn-interactive inline-flex items-center gap-1 px-3 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-red-950/50 text-slate-700 hover:text-red-600 dark:text-slate-200 dark:hover:text-red-400 border border-slate-200/80 dark:border-slate-700 transition-colors"
               title="إضافة رقم محمول إضافي لهذا العميل"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>إضافة رقم</span>
             </button>
 
-            {/* Wallets Display Mode Toggle Pill (Grid vs Table) */}
-            <div className="inline-flex items-center bg-slate-200/70 dark:bg-slate-800 p-0.5 rounded-full border border-slate-300/80 dark:border-slate-700 shadow-2xs">
+            <button
+              type="button"
+              onClick={handleSendWhatsAppReport}
+              className="btn-interactive inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/50 text-slate-700 hover:text-emerald-700 dark:text-slate-200 dark:hover:text-emerald-300 border border-slate-200/80 dark:border-slate-700 transition-colors"
+              title={client.whatsappPhone ? `إرسال كشف الحساب بالواتساب للرقم (${client.whatsappPhone})` : wallets[0]?.phoneNumber ? `إرسال كشف الحساب بالواتساب للرقم (${wallets[0]?.phoneNumber})` : 'إرسال كشف الحساب بالواتساب'}
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">كشف حساب</span>
+            </button>
+
+            {clientArchiveList.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowArchiveModal(true)}
+                className="btn-interactive inline-flex items-center gap-1 px-2.5 py-2 text-xs font-bold rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/60 transition-colors"
+                title="عرض أرشيف وتسلسل العمليات لهذا العميل"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span className="font-mono">{clientArchiveList.length}</span>
+              </button>
+            )}
+
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 mx-0.5 hidden sm:block" />
+
+            {/* Wallets Display Mode Toggle */}
+            <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700">
               <button
                 type="button"
                 onClick={() => handleToggleViewMode('grid')}
-                className={`p-1.5 rounded-full transition-all ${
+                className={`p-1.5 rounded-md transition-all ${
                   walletsViewMode === 'grid'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                 }`}
                 title="عرض الأرقام كـ كروت (شبكة)"
@@ -1216,9 +1202,9 @@ ${balanceLine}
               <button
                 type="button"
                 onClick={() => handleToggleViewMode('table')}
-                className={`p-1.5 rounded-full transition-all ${
+                className={`p-1.5 rounded-md transition-all ${
                   walletsViewMode === 'table'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                 }`}
                 title="عرض الأرقام كـ جدول تفصيلي"
@@ -1237,7 +1223,7 @@ ${balanceLine}
 
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               title={isExpanded ? 'طي الأرقام' : 'عرض الأرقام'}
             >
               <ChevronDown className={`w-4 h-4 transition-transform duration-300 ease-out ${isExpanded ? 'rotate-180' : ''}`} />
@@ -1245,106 +1231,78 @@ ${balanceLine}
           </div>
         </div>
 
-        {/* Row 2: Financial Summary & Commission Calculation Bar (شريط التحكم والملخص المالي المنظم) */}
-        <div className="pt-3 border-t border-slate-200/80 dark:border-slate-700/60 space-y-2.5">
-          
-          {/* Sub-row 1: Time Range Filter & Commission Settings Tool */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            {/* Time Range Filter */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0">
-                <Calculator className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>المبالغ المدخلة للأرقام:</span>
-              </div>
-
-              <div className="flex items-center gap-0.5 bg-slate-200/70 dark:bg-slate-700/60 p-0.5 rounded-xl text-[11px] font-bold">
+        {/* Row 2: Clean Financial Summary & Controls (Side by Side) */}
+        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
+          {/* Controls Side: Period Filter & Commission */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold text-slate-400">الفترة:</span>
+              <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[11px] font-bold">
                 <button
                   type="button"
                   onClick={() => setTimeRange('today')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2 py-1 rounded-md transition-all whitespace-nowrap ${
                     timeRange === 'today'
-                      ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-xs font-black'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-black'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                   }`}
-                  title="تجميع مبالغ شحن اليوم لكافة أرقام العميل"
                 >
                   اليوم ({formatCurrency(clientStats.today)})
                 </button>
                 <button
                   type="button"
                   onClick={() => setTimeRange('month')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2 py-1 rounded-md transition-all whitespace-nowrap ${
                     timeRange === 'month'
-                      ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-xs font-black'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-black'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                   }`}
-                  title="تجميع مبالغ شحن هذا الشهر لكافة أرقام العميل"
                 >
-                  هذا الشهر ({formatCurrency(clientStats.month)})
+                  الشهر ({formatCurrency(clientStats.month)})
                 </button>
                 <button
                   type="button"
                   onClick={() => setTimeRange('all')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2 py-1 rounded-md transition-all whitespace-nowrap ${
                     timeRange === 'all'
-                      ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-xs font-black'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-black'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                   }`}
-                  title="إجمالي كافة الشحنات السابقة لكافة أرقام العميل"
                 >
                   الكل
                 </button>
               </div>
             </div>
 
-            {/* Commission Settings Tool */}
-            {hasExcessDebt ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold text-xs">
-                <span>صافي نقدي (بدون عمولة أو خصم)</span>
-              </div>
-            ) : (isSettled || (effectiveClientType === 'عادي' && baseAmount === 0)) ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700 text-slate-400 dark:text-slate-500 font-bold text-xs">
-                <span>-</span>
-                <span className="text-[11px] font-bold">لا تنطبق عمولة (حساب خالص)</span>
-              </div>
-            ) : (
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border shadow-2xs transition-colors ${
-                effectiveMode === 'add'
-                  ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60'
-                  : 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60'
-              }`}>
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">العمولة:</span>
+            {!hasExcessDebt && !(isSettled || (effectiveClientType === 'عادي' && baseAmount === 0)) && (
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs">
+                <span className="text-[11px] font-bold text-slate-500">العمولة:</span>
                 <button
                   type="button"
                   onClick={handleToggleMode}
-                  className={`btn-interactive px-2 py-0.5 rounded-lg text-xs font-black transition-all shadow-2xs ${
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-black transition-all whitespace-nowrap ${
                     effectiveMode === 'add'
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      : 'bg-rose-600 hover:bg-rose-700 text-white'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-rose-600 text-white'
                   }`}
                   title="اضغط للتبديل بين إضافة أو خصم العمولة"
                 >
-                  {effectiveMode === 'add' ? 'إضافة (+)' : 'خصم (-)'}
+                  {effectiveMode === 'add' ? 'إضافة +' : 'خصم -'}
                 </button>
-
-                <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-2 py-0.5 shadow-2xs">
-                  <span className="text-xs font-bold text-slate-400 select-none">×</span>
+                <div className="flex items-center gap-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md px-1.5 py-0.5">
+                  <span className="text-[11px] text-slate-400">×</span>
                   <input
                     type="number"
                     step="any"
                     value={commissionPercent}
                     onChange={(e) => setCommissionPercent(e.target.value)}
                     placeholder="0.995"
-                    className="w-16 sm:w-20 text-xs sm:text-sm font-black font-mono text-center bg-transparent border-none p-0 text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    title="أدخل معامل الحساب (مثال: 0.995 أو 1.005)"
+                    className="w-12 text-xs font-black font-mono text-center bg-transparent border-none p-0 text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
-
                 {commissionAmount > 0 && (
-                  <span className={`text-[11px] font-black font-mono mr-0.5 ${
-                    effectiveMode === 'add'
-                      ? 'text-emerald-700 dark:text-emerald-400'
-                      : 'text-rose-700 dark:text-rose-400'
+                  <span className={`text-[11px] font-black font-mono whitespace-nowrap ${
+                    effectiveMode === 'add' ? 'text-emerald-600' : 'text-rose-600'
                   }`} dir="ltr">
                     ({effectiveMode === 'add' ? '+' : '-'}{formatCurrency(commissionAmount)})
                   </span>
@@ -1353,67 +1311,80 @@ ${balanceLine}
             )}
           </div>
 
-          {/* Sub-row 2: Integrated Financial Balance Strip (شريط ملخص الحساب المالي الموحد) */}
-          <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-700/60">
+          {/* Compact Architectural 4-Column Stat Strip */}
+          <div className="w-full xl:w-auto grid grid-cols-2 sm:inline-grid sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x sm:divide-x-reverse divide-slate-200/70 dark:divide-slate-800 rounded-lg bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-800 overflow-hidden">
             {/* 1. قبل العمولة */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
-                {hasExcessDebt ? 'المبلغ الأساسي:' : 'قبل العمولة:'}
+            <div className="px-2.5 py-1 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                {hasExcessDebt ? 'الأساسي' : 'قبل العمولة'}
               </span>
-              <span className="font-mono text-xs sm:text-sm font-black text-slate-900 dark:text-white" dir="ltr">
+              <span className="font-mono text-[11px] font-black text-slate-800 dark:text-slate-100 whitespace-nowrap" dir="ltr">
                 {formatCurrency(hasExcessDebt ? clientExcessDebt : baseAmount)}
               </span>
             </div>
 
-            {/* 2. الصافي المطلوب بعد العمولة */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold shadow-2xs ${
-              effectiveClientType === 'دائن' || creditExcess > 0
-                ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                : hasExcessDebt
-                ? 'bg-gradient-to-r from-rose-600 to-red-700 text-white shadow-rose-600/20'
-                : effectiveMode === 'add'
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-emerald-600/20'
-                : 'bg-gradient-to-r from-rose-600 to-red-700 text-white shadow-rose-600/20'
-            }`}>
-              <span className={`text-[11px] ${effectiveClientType === 'دائن' || creditExcess > 0 ? 'text-slate-500 dark:text-slate-400' : 'text-white/90'}`}>
-                {hasExcessDebt ? 'المطلوب الأصلي:' : 'المطلوب:'}
+            {/* 2. المطلوب */}
+            <div className="px-2.5 py-1 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                {hasExcessDebt ? 'المطلوب الأصلي' : 'المطلوب'}
               </span>
-              <span className={`font-mono text-xs sm:text-sm font-black ${effectiveClientType === 'دائن' || creditExcess > 0 ? 'text-slate-800 dark:text-slate-200' : 'text-white'}`} dir="ltr">
+              <span
+                className={`font-mono text-[11px] font-black whitespace-nowrap ${
+                  effectiveClientType === 'دائن' || creditExcess > 0 || (hasExcessDebt ? clientExcessDebt : finalAmount) === 0
+                    ? 'text-slate-700 dark:text-slate-200'
+                    : effectiveMode === 'add' && !hasExcessDebt
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-rose-600 dark:text-rose-400'
+                }`}
+                dir="ltr"
+              >
                 {formatCurrency(effectiveClientType === 'دائن' || creditExcess > 0 ? 0 : (hasExcessDebt ? clientExcessDebt : finalAmount))}
               </span>
             </div>
 
             {/* 3. المسدد */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-900/60 shadow-2xs text-emerald-800 dark:text-emerald-300">
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">المسدد:</span>
-              <span className="font-mono text-xs sm:text-sm font-black text-emerald-700 dark:text-emerald-300" dir="ltr">
+            <div className="px-2.5 py-1 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">المسدد</span>
+              <span className="font-mono text-[11px] font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap" dir="ltr">
                 {formatCurrency(hasExcessDebt ? (clientExcessDebt - remainingDebt) : paidAmount)}
               </span>
             </div>
 
-            {/* 4. المتبقي أو الرصيد الدائن */}
-            {creditExcess > 0 ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-200 font-bold shadow-2xs">
-                <span className="text-[11px]">له رصيد دائن:</span>
-                <strong className="font-mono text-xs sm:text-sm font-black text-teal-700 dark:text-teal-300" dir="ltr">
-                  {formatCurrency(creditExcess)}
-                </strong>
-              </div>
-            ) : isSettled || (hasExcessDebt && remainingDebt === 0) ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 font-black text-xs border border-emerald-300 dark:border-emerald-700 shadow-2xs">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>خالص بالكامل (0 ج.م)</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 font-bold shadow-2xs">
-                <span className="text-[11px]">المتبقي مطلوب:</span>
-                <span className="font-mono text-xs sm:text-sm font-black text-rose-700 dark:text-rose-300" dir="ltr">
-                  {formatCurrency(remainingDebt)}
-                </span>
-              </div>
-            )}
+            {/* 4. الصافي / الحالة */}
+            <div className={`px-2.5 py-1 flex items-center justify-between gap-2 ${
+              creditExcess > 0
+                ? 'bg-teal-50/70 dark:bg-teal-950/30'
+                : isSettled || (hasExcessDebt && remainingDebt === 0)
+                ? 'bg-emerald-50/60 dark:bg-emerald-950/25'
+                : 'bg-rose-50/70 dark:bg-rose-950/30'
+            }`}>
+              {creditExcess > 0 ? (
+                <>
+                  <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300 whitespace-nowrap">دائن</span>
+                  <span className="font-mono text-[11px] font-black text-teal-700 dark:text-teal-300 whitespace-nowrap" dir="ltr">
+                    {formatCurrency(creditExcess)}
+                  </span>
+                </>
+              ) : isSettled || (hasExcessDebt && remainingDebt === 0) ? (
+                <>
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 whitespace-nowrap">
+                    <CheckCircle2 className="w-3 h-3 shrink-0" />
+                    <span>الحالة</span>
+                  </span>
+                  <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                    خالص (0 ج.م)
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300 whitespace-nowrap">المتبقي</span>
+                  <span className="font-mono text-[11px] font-black text-rose-600 dark:text-rose-400 whitespace-nowrap" dir="ltr">
+                    {formatCurrency(remainingDebt)}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
-
         </div>
 
       </div>

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useCash } from '../context/CashContext';
+import { getPersistedNavValue, setPersistedNavValue } from '../utils/storage';
 import { 
   formatCurrency, 
   formatPhone, 
@@ -64,6 +65,7 @@ export default function DailyLogView({ onNavigateToInbound }) {
   const { 
     transactions, 
     purchases = [],
+    inventory = [],
     treasury = {},
     selectedDate, 
     setSelectedDate, 
@@ -81,7 +83,13 @@ export default function DailyLogView({ onNavigateToInbound }) {
 
   const [searchDaily, setSearchDaily] = useState('');
   const [copiedId, setCopiedId] = useState(null);
-  const [activeDailyStream, setActiveDailyStream] = useState('timeline'); // 'timeline', 'transfers', 'collections', 'purchases', 'sales', 'inbound', 'treasury', 'audit'
+  const [activeDailyStream, setActiveDailyStream] = useState(() =>
+    getPersistedNavValue('elaasar_daily_stream', 'timeline', ['timeline', 'transfers', 'collections', 'purchases', 'sales', 'profits', 'inbound', 'treasury', 'audit'])
+  );
+
+  useEffect(() => {
+    setPersistedNavValue('elaasar_daily_stream', activeDailyStream);
+  }, [activeDailyStream]);
 
   // Inbound Shift Section States
   const [inboundRefreshKey, setInboundRefreshKey] = useState(0);
@@ -420,6 +428,126 @@ export default function DailyLogView({ onNavigateToInbound }) {
       return null;
     }
   }, [selectedDate, inboundRefreshKey]);
+
+  // Daily Profits Summary across all sales, transfer fees, inbound commissions, cash liquidity & expenses
+  const dailyProfitSummary = useMemo(() => {
+    const productRows = daySalesTxs.map(t => {
+      const qty = Number(t.quantity) || 1;
+      const revenue = Number(t.amount) || 0;
+      const matchedProd = inventory.find(p => p.id === t.productId);
+      const unitCost = t.costPrice !== undefined ? (Number(t.costPrice) || 0) : (Number(matchedProd?.costPrice) || 0);
+      const totalCost = unitCost * qty;
+      const hasCostData = unitCost > 0 || t.profit !== undefined;
+      const profit = t.profit !== undefined ? (Number(t.profit) || 0) : (unitCost > 0 ? revenue - totalCost : 0);
+
+      return {
+        id: `prof-sale-${t.id}`,
+        sourceType: 'product_sale',
+        sourceLabel: 'مبيعات منتجات',
+        date: t.date,
+        title: `${t.productName || 'منتج / جهاز'}${t.variantColor ? ` (${t.variantColor})` : ''} × ${qty}`,
+        party: t.customerName || 'عميل نقدي',
+        revenue,
+        cost: totalCost,
+        profit,
+        hasCostData,
+        raw: t
+      };
+    });
+
+    const feeRows = dayTransactions
+      .filter(t => (Number(t.fee) || 0) > 0)
+      .map(t => ({
+        id: `prof-fee-${t.id}`,
+        sourceType: 'transfer_fee',
+        sourceLabel: t.type === 'recharge' || t.type === 'limit_reset' ? 'عمولة شحن' : 'رسوم تحويل كاش',
+        date: t.date,
+        title: t.type === 'recharge' || t.type === 'limit_reset'
+          ? `شحن محفظة (${t.walletPhone || t.walletLabel || ''}) بمبلغ ${formatCurrency(t.amount)}`
+          : `تحويل ${formatCurrency(t.amount)} إلى ${t.recipientPhone || t.customerName || 'مستلم'}`,
+        party: t.customerName || t.walletLabel || 'عميل',
+        revenue: Number(t.amount) || 0,
+        cost: 0,
+        profit: Number(t.fee) || 0,
+        hasCostData: true,
+        raw: t
+      }));
+
+    const combinedShifts = [
+      ...(activeInboundShift ? [{ ...activeInboundShift, isLive: true }] : []),
+      ...dayInboundShifts
+    ];
+    const inboundRows = combinedShifts
+      .filter(s => (Number(s.commissionValue) || 0) !== 0)
+      .map(s => ({
+        id: `prof-inb-${s.id || 'live'}`,
+        sourceType: 'inbound_commission',
+        sourceLabel: s.isLive ? 'عمولة وارد (جارية)' : 'عمولة وارد (وردية مقفلة)',
+        date: s.closedAt || s.endedAt || s.startedAt || selectedDate,
+        title: `وردية وارد (${s.itemsCount || s.items?.length || 0} بند) بإجمالي ${formatCurrency(s.totalAmount || 0)}`,
+        party: s.businessDateLabel || selectedDate,
+        revenue: Number(s.totalAmount) || 0,
+        cost: 0,
+        profit: Number(s.commissionValue) || 0,
+        hasCostData: true,
+        raw: s
+      }));
+
+    const liquidityRows = dayPurchases
+      .filter(p => p.type === 'cash_liquidity' && (Number(p.purchasedCashAmount) || 0) > 0)
+      .map(p => {
+        const received = Number(p.purchasedCashAmount) || 0;
+        const paidCost = Number(p.totalAmount) || 0;
+        return {
+          id: `prof-liq-${p.id}`,
+          sourceType: 'cash_liquidity',
+          sourceLabel: 'فارق شراء كاش',
+          date: p.date,
+          title: `شراء رصيد كاش ${formatCurrency(received)} (${p.invoiceNumber || ''})`,
+          party: p.supplierName || 'موزع كاش',
+          revenue: received,
+          cost: paidCost,
+          profit: received - paidCost,
+          hasCostData: true,
+          raw: p
+        };
+      })
+      .filter(r => r.profit !== 0);
+
+    const dayGeneralExpenses = dayPurchases.filter(p => p.type === 'general_expense');
+    const totalGeneralExpenses = dayGeneralExpenses.reduce((s, p) => s + (Number(p.totalAmount) || 0), 0);
+
+    const totalSalesRevenue = productRows.reduce((s, r) => s + r.revenue, 0);
+    const totalSalesCost = productRows.reduce((s, r) => s + r.cost, 0);
+    const totalSalesProfit = productRows.reduce((s, r) => s + r.profit, 0);
+    const totalTransfersFees = feeRows.reduce((s, r) => s + r.profit, 0);
+    const totalInboundProfit = inboundRows.reduce((s, r) => s + r.profit, 0);
+    const totalLiquidityMargin = liquidityRows.reduce((s, r) => s + r.profit, 0);
+
+    const grossDailyProfit = totalSalesProfit + totalTransfersFees + totalInboundProfit + totalLiquidityMargin;
+    const netDailyProfit = grossDailyProfit - totalGeneralExpenses;
+
+    const allProfitItems = [...productRows, ...feeRows, ...inboundRows, ...liquidityRows]
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+    return {
+      productRows,
+      feeRows,
+      inboundRows,
+      liquidityRows,
+      dayGeneralExpenses,
+      allProfitItems,
+      totalSalesRevenue,
+      totalSalesCost,
+      totalSalesProfit,
+      totalTransfersFees,
+      totalInboundProfit,
+      totalLiquidityMargin,
+      totalGeneralExpenses,
+      grossDailyProfit,
+      netDailyProfit
+    };
+  }, [daySalesTxs, dayTransactions, dayInboundShifts, activeInboundShift, dayPurchases, inventory, selectedDate]);
 
   const toggleShiftItems = (shiftId) => {
     setExpandedShiftIds(prev => ({
@@ -866,6 +994,27 @@ export default function DailyLogView({ onNavigateToInbound }) {
           <span>📱 مبيعات الأجهزة والمخزون</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white/20">
             {daySalesTxs.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveDailyStream('profits')}
+          className={`btn-interactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+            activeDailyStream === 'profits'
+              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+              : 'text-emerald-700 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 border border-emerald-200/70 dark:border-emerald-900/50'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span>💰 الأرباح اليومية</span>
+          <span className={`px-2 py-0.2 rounded-full text-[10px] font-mono font-black ${
+            activeDailyStream === 'profits'
+              ? 'bg-white/20 text-white'
+              : dailyProfitSummary.grossDailyProfit >= 0
+              ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
+              : 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300'
+          }`}>
+            {dailyProfitSummary.grossDailyProfit >= 0 ? '+' : ''}{dailyProfitSummary.grossDailyProfit.toLocaleString()} ج.م
           </span>
         </button>
 
@@ -1388,6 +1537,179 @@ export default function DailyLogView({ onNavigateToInbound }) {
           )}
         </div>
       )}
+
+      {/* STREAM E2: DAILY PROFITS FROM ALL SALES (الأرباح اليومية من كل المبيعات) */}
+      {activeDailyStream === 'profits' && (() => {
+        const q = searchDaily.trim().toLowerCase();
+        const filteredProfitItems = !q
+          ? dailyProfitSummary.allProfitItems
+          : dailyProfitSummary.allProfitItems.filter(it =>
+              (it.title || '').toLowerCase().includes(q) ||
+              (it.party || '').toLowerCase().includes(q) ||
+              (it.sourceLabel || '').toLowerCase().includes(q)
+            );
+
+        return (
+          <div className="space-y-4">
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {/* 1. Gross Profit */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-700 text-white shadow-md shadow-emerald-600/20 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold text-emerald-100">
+                  <span>إجمالي أرباح المبيعات والعمولات</span>
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <div className="text-2xl font-black font-mono">
+                  {dailyProfitSummary.grossDailyProfit >= 0 ? '+' : ''}
+                  {formatCurrency(dailyProfitSummary.grossDailyProfit)}
+                </div>
+                <div className="text-[11px] text-emerald-100/90">
+                  من {dailyProfitSummary.allProfitItems.length} عملية ربحية مسجلة في هذا اليوم
+                </div>
+              </div>
+
+              {/* 2. Products / Inventory Sales Profit */}
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold text-purple-600 dark:text-purple-400">
+                  <span>أرباح مبيعات الأجهزة والإكسسوارات</span>
+                  <Smartphone className="w-4 h-4" />
+                </div>
+                <div className={`text-xl font-black font-mono ${
+                  dailyProfitSummary.totalSalesProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                }`}>
+                  {dailyProfitSummary.totalSalesProfit >= 0 ? '+' : ''}
+                  {formatCurrency(dailyProfitSummary.totalSalesProfit)}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  مبيعات: {formatCurrency(dailyProfitSummary.totalSalesRevenue)} • تكلفة: {formatCurrency(dailyProfitSummary.totalSalesCost)}
+                </div>
+              </div>
+
+              {/* 3. Transfer Fees & Inbound Commissions */}
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold text-blue-600 dark:text-blue-400">
+                  <span>عمولات التحويلات والوارد (له)</span>
+                  <Percent className="w-4 h-4" />
+                </div>
+                <div className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+                  +{formatCurrency(dailyProfitSummary.totalTransfersFees + dailyProfitSummary.totalInboundProfit + dailyProfitSummary.totalLiquidityMargin)}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  تحويلات: {formatCurrency(dailyProfitSummary.totalTransfersFees)} • وارد: {formatCurrency(dailyProfitSummary.totalInboundProfit)}
+                </div>
+              </div>
+
+              {/* 4. Net Profit after General Expenses */}
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
+                  <span>صافي ربح اليوم (بعد المصروفات)</span>
+                  <Coins className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className={`text-xl font-black font-mono ${
+                  dailyProfitSummary.netDailyProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                }`}>
+                  {dailyProfitSummary.netDailyProfit >= 0 ? '+' : ''}
+                  {formatCurrency(dailyProfitSummary.netDailyProfit)}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  مصروفات المحل اليومية المخصومة: {formatCurrency(dailyProfitSummary.totalGeneralExpenses)}
+                </div>
+              </div>
+            </div>
+
+            {/* Detailed Profits Table */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-emerald-600" />
+                  <h3 className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
+                    تفاصيل الأرباح اليومية من كل المبيعات ({filteredProfitItems.length})
+                  </h3>
+                </div>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                  التاريخ: {formatDateArabic(selectedDate)}
+                </span>
+              </div>
+
+              {filteredProfitItems.length === 0 ? (
+                <div className="py-16 text-center px-4">
+                  <TrendingUp className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+                  <h4 className="text-base font-bold text-slate-700 dark:text-slate-300">
+                    لا توجد مبيعات أو عمولات محققة لأرباح في هذا اليوم
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1">
+                    تظهر هنا تلقائياً أرباح مبيعات الأجهزة والإكسسوارات ورسوم التحويلات وعمولات الوارد لهذا التاريخ
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 text-xs font-bold border-b border-slate-200 dark:border-slate-800">
+                        <th className="py-3 px-4">التوقيت</th>
+                        <th className="py-3 px-4">مصدر الربح</th>
+                        <th className="py-3 px-4">تفاصيل البيع / العملية</th>
+                        <th className="py-3 px-4">العميل / الجهة</th>
+                        <th className="py-3 px-4">قيمة العملية / البيع</th>
+                        <th className="py-3 px-4">التكلفة</th>
+                        <th className="py-3 px-4">صافي الربح / الخسارة</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {filteredProfitItems.map(item => (
+                        <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                          <td className="py-3 px-4 font-bold text-xs whitespace-nowrap">
+                            {item.date ? formatTimeArabic(item.date) : '—'}
+                          </td>
+                          <td className="py-3 px-4 text-xs whitespace-nowrap">
+                            <span className={`px-2.5 py-0.5 rounded-full font-bold ${
+                              item.sourceType === 'product_sale'
+                                ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
+                                : item.sourceType === 'transfer_fee'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                : item.sourceType === 'inbound_commission'
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                                : 'bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300'
+                            }`}>
+                              {item.sourceLabel}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                            {item.title}
+                            {item.sourceType === 'product_sale' && !item.hasCostData && (
+                              <span className="mr-1.5 text-[10px] font-normal text-amber-600 dark:text-amber-400">
+                                (سعر الشراء غير مسجل)
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-xs text-slate-600 dark:text-slate-300">
+                            {item.party}
+                          </td>
+                          <td className="py-3 px-4 font-mono font-bold text-xs text-slate-700 dark:text-slate-300">
+                            {formatCurrency(item.revenue)}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-xs text-slate-400">
+                            {item.cost > 0 ? formatCurrency(item.cost) : '—'}
+                          </td>
+                          <td className={`py-3 px-4 font-mono font-black text-sm whitespace-nowrap ${
+                            item.profit > 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : item.profit < 0
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : 'text-slate-400'
+                          }`}>
+                            {item.profit > 0 ? '+' : ''}{formatCurrency(item.profit)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* STREAM F: INBOUND SHIFTS (ورديات الوارد والعمولة له) */}
       {activeDailyStream === 'inbound' && (

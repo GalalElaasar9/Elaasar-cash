@@ -95,6 +95,29 @@ export default function ClientPaymentModal() {
   const effectiveAmount = isVodafoneCash ? (rawInputAmount * 0.99) : rawInputAmount;
   const isValidAmount = rawInputAmount > 0;
 
+  // Outbound balance check when paying a creditor client from shop accounts
+  const selectedWalletObj = isVodafoneCash ? shopWallets?.find(w => w.id === selectedShopWalletId) : null;
+  const selectedInstapayObj = paymentMethod === 'instapay' ? instapayAccounts?.find(a => a.id === selectedInstapayAccountId) : null;
+  const creditorAvailableBalance =
+    paymentMethod === 'cash'
+      ? (Number(treasury?.drawerCash) || 0)
+      : paymentMethod === 'bank'
+      ? (Number(treasury?.bankAccounts) || 0)
+      : isVodafoneCash
+      ? (selectedWalletObj ? (Number(selectedWalletObj.balance) || 0) : (Number(treasury?.vodafoneCash) || 0))
+      : paymentMethod === 'instapay'
+      ? (selectedInstapayObj ? (Number(selectedInstapayObj.balance) || 0) : (Number(treasury?.instapay) || 0))
+      : 0;
+  const creditorSourceLabel =
+    paymentMethod === 'cash'
+      ? 'كاش الدرج'
+      : paymentMethod === 'bank'
+      ? 'الحساب البنكي'
+      : isVodafoneCash
+      ? (selectedWalletObj ? `خط فودافون كاش (${selectedWalletObj.label})` : 'فودافون كاش')
+      : (selectedInstapayObj ? `حساب إنستاباي (${selectedInstapayObj.accountName})` : 'إنستاباي');
+  const isCreditorInsufficient = Boolean(isCreditor && rawInputAmount > 0 && rawInputAmount > creditorAvailableBalance);
+
   // Real-time calculation based on effective credited amount
   const isPayingMore = currentBalance > 0 && effectiveAmount > currentBalance;
   const excess = isPayingMore ? (effectiveAmount - currentBalance) : 0;
@@ -104,6 +127,10 @@ export default function ClientPaymentModal() {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!client || !isValidAmount) return;
+    if (isCreditorInsufficient) {
+      showToast(`الرصيد المتاح في ${creditorSourceLabel} (${formatCurrency(creditorAvailableBalance)}) أقل من المبلغ المطلوب صرفه!`, 'error');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -1099,6 +1126,22 @@ export default function ClientPaymentModal() {
           </div>
         )}
 
+        {/* Outbound Insufficient Funds Alert for Creditor Payout */}
+        {isCreditorInsufficient && (
+          <div
+            role="alert"
+            className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-400 dark:border-rose-700 text-rose-800 dark:text-rose-200 flex items-start gap-2.5 text-xs"
+          >
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <div className="font-black">⚠️ الرصيد المتاح في {creditorSourceLabel} غير كافٍ للصرف!</div>
+              <p className="font-semibold">
+                المبلغ المطلوب صرفه (<span className="font-mono font-black">{formatCurrency(rawInputAmount)}</span>) أكبر من الرصيد المتاح (<span className="font-mono font-black">{formatCurrency(creditorAvailableBalance)}</span>). يرجى تقليل المبلغ أو اختيار حساب آخر.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
           <button
@@ -1111,10 +1154,10 @@ export default function ClientPaymentModal() {
 
           <button
             type="submit"
-            disabled={!isValidAmount || isSubmitting}
+            disabled={!isValidAmount || isSubmitting || isCreditorInsufficient}
             className={`btn-interactive flex items-center gap-1.5 px-6 py-2.5 text-xs font-bold rounded-xl text-white shadow-md transition-all ${
-              !isValidAmount || isSubmitting
-                ? 'opacity-50 cursor-not-allowed bg-slate-400'
+              !isValidAmount || isSubmitting || isCreditorInsufficient
+                ? 'opacity-50 cursor-not-allowed bg-slate-400 shadow-none'
                 : isCreditor
                 ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30'
                 : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'

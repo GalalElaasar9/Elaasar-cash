@@ -247,6 +247,29 @@ export default function AddPurchaseModal() {
   const isPayingViaWallet = (paymentMethod === 'wallet' || (paymentMethod === 'partial' && selectedPaidChannel === 'vodafoneCash')) && purchaseType !== 'cash_liquidity';
   const isPayingViaInstapay = paymentMethod === 'instapay' || (paymentMethod === 'partial' && selectedPaidChannel === 'instapay');
 
+  // Outbound payment available balance & limit checks
+  const chosenWalletObj = isPayingViaWallet ? shopWallets.find(w => w.id === selectedWalletId) : null;
+  const chosenInstapayObj = isPayingViaInstapay ? instapayAccounts.find(a => a.id === selectedInstapayAccountId) : null;
+  const chosenWalletStats = chosenWalletObj ? calculateWalletStats(chosenWalletObj, transactions) : null;
+  const purchaseSourceAvailable =
+    finalPaidAmount <= 0
+      ? Infinity
+      : isPayingViaWallet
+      ? (chosenWalletObj ? (Number(chosenWalletObj.balance) || 0) : (Number(treasury?.vodafoneCash) || 0))
+      : isPayingViaInstapay
+      ? (chosenInstapayObj ? (Number(chosenInstapayObj.balance) || 0) : (Number(treasury?.instapay) || 0))
+      : (Number(treasury?.[effectivePaidChannel]) || 0);
+  const purchaseSourceLabel = isPayingViaWallet
+    ? (chosenWalletObj ? `خط فودافون كاش (${chosenWalletObj.label})` : 'فودافون كاش')
+    : isPayingViaInstapay
+    ? (chosenInstapayObj ? `حساب إنستاباي (${chosenInstapayObj.accountName})` : 'إنستاباي')
+    : effectivePaidChannel === 'bankAccounts'
+    ? 'الحساب البنكي'
+    : 'كاش الدرج';
+  const isPurchaseInsufficient = finalPaidAmount > 0 && finalPaidAmount > purchaseSourceAvailable;
+  const isPurchaseLimitExceeded = Boolean(isPayingViaWallet && chosenWalletStats && finalPaidAmount > 0 && finalPaidAmount > chosenWalletStats.remainingLimit);
+  const isPurchaseBlocked = isPurchaseInsufficient || isPurchaseLimitExceeded;
+
   // Handle adding an item to the invoice
   const handleAddItem = () => {
     setItems(prev => [
@@ -1367,6 +1390,34 @@ export default function AddPurchaseModal() {
             </div>
           </div>
 
+          {/* Insufficient Balance / Limit Alert */}
+          {isPurchaseBlocked && (
+            <div
+              role="alert"
+              className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-400 dark:border-rose-700 text-rose-800 dark:text-rose-200 flex items-start gap-2.5 text-xs"
+            >
+              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-black">
+                  {isPurchaseInsufficient
+                    ? `⚠️ الرصيد المتاح في ${purchaseSourceLabel} غير كافٍ لسداد هذه الفاتورة!`
+                    : `⚠️ ليميت خط ${chosenWalletObj?.label} المتبقي غير كافٍ!`}
+                </div>
+                <p className="font-semibold">
+                  {isPurchaseInsufficient ? (
+                    <>
+                      المبلغ المدفوع (<span className="font-mono font-black">{formatCurrency(finalPaidAmount)}</span>) أكبر من المتاح (<span className="font-mono font-black">{formatCurrency(purchaseSourceAvailable)}</span>). يمكنك اختيار حساب آخر أو تسجيل الفاتورة كـ <strong>سداد جزئي / آجل</strong>.
+                    </>
+                  ) : (
+                    <>
+                      المتبقي من ليميت المحفظة (<span className="font-mono font-black">{formatCurrency(chosenWalletStats?.remainingLimit || 0)}</span>) أقل من المبلغ المطلوب دفعه (<span className="font-mono font-black">{formatCurrency(finalPaidAmount)}</span>).
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Footer Submit Buttons */}
           <div className="flex items-center justify-end gap-2 pt-2">
             <button
@@ -1379,7 +1430,12 @@ export default function AddPurchaseModal() {
 
             <button
               type="submit"
-              className="btn-interactive flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white text-xs sm:text-sm font-black shadow-md shadow-red-600/25 transition-all"
+              disabled={isPurchaseBlocked}
+              className={`btn-interactive flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-xs sm:text-sm font-black transition-all ${
+                isPurchaseBlocked
+                  ? 'bg-slate-400 dark:bg-slate-700 opacity-50 cursor-not-allowed shadow-none'
+                  : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 shadow-md shadow-red-600/25'
+              }`}
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>

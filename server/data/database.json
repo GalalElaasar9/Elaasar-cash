@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastUpdated": "2026-11-27T18:44:58.582Z",
+  "lastUpdated": "2026-11-27T19:31:18.084Z",
   "shopInfo": {
     "name": "الأعصر لخدمات المحمول",
     "syncId": "elaasar_main"
@@ -10,26 +10,6 @@
     "email": "elaasar.cash@gmail.com"
   },
   "clients": [
-    {
-      "id": "client-13",
-      "name": "صيدلية الدكتور وليد الشناوي",
-      "clientType": "دائن",
-      "excessCredit": 500,
-      "excessCreditDate": "2026-11-24T14:00:00.000Z",
-      "notes": "صيدلية الشناوي - له رصيد دائن 500 ج.م",
-      "createdAt": "2026-11-16T08:30:00.000Z",
-      "wallets": [
-        {
-          "id": "wallet-13-1",
-          "phoneNumber": "01011335577",
-          "label": "محفظة حسابات الصيدلية",
-          "totalLimit": 200000,
-          "createdAt": "2026-11-16T08:30:00.000Z"
-        }
-      ],
-      "commissionMode": "deduct",
-      "commissionPercent": 0.995
-    },
     {
       "id": "client-12",
       "name": "شركة الفتح للشحن السريع",
@@ -43,24 +23,6 @@
           "label": "محفظة المناديب الرئيسية",
           "totalLimit": 250000,
           "createdAt": "2026-11-05T08:30:00.000Z"
-        }
-      ],
-      "commissionMode": "deduct",
-      "commissionPercent": 0.995
-    },
-    {
-      "id": "client-11",
-      "name": "محطة القدس للخدمات البترولية",
-      "clientType": "مدين",
-      "notes": "محطة وقود وخدمات - مديونية شحن 2,200 ج.م",
-      "createdAt": "2026-11-18T08:30:00.000Z",
-      "wallets": [
-        {
-          "id": "wallet-11-1",
-          "phoneNumber": "01055443322",
-          "label": "محفظة إدارة المحطة",
-          "totalLimit": 200000,
-          "createdAt": "2026-11-18T08:30:00.000Z"
         }
       ],
       "commissionMode": "deduct",
@@ -105,9 +67,9 @@
     {
       "id": "client-8",
       "name": "سوبر ماركت الفيروز",
-      "clientType": "دائن",
-      "excessCredit": 750,
-      "excessCreditDate": "2026-11-25T09:00:00.000Z",
+      "clientType": "عادي",
+      "excessCredit": 0,
+      "excessCreditDate": null,
       "notes": "حساب توريد كاش - له رصيد دائن 750 ج.م",
       "createdAt": "2026-11-09T08:30:00.000Z",
       "wallets": [
@@ -120,7 +82,10 @@
         }
       ],
       "commissionMode": "deduct",
-      "commissionPercent": 0.995
+      "commissionPercent": 0.995,
+      "settledAt": "2026-11-27T18:59:34.706Z",
+      "excessDebt": 0,
+      "excessDebtDate": null
     },
     {
       "id": "client-7",
@@ -281,6 +246,28 @@
   ],
   "transactions": [
     {
+      "id": "tx-pay-1795805974679",
+      "clientId": "client-8",
+      "customerId": "client-8",
+      "customerName": "سوبر ماركت الفيروز",
+      "type": "client_payment",
+      "isCreditorPayout": true,
+      "amount": 750,
+      "rawAmount": 750,
+      "excessDebt": 0,
+      "creditBefore": 750,
+      "paymentMethod": "cash",
+      "paidChannel": "drawerCash",
+      "shopWalletId": null,
+      "instapayAccountId": null,
+      "paymentSourceLabel": "كاش بالدرج",
+      "notes": "صرف وسداد مستحقات للعميل الدائن من المحل",
+      "date": "2026-11-27T18:59:34.679Z",
+      "dateOnly": "2026-11-27",
+      "time": "08:59 م",
+      "transactionCode": "PAY-716203"
+    },
+    {
       "id": "tx-sale-1795796634992",
       "type": "product_sale",
       "productId": "prod-1",
@@ -327,24 +314,6 @@
       "date": "2026-11-27T16:23:38.648Z",
       "dateOnly": "2026-11-27",
       "time": "٠٦:٢٣ م"
-    },
-    {
-      "id": "tx-sale-1795796046745",
-      "type": "product_sale",
-      "productId": "prod-1795795926689-69cu",
-      "productName": "حشيش",
-      "brand": "عام",
-      "category": "accessories",
-      "variantColor": "بنى قريب من الأسود",
-      "quantity": 1,
-      "unitPrice": 1500,
-      "amount": 1500,
-      "customerName": "عميل نقدي (مبيعات أجهزة)",
-      "transactionCode": "DEV-845180",
-      "notes": "بيع (1) حشيش [لون: بنى قريب من الأسود]",
-      "date": "2026-11-27T16:14:06.740Z",
-      "dateOnly": "2026-11-27",
-      "time": "٠٦:١٤ م"
     },
     {
       "id": "tx-1795180638139",
@@ -501,7 +470,7 @@
       "brand": "سامسونج (Samsung)",
       "storage": "256GB / 8GB RAM",
       "costPrice": 16500,
-      "salePrice": 18200,
+      "salePrice": 16700,
       "minStockAlert": 5,
       "notes": "ضمان محلي سنة معتمد من الوكيل - شاحن مجاني",
       "createdAt": "2026-11-15T08:30:00.000Z",
@@ -514,7 +483,7 @@
         {
           "color": "أزرق ثلجي",
           "hex": "#38bdf8",
-          "quantity": 1
+          "quantity": 7
         },
         {
           "color": "أسود كحلي",
@@ -527,7 +496,7 @@
           "quantity": 3
         }
       ],
-      "totalQuantity": 8
+      "totalQuantity": 14
     },
     {
       "id": "prod-2",

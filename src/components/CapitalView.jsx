@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useCash } from '../context/CashContext';
+import { getPersistedNavValue, setPersistedNavValue } from '../utils/storage';
 import { 
   formatCurrency, 
   formatDateArabic, 
@@ -60,12 +61,19 @@ export default function CapitalView({ onNavigateToTab }) {
     showToast 
   } = useCash();
 
-  const [activeSubTab, setActiveSubTab] = useState('overview'); // 'overview' | 'history' | 'daily_audits'
+  const [activeSubTab, setActiveSubTab] = useState(() =>
+    getPersistedNavValue('elaasar_capital_subtab', 'overview', ['overview', 'history', 'daily_audits'])
+  );
+
+  useEffect(() => {
+    setPersistedNavValue('elaasar_capital_subtab', activeSubTab);
+  }, [activeSubTab]);
   const [historyFilter, setHistoryFilter] = useState('all'); // 'all' | 'transfer' | 'adjustment' | 'deposit' | 'withdraw'
   const [historySearch, setHistorySearch] = useState('');
   const [historyPage, setCurrentPage] = useState(1);
   const [auditFilter, setAuditFilter] = useState('all'); // 'all' | 'matched' | 'deficit' | 'surplus'
   const [auditSearch, setAuditSearch] = useState('');
+  const [expandedChannels, setExpandedChannels] = useState({});
 
   const ITEMS_PER_PAGE = 8;
 
@@ -404,241 +412,207 @@ export default function CapitalView({ onNavigateToTab }) {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          
-          {/* 1. Cash in Drawer (كاش الدرج والخزينة) */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-3 relative group hover:border-emerald-300 dark:hover:border-emerald-900/50 transition-all">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600">
-                  <DollarSign className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black text-slate-800 dark:text-slate-200">
-                    كاش الدرج (الخزينة)
-                  </h3>
-                  <span className="text-[10px] text-slate-400">نقدية فعلية باليد</span>
-                </div>
-              </div>
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
-                {drawerPercent}% من السيولة
-              </span>
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
+          {[
+            {
+              id: 'drawerCash',
+              title: 'كاش الدرج (الخزينة)',
+              subtitle: 'نقدية فعلية باليد',
+              percent: drawerPercent,
+              amount: treasury.drawerCash || 0,
+              icon: DollarSign,
+              accent: {
+                bar: 'bg-emerald-500',
+                iconBg: 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400',
+                badge: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200/70 dark:border-emerald-900/50',
+                hover: 'hover:border-emerald-300 dark:hover:border-emerald-800',
+                btn: 'bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white dark:bg-emerald-950/40 dark:hover:bg-emerald-600 dark:text-emerald-300 border-emerald-200/70 dark:border-emerald-900/50',
+                subText: 'text-emerald-600 dark:text-emerald-400'
+              },
+              adjustLabel: 'جرد وتسوية',
+              emptyHint: 'نقدية حاضرة في الدرج متاحة فوراً للعمليات والمصروفات',
+              subItems: [],
+              diff: 0,
+              linkedSum: 0
+            },
+            {
+              id: 'vodafoneCash',
+              title: 'فودافون كاش والمحافظ',
+              subtitle: `${shopWallets.length} خطوط مربوطة بالخزينة`,
+              percent: vodafonePercent,
+              amount: Number(treasury.vodafoneCash) || 0,
+              icon: Wallet,
+              accent: {
+                bar: 'bg-rose-500',
+                iconBg: 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400',
+                badge: 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border-rose-200/70 dark:border-rose-900/50',
+                hover: 'hover:border-rose-300 dark:hover:border-rose-800',
+                btn: 'bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white dark:bg-rose-950/40 dark:hover:bg-rose-600 dark:text-rose-300 border-rose-200/70 dark:border-rose-900/50',
+                subText: 'text-rose-600 dark:text-rose-400'
+              },
+              adjustLabel: 'تسوية الرصيد',
+              emptyHint: 'لا توجد خطوط محل مضافة بعد',
+              subItems: shopWallets.map(w => ({ id: w.id, name: w.label || w.phoneNumber, balance: Number(w.balance) || 0 })),
+              linkedSum: shopWallets.reduce((s, w) => s + (Number(w.balance) || 0), 0),
+              diff: (Number(treasury.vodafoneCash) || 0) - shopWallets.reduce((s, w) => s + (Number(w.balance) || 0), 0)
+            },
+            {
+              id: 'instapay',
+              title: 'إنستاباي (InstaPay)',
+              subtitle: `${instapayAccounts.length} حسابات مربوطة`,
+              percent: instapayPercent,
+              amount: Number(treasury.instapay) || 0,
+              icon: Coins,
+              accent: {
+                bar: 'bg-amber-500',
+                iconBg: 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400',
+                badge: 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200/70 dark:border-amber-900/50',
+                hover: 'hover:border-amber-300 dark:hover:border-amber-800',
+                btn: 'bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:hover:bg-amber-600 dark:text-amber-300 border-amber-200/70 dark:border-amber-900/50',
+                subText: 'text-amber-600 dark:text-amber-400'
+              },
+              adjustLabel: 'تحديث الرصيد',
+              emptyHint: 'لا توجد حسابات إنستاباي مضافة بعد',
+              subItems: instapayAccounts.map(a => ({ id: a.id, name: a.accountName, balance: Number(a.balance) || 0 })),
+              linkedSum: instapayAccounts.reduce((s, a) => s + (Number(a.balance) || 0), 0),
+              diff: (Number(treasury.instapay) || 0) - instapayAccounts.reduce((s, a) => s + (Number(a.balance) || 0), 0)
+            },
+            {
+              id: 'bankAccounts',
+              title: 'الحسابات البنكية والفيزا',
+              subtitle: 'أرصدة بنك مصر / الأهلي',
+              percent: bankPercent,
+              amount: treasury.bankAccounts || 0,
+              icon: Building2,
+              accent: {
+                bar: 'bg-blue-500',
+                iconBg: 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400',
+                badge: 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-200/70 dark:border-blue-900/50',
+                hover: 'hover:border-blue-300 dark:hover:border-blue-800',
+                btn: 'bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white dark:bg-blue-950/40 dark:hover:bg-blue-600 dark:text-blue-300 border-blue-200/70 dark:border-blue-900/50',
+                subText: 'text-blue-600 dark:text-blue-400'
+              },
+              adjustLabel: 'تحديث الرصيد',
+              emptyHint: 'رصيد الحسابات البنكية والإيداعات الجاهز للتحويل',
+              subItems: [],
+              diff: 0,
+              linkedSum: 0
+            }
+          ].map(card => {
+            const Icon = card.icon;
+            const isExpanded = Boolean(expandedChannels[card.id]);
+            const visibleSubItems = isExpanded ? card.subItems : card.subItems.slice(0, 3);
+            const hiddenCount = Math.max(0, card.subItems.length - 3);
 
-            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 font-mono">
-              {formatCurrency(treasury.drawerCash || 0)}
-            </div>
-
-            <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => handleOpenAdjust('drawerCash')}
-                className="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors text-center"
-              >
-                جرد وتسوية
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenTransfer('drawerCash')}
-                className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-emerald-600 hover:bg-slate-50 transition-colors"
-                title="تحويل منه"
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* 2. Vodafone Cash (فودافون كاش ومحافظ المحمول) */}
-          {(() => {
-            const linkedWalletsTotal = shopWallets.reduce((sum, w) => sum + (Number(w.balance) || 0), 0);
-            const vfTreasury = Number(treasury.vodafoneCash) || 0;
-            const vfDiff = vfTreasury - linkedWalletsTotal;
             return (
-              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-3 relative group hover:border-rose-300 dark:hover:border-rose-900/50 transition-all flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600">
-                        <Wallet className="w-4 h-4" />
+              <div
+                key={card.id}
+                className={`rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm ${card.accent.hover} transition-all flex flex-col overflow-hidden`}
+              >
+                {/* Top Colored Hairline Accent */}
+                <div className={`h-1 w-full ${card.accent.bar}`} />
+
+                <div className="p-4 flex flex-col flex-1 justify-between gap-3.5">
+                  {/* Top Header & Balance */}
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-9 h-9 rounded-xl ${card.accent.iconBg} flex items-center justify-center shrink-0`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 truncate">
+                            {card.title}
+                          </h3>
+                          <span className="text-[11px] text-slate-400 block truncate">
+                            {card.subtitle}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200">
-                          فودافون كاش والمحافظ
-                        </h3>
-                        <span className="text-[10px] text-slate-400">{shopWallets.length} خطوط مربوطة بالخزينة</span>
+
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border whitespace-nowrap shrink-0 ${card.accent.badge}`}>
+                        {card.percent}%
+                      </span>
+                    </div>
+
+                    {/* Amount + Share Bar */}
+                    <div className="space-y-1.5">
+                      <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono tracking-tight">
+                        {formatCurrency(card.amount)}
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${card.accent.bar} transition-all duration-500`}
+                          style={{ width: `${Math.min(100, Math.max(2, card.percent))}%` }}
+                        />
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-full">
-                      {vodafonePercent}% من السيولة
-                    </span>
-                  </div>
 
-                  <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 font-mono">
-                    {formatCurrency(vfTreasury)}
-                  </div>
+                    {/* Details Section */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                      {card.subItems.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {visibleSubItems.map(item => (
+                            <div key={item.id} className="flex items-center justify-between gap-2 text-[11px]">
+                              <span className="text-slate-600 dark:text-slate-400 truncate flex-1 min-w-0">
+                                {item.name}
+                              </span>
+                              <span className={`font-mono font-bold whitespace-nowrap shrink-0 ${card.accent.subText}`}>
+                                {formatCurrency(item.balance)}
+                              </span>
+                            </div>
+                          ))}
 
-                  {/* Linked shop lines mini list */}
-                  {shopWallets.length > 0 && (
-                    <div className="space-y-1 max-h-24 overflow-y-auto pr-1 text-[11px] border-t border-slate-100 dark:border-slate-800 pt-2">
-                      {shopWallets.slice(0, 4).map(w => (
-                        <div key={w.id} className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-                          <span className="truncate max-w-[130px]">{w.label}</span>
-                          <span className="font-mono font-bold text-rose-600 dark:text-rose-400">{formatCurrency(w.balance || 0)}</span>
+                          {hiddenCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedChannels(prev => ({ ...prev, [card.id]: !prev[card.id] }))}
+                              className="w-full pt-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors text-center"
+                            >
+                              {isExpanded ? 'عرض أقل ▲' : `+ ${hiddenCount} أخرى (عرض الكل) ▼`}
+                            </button>
+                          )}
+
+                          {Math.abs(card.diff) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => syncTreasuryWithSubAccounts(card.id)}
+                              className="w-full mt-1 py-1 px-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-bold hover:bg-amber-100 border border-amber-200 dark:border-amber-800/50"
+                            >
+                              مزامنة مع المجموع ({formatCurrency(card.linkedSum)})
+                            </button>
+                          )}
                         </div>
-                      ))}
-                      {shopWallets.length > 4 && (
-                        <div className="text-[10px] text-slate-400 text-center">
-                          + {shopWallets.length - 4} خطوط أخرى (مجموعها: {formatCurrency(linkedWalletsTotal)})
-                        </div>
-                      )}
-                      {Math.abs(vfDiff) > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => syncTreasuryWithSubAccounts('vodafoneCash')}
-                          className="w-full mt-1 py-1 px-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-bold hover:bg-amber-100 border border-amber-200 dark:border-amber-800/50"
-                        >
-                          مزامنة الإجمالي مع مجموع الخطوط ({formatCurrency(linkedWalletsTotal)})
-                        </button>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                          {card.emptyHint}
+                        </p>
                       )}
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAdjust('vodafoneCash')}
-                    className="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 transition-colors text-center"
-                  >
-                    تسوية الرصيد
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenTransfer('vodafoneCash')}
-                    className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-rose-600 hover:bg-slate-50 transition-colors"
-                    title="تحويل منه"
-                  >
-                    <ArrowRightLeft className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Pinned Footer Actions */}
+                  <div className="flex items-center gap-1.5 pt-3 mt-auto border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAdjust(card.id)}
+                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold border transition-all text-center ${card.accent.btn}`}
+                    >
+                      {card.adjustLabel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTransfer(card.id)}
+                      className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                      title="تحويل منه"
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
-          })()}
-
-          {/* 3. InstaPay (إنستاباي) */}
-          {(() => {
-            const linkedInstaTotal = instapayAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-            const instaTreasury = Number(treasury.instapay) || 0;
-            const instaDiff = instaTreasury - linkedInstaTotal;
-            return (
-              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-3 relative group hover:border-amber-300 dark:hover:border-amber-900/50 transition-all flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600">
-                        <Coins className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200">
-                          إنستاباي (InstaPay)
-                        </h3>
-                        <span className="text-[10px] text-slate-400">{instapayAccounts.length} حسابات مربوطة</span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
-                      {instapayPercent}% من السيولة
-                    </span>
-                  </div>
-
-                  <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 font-mono">
-                    {formatCurrency(instaTreasury)}
-                  </div>
-
-                  {/* Linked InstaPay accounts mini list */}
-                  {instapayAccounts.length > 0 && (
-                    <div className="space-y-1 max-h-24 overflow-y-auto pr-1 text-[11px] border-t border-slate-100 dark:border-slate-800 pt-2">
-                      {instapayAccounts.slice(0, 4).map(acc => (
-                        <div key={acc.id} className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-                          <span className="truncate max-w-[130px]">{acc.accountName}</span>
-                          <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(acc.balance || 0)}</span>
-                        </div>
-                      ))}
-                      {Math.abs(instaDiff) > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => syncTreasuryWithSubAccounts('instapay')}
-                          className="w-full mt-1 py-1 px-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-bold hover:bg-amber-100 border border-amber-200 dark:border-amber-800/50"
-                        >
-                          مزامنة الإجمالي مع مجموع الحسابات ({formatCurrency(linkedInstaTotal)})
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAdjust('instapay')}
-                    className="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-colors text-center"
-                  >
-                    تحديث الرصيد
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenTransfer('instapay')}
-                    className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-amber-600 hover:bg-slate-50 transition-colors"
-                    title="تحويل منه"
-                  >
-                    <ArrowRightLeft className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* 4. Bank Accounts (الحسابات البنكية) */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-3 relative group hover:border-blue-300 dark:hover:border-blue-900/50 transition-all">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600">
-                  <Building2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black text-slate-800 dark:text-slate-200">
-                    الحسابات البنكية والفيزا
-                  </h3>
-                  <span className="text-[10px] text-slate-400">أرصدة بنك مصر / الأهلي</span>
-                </div>
-              </div>
-              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-full">
-                {bankPercent}% من السيولة
-              </span>
-            </div>
-
-            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 font-mono">
-              {formatCurrency(treasury.bankAccounts || 0)}
-            </div>
-
-            <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => handleOpenAdjust('bankAccounts')}
-                className="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition-colors text-center"
-              >
-                تحديث الرصيد
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenTransfer('bankAccounts')}
-                className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors"
-                title="تحويل منه"
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
+          })}
         </div>
       </div>
 

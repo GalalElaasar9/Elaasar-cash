@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { CashProvider, useCash } from './context/CashContext';
+import { getPersistedNavValue, setPersistedNavValue } from './utils/storage';
 import Sidebar from './components/Sidebar';
 import StatCards from './components/StatCards';
 import ClientCard from './components/ClientCard';
@@ -41,8 +42,57 @@ import RecordOpeningCapitalModal from './components/RecordOpeningCapitalModal';
 
 import { UserPlus, Send, Search, Users, AlertCircle, Sparkles, LayoutGrid, Table, FileSpreadsheet } from 'lucide-react';
 
+const VALID_TABS = ['clients', 'accounts', 'daily', 'inventory', 'purchases', 'capital', 'matrix', 'inbound', 'reports', 'trash'];
+
 function MainApp() {
-  const [activeTab, setActiveTab] = useState('clients'); // 'clients', 'daily', 'inventory', 'matrix', 'inbound', 'reports'
+  const [activeTab, setActiveTabState] = useState(() => {
+    try {
+      const hashTab = window.location.hash.replace(/^#/, '');
+      if (VALID_TABS.includes(hashTab)) return hashTab;
+    } catch {
+      // ignore hash access error
+    }
+    return getPersistedNavValue('elaasar_active_tab', 'clients', VALID_TABS);
+  });
+
+  const setActiveTab = React.useCallback((tabId) => {
+    const next = VALID_TABS.includes(tabId) ? tabId : 'clients';
+    setActiveTabState(next);
+    setPersistedNavValue('elaasar_active_tab', next);
+    try {
+      if (window.location.hash !== `#${next}`) {
+        window.location.hash = next;
+      }
+    } catch {
+      // ignore hash update error
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      setPersistedNavValue('elaasar_active_tab', activeTab);
+      if (window.location.hash !== `#${activeTab}`) {
+        window.history.replaceState(null, '', `#${activeTab}`);
+      }
+    } catch {
+      // ignore
+    }
+
+    const handleHashChange = () => {
+      try {
+        const hashTab = window.location.hash.replace(/^#/, '');
+        if (VALID_TABS.includes(hashTab)) {
+          setActiveTabState(hashTab);
+          setPersistedNavValue('elaasar_active_tab', hashTab);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeTab]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {

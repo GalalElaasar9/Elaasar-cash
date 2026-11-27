@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useCash } from '../context/CashContext';
+import { getPersistedNavValue, setPersistedNavValue } from '../utils/storage';
 import { 
   formatCurrency, 
   formatNumber, 
@@ -72,7 +73,13 @@ export default function InventoryView() {
     totalAccessoriesCount
   } = useCash();
 
-  const [inventorySection, setInventorySection] = useState('devices'); // 'devices' | 'shop_wallets' | 'shop_instapay'
+  const [inventorySection, setInventorySection] = useState(() =>
+    getPersistedNavValue('elaasar_inventory_section', 'devices', ['devices', 'shop_wallets', 'shop_instapay'])
+  );
+
+  useEffect(() => {
+    setPersistedNavValue('elaasar_inventory_section', inventorySection);
+  }, [inventorySection]);
   const [instapaySearch, setInstapaySearch] = useState('');
   const [copiedInstapayHandle, setCopiedInstapayHandle] = useState(null);
 

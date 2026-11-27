@@ -15,7 +15,8 @@ import {
   Clock, 
   FileText,
   Smartphone,
-  Landmark
+  Landmark,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function SupplierPaymentModal() {
@@ -65,50 +66,75 @@ export default function SupplierPaymentModal() {
 
   if (activeModal !== 'supplierPayment' || !purchase) return null;
 
+  const payAmt = Number(amount) || 0;
+  const selectedWalletObj = paymentMethod === 'wallet' ? shopWallets.find(w => w.id === selectedWalletId) : null;
+  const selectedInstapayObj = paymentMethod === 'instapay' ? instapayAccounts.find(a => a.id === selectedInstapayAccountId) : null;
+  const selectedWalletStats = selectedWalletObj ? calculateWalletStats(selectedWalletObj, transactions) : null;
+
+  const sourceAvailableBalance =
+    paymentMethod === 'cash'
+      ? (Number(treasury?.drawerCash) || 0)
+      : paymentMethod === 'bank'
+      ? (Number(treasury?.bankAccounts) || 0)
+      : paymentMethod === 'wallet'
+      ? (selectedWalletObj ? (Number(selectedWalletObj.balance) || 0) : (Number(treasury?.vodafoneCash) || 0))
+      : paymentMethod === 'instapay'
+      ? (selectedInstapayObj ? (Number(selectedInstapayObj.balance) || 0) : (Number(treasury?.instapay) || 0))
+      : 0;
+
+  const sourceLabel =
+    paymentMethod === 'cash'
+      ? 'كاش الدرج'
+      : paymentMethod === 'bank'
+      ? 'الحساب البنكي'
+      : paymentMethod === 'wallet'
+      ? (selectedWalletObj ? `خط فودافون كاش (${selectedWalletObj.label})` : 'فودافون كاش')
+      : (selectedInstapayObj ? `حساب إنستاباي (${selectedInstapayObj.accountName})` : 'إنستاباي');
+
+  const isInsufficientFunds = payAmt > 0 && payAmt > sourceAvailableBalance;
+  const isWalletLimitExceeded = Boolean(
+    paymentMethod === 'wallet' &&
+    selectedWalletStats &&
+    payAmt > 0 &&
+    payAmt > selectedWalletStats.remainingLimit
+  );
+  const isMissingSubAccount =
+    (paymentMethod === 'wallet' && shopWallets.length > 0 && !selectedWalletId) ||
+    (paymentMethod === 'instapay' && instapayAccounts.length > 0 && !selectedInstapayAccountId);
+  const isOverRemainingDebt = payAmt > (Number(purchase.remainingAmount) || 0);
+  const isSubmitDisabled = payAmt <= 0 || isOverRemainingDebt || isInsufficientFunds || isWalletLimitExceeded || isMissingSubAccount;
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    const payAmt = Number(amount) || 0;
     if (payAmt <= 0) {
       showToast('يرجى إدخال مبلغ سداد صحيح أكبر من صفر', 'error');
       return;
     }
 
-    if (payAmt > purchase.remainingAmount) {
+    if (isOverRemainingDebt) {
       showToast(`مبلغ السداد (${formatCurrency(payAmt)}) أكبر من إجمالي الدين المتبقي (${formatCurrency(purchase.remainingAmount)})`, 'error');
       return;
     }
 
-    if (paymentMethod === 'wallet') {
-      if (!selectedWalletId) {
-        showToast('يرجى اختيار خط ومحفظة المحل للتحويل منها', 'error');
-        return;
-      }
-      const walletObj = shopWallets.find(w => w.id === selectedWalletId);
-      if (walletObj) {
-        const wBal = Number(walletObj.balance) || 0;
-        if (payAmt > wBal) {
-          showToast(`رصيد السيولة في خط ${walletObj.label} (${formatCurrency(wBal)}) لا يكفي لسداد ${formatCurrency(payAmt)}!`, 'error');
-          return;
-        }
-        const stats = calculateWalletStats(walletObj, transactions);
-        if (payAmt > stats.remainingLimit) {
-          showToast(`ليميت محفظة ${walletObj.label} المتبقي (${formatCurrency(stats.remainingLimit)}) لا يكفي لسداد ${formatCurrency(payAmt)}!`, 'error');
-          return;
-        }
-      }
+    if (isInsufficientFunds) {
+      showToast(`الرصيد المتاح في ${sourceLabel} (${formatCurrency(sourceAvailableBalance)}) أقل من المبلغ المطلوب (${formatCurrency(payAmt)})!`, 'error');
+      return;
     }
 
-    if (paymentMethod === 'instapay' && instapayAccounts.length > 0) {
-      if (!selectedInstapayAccountId) {
-        showToast('يرجى اختيار حساب إنستاباي للتحويل منه', 'error');
-        return;
-      }
-      const accObj = instapayAccounts.find(a => a.id === selectedInstapayAccountId);
-      if (accObj && payAmt > (Number(accObj.balance) || 0)) {
-        showToast(`الرصيد المتاح في حساب (${accObj.accountName}) هو (${formatCurrency(accObj.balance || 0)}) وهو أقل من المبلغ المطلوب سداده!`, 'error');
-        return;
-      }
+    if (isWalletLimitExceeded) {
+      showToast(`ليميت محفظة ${selectedWalletObj.label} المتبقي (${formatCurrency(selectedWalletStats.remainingLimit)}) لا يكفي لسداد ${formatCurrency(payAmt)}!`, 'error');
+      return;
+    }
+
+    if (paymentMethod === 'wallet' && !selectedWalletId && shopWallets.length > 0) {
+      showToast('يرجى اختيار خط ومحفظة المحل للتحويل منها', 'error');
+      return;
+    }
+
+    if (paymentMethod === 'instapay' && instapayAccounts.length > 0 && !selectedInstapayAccountId) {
+      showToast('يرجى اختيار حساب إنستاباي للتحويل منه', 'error');
+      return;
     }
 
     const channelMap = {
@@ -352,7 +378,7 @@ export default function SupplierPaymentModal() {
                 >
                   {instapayAccounts.map(acc => (
                     <option key={acc.id} value={acc.id}>
-                      {acc.accountName} ({acc.bankName}) - المتاح: {formatCurrency(acc.balance || 0)} {acc.isDefault ? '★ افتراضي' : ''}
+                      {acc.accountName} — المتاح: {formatCurrency(acc.balance || 0)} {acc.isDefault ? '★' : ''}
                     </option>
                   ))}
                 </select>
@@ -374,6 +400,34 @@ export default function SupplierPaymentModal() {
             />
           </div>
 
+          {/* Insufficient Balance / Limit Alert */}
+          {(isInsufficientFunds || isWalletLimitExceeded) && (
+            <div
+              role="alert"
+              className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border-2 border-rose-400 dark:border-rose-700 text-rose-800 dark:text-rose-200 flex items-start gap-2.5 text-xs"
+            >
+              <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-black">
+                  {isInsufficientFunds
+                    ? `⚠️ الرصيد المتاح في ${sourceLabel} غير كافٍ!`
+                    : `⚠️ ليميت خط ${selectedWalletObj?.label} غير كافٍ!`}
+                </div>
+                <p className="font-semibold leading-relaxed">
+                  {isInsufficientFunds ? (
+                    <>
+                      المبلغ المطلوب سداده (<span className="font-mono font-black">{formatCurrency(payAmt)}</span>) أكبر من الرصيد المتاح حالياً (<span className="font-mono font-black">{formatCurrency(sourceAvailableBalance)}</span>) — ينقصك <span className="font-mono font-black">{formatCurrency(payAmt - sourceAvailableBalance)}</span>. يرجى تقليل المبلغ أو اختيار حساب آخر.
+                    </>
+                  ) : (
+                    <>
+                      المتبقي من الليميت (<span className="font-mono font-black">{formatCurrency(selectedWalletStats?.remainingLimit || 0)}</span>) أقل من المبلغ المطلوب (<span className="font-mono font-black">{formatCurrency(payAmt)}</span>).
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Submit */}
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <button
@@ -386,7 +440,12 @@ export default function SupplierPaymentModal() {
 
             <button
               type="submit"
-              className="btn-interactive flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs sm:text-sm font-black shadow-md shadow-emerald-600/25 transition-all"
+              disabled={isSubmitDisabled}
+              className={`btn-interactive flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white text-xs sm:text-sm font-black transition-all ${
+                isSubmitDisabled
+                  ? 'bg-slate-400 dark:bg-slate-700 opacity-50 cursor-not-allowed shadow-none'
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-600/25'
+              }`}
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>تأكيد خصم وسداد الدفعة</span>
