@@ -2050,8 +2050,8 @@ ${balanceLine}
             onClick={handleCloseArchiveModal}
           />
 
-          <div className={`fixed inset-y-0 right-0 z-10 h-full w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden sm:rounded-l-3xl ${
-            closingArchiveModal ? 'animate-right-sheet-out' : 'animate-right-sheet'
+          <div className={`fixed inset-x-0 bottom-0 top-auto max-h-[90dvh] rounded-t-3xl border-t sm:inset-y-0 sm:right-0 sm:left-auto sm:top-0 sm:bottom-0 sm:h-full sm:max-h-full sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 z-10 w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl bg-white dark:bg-slate-900 shadow-2xl border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
+            closingArchiveModal ? 'animate-bottom-sheet-out sm:animate-right-sheet-out' : 'animate-bottom-sheet sm:animate-right-sheet'
           }`}>
               {/* Mobile Drag Handle Indicator */}
               <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0" />
@@ -2101,8 +2101,8 @@ ${balanceLine}
                 </div>
               </div>
 
-              {/* Scrollable Sheet Body with Responsive Height */}
-              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+              {/* Scrollable Sheet Body with Responsive Max-Height */}
+              <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto max-h-[calc(90dvh-130px)] sm:max-h-[calc(100vh-140px)] min-h-0">
                 {/* Stats Summary: 3 Clean KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
                   <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCash } from '../context/CashContext';
+import { formatCurrency } from '../utils/formatters';
 import { 
   Package, 
   X, 
