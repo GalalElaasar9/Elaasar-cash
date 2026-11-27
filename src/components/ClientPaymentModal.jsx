@@ -69,13 +69,13 @@ export default function ClientPaymentModal() {
       setDate(getTodayISO());
       setTime(getCurrentTimeStr());
       setPaymentMethod('cash');
-      setSelectedShopWalletId('');
+      setSelectedShopWalletId(shopWallets?.[0]?.id || '');
       setSelectedInstapayAccountId(instapayAccounts?.find(a => a.isDefault)?.id || instapayAccounts?.[0]?.id || '');
       setNotes('');
     } else {
       if (dialog.open) dialog.close();
     }
-  }, [activeModal, client, instapayAccounts]);
+  }, [activeModal, client, instapayAccounts, shopWallets]);
 
   const handleClose = () => {
     setActiveModal(null);
@@ -828,7 +828,7 @@ export default function ClientPaymentModal() {
                 <label className="text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
                   <Store className="w-3.5 h-3.5 text-rose-600" />
                   <span>
-                    {isCreditor ? 'اختر خط المحل المحول منه (لتحديث ليميت الخط أيضاً):' : 'اختر خط المحل المستلم (لتحديث ليميت الخط أيضاً):'}
+                    {isCreditor ? 'اختر خط فودافون كاش المحول منه (يخصم من الخط ومن إجمالي فودافون كاش):' : 'اختر خط فودافون كاش المستلم (يضاف للخط ولإجمالي فودافون كاش):'}
                   </span>
                 </label>
                 <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
@@ -840,12 +840,14 @@ export default function ClientPaymentModal() {
                 onChange={(e) => setSelectedShopWalletId(e.target.value)}
                 className="w-full px-3 py-2 text-xs font-bold font-mono bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
               >
-                <option value="">-- اختياري: بدون تحديد خط محدد (خصم/إيداع بخزينة رأس المال فقط) --</option>
+                {(shopWallets || []).length === 0 && (
+                  <option value="">-- لا توجد خطوط محل مسجلة (سيتم الخصم/الإيداع من إجمالي فودافون كاش فقط) --</option>
+                )}
                 {(shopWallets || []).map(w => {
                   const stats = calculateWalletStats(w, transactions);
                   return (
                     <option key={w.id} value={w.id}>
-                      {w.phoneNumber} - {w.label || 'خط المحل'} (المتاح بالخط: {formatCurrency(stats.remainingLimit)})
+                      {w.label || 'خط المحل'} ({w.phoneNumber}) - رصيد الخط: {formatCurrency(w.balance || 0)} | ليميت متاح: {formatCurrency(stats.remainingLimit)}
                     </option>
                   );
                 })}

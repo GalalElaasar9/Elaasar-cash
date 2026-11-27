@@ -198,8 +198,8 @@ export default function PurchaseDetailsModal() {
 
               <div className="mt-1 text-xs text-slate-500">
                 وسيلة السداد: {
-                  purchase.paymentMethod === 'wallet' ? 'تحويل محفظة كاش' :
-                  purchase.paymentMethod === 'instapay' ? 'إنستاباي' :
+                  purchase.paymentMethod === 'wallet' ? `فودافون كاش${purchase.paidFromWalletLabel ? ` (${purchase.paidFromWalletLabel})` : ''}` :
+                  purchase.paymentMethod === 'instapay' ? `إنستاباي${purchase.paidFromInstapayAccountName ? ` (${purchase.paidFromInstapayAccountName})` : ''}` :
                   purchase.paymentMethod === 'bank' ? 'حساب بنكي' :
                   purchase.paymentMethod === 'credit' ? 'آجل بالكامل' :
                   purchase.paymentMethod === 'partial' ? 'سداد جزئي' :
@@ -304,7 +304,13 @@ export default function PurchaseDetailsModal() {
                         {formatCurrency(pay.amount)}
                       </span>
                       <span className="text-slate-500 text-[11px] mr-2">
-                        {pay.method === 'wallet' ? 'تحويل محفظة كاش' : 'نقدي كاش'}
+                        {pay.method === 'wallet'
+                          ? `فودافون كاش${pay.walletLabel ? ` (${pay.walletLabel})` : ''}`
+                          : pay.method === 'instapay'
+                          ? `إنستاباي${pay.instapayAccountName ? ` (${pay.instapayAccountName})` : ''}`
+                          : pay.method === 'bank'
+                          ? 'تحويل بنكي'
+                          : 'نقدي كاش'}
                       </span>
                       {pay.notes && (
                         <p className="text-[10px] text-slate-400 mt-0.5">{pay.notes}</p>

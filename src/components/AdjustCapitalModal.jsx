@@ -28,6 +28,8 @@ export default function AdjustCapitalModal() {
     setActiveModal, 
     modalData, 
     treasury, 
+    shopWallets = [],
+    instapayAccounts = [],
     updateTreasuryBalance, 
     transferBetweenTreasury, 
     depositToTreasury, 
@@ -43,19 +45,29 @@ export default function AdjustCapitalModal() {
   // Transfer State
   const [fromChannel, setFromChannel] = useState('drawerCash');
   const [toChannel, setToChannel] = useState('instapay');
+  const [fromSubAccountId, setFromSubAccountId] = useState('');
+  const [toSubAccountId, setToSubAccountId] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
   const [transferNotes, setTransferNotes] = useState('');
 
   // Adjust / Reconcile State
   const [selectedChannel, setSelectedChannel] = useState('drawerCash');
+  const [adjustSubAccountId, setAdjustSubAccountId] = useState('');
   const [newBalance, setNewBalance] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
 
   // Deposit / Withdraw State
   const [dwType, setDwType] = useState('deposit'); // 'deposit' | 'withdraw'
   const [dwChannel, setDwChannel] = useState('drawerCash');
+  const [dwSubAccountId, setDwSubAccountId] = useState('');
   const [dwAmount, setDwAmount] = useState('');
   const [dwNotes, setDwNotes] = useState('');
+
+  const getDefaultSubId = (channel) => {
+    if (channel === 'vodafoneCash') return shopWallets?.[0]?.id || '';
+    if (channel === 'instapay') return instapayAccounts?.find(a => a.isDefault)?.id || instapayAccounts?.[0]?.id || '';
+    return '';
+  };
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -67,15 +79,17 @@ export default function AdjustCapitalModal() {
       const defaultTab = modalData?.mode || 'transfer';
       setActiveTab(defaultTab);
 
-      if (modalData?.channel) {
-        setSelectedChannel(modalData.channel);
-        setNewBalance(treasury?.[modalData.channel] !== undefined ? treasury[modalData.channel] : '');
-        setFromChannel(modalData.channel);
-        setDwChannel(modalData.channel);
-      } else {
-        setSelectedChannel('drawerCash');
-        setNewBalance(treasury?.drawerCash !== undefined ? treasury.drawerCash : '');
-      }
+      const initialCh = modalData?.channel || 'drawerCash';
+      setSelectedChannel(initialCh);
+      setAdjustSubAccountId('');
+      setNewBalance(treasury?.[initialCh] !== undefined ? treasury[initialCh] : '');
+      setFromChannel(modalData?.channel || 'drawerCash');
+      setFromSubAccountId(getDefaultSubId(modalData?.channel || 'drawerCash'));
+      const defaultTo = (modalData?.channel || 'drawerCash') === 'instapay' ? 'vodafoneCash' : 'instapay';
+      setToChannel(defaultTo);
+      setToSubAccountId(getDefaultSubId(defaultTo));
+      setDwChannel(initialCh);
+      setDwSubAccountId(getDefaultSubId(initialCh));
 
       setTransferAmount('');
       setTransferNotes('');
@@ -85,7 +99,7 @@ export default function AdjustCapitalModal() {
     } else {
       if (dialog.open) dialog.close();
     }
-  }, [activeModal, modalData, treasury]);
+  }, [activeModal, modalData, treasury, shopWallets, instapayAccounts]);
 
   const handleClose = () => {
     setActiveModal(null);
@@ -93,11 +107,30 @@ export default function AdjustCapitalModal() {
 
   if (activeModal !== 'adjustCapital') return null;
 
+  const getSubAccountBalance = (channel, subId) => {
+    if (channel === 'vodafoneCash' && subId) {
+      const w = shopWallets.find(x => x.id === subId);
+      if (w) return Number(w.balance) || 0;
+    }
+    if (channel === 'instapay' && subId) {
+      const a = instapayAccounts.find(x => x.id === subId);
+      if (a) return Number(a.balance) || 0;
+    }
+    return Number(treasury?.[channel]) || 0;
+  };
+
   // Handle Transfer
   const handleTransferSubmit = (e) => {
     e.preventDefault();
-    if (fromChannel === toChannel) {
-      showToast('يرجى اختيار خزينة وجهة مختلفة عن خزينة المصدر', 'error');
+    const isSameChannelDifferentSub =
+      fromChannel === toChannel &&
+      (fromChannel === 'vodafoneCash' || fromChannel === 'instapay') &&
+      fromSubAccountId &&
+      toSubAccountId &&
+      fromSubAccountId !== toSubAccountId;
+
+    if (fromChannel === toChannel && !isSameChannelDifferentSub) {
+      showToast('يرجى اختيار خزينة أو حساب وجهة مختلف عن المصدر', 'error');
       return;
     }
     const amt = Number(transferAmount);
@@ -106,7 +139,10 @@ export default function AdjustCapitalModal() {
       return;
     }
 
-    const success = transferBetweenTreasury(fromChannel, toChannel, amt, transferNotes);
+    const success = transferBetweenTreasury(fromChannel, toChannel, amt, transferNotes, {
+      fromSubAccountId: (fromChannel === 'vodafoneCash' || fromChannel === 'instapay') ? (fromSubAccountId || null) : null,
+      toSubAccountId: (toChannel === 'vodafoneCash' || toChannel === 'instapay') ? (toSubAccountId || null) : null
+    });
     if (success) handleClose();
   };
 
@@ -119,7 +155,12 @@ export default function AdjustCapitalModal() {
       return;
     }
 
-    const success = updateTreasuryBalance(selectedChannel, val, adjustReason);
+    const success = updateTreasuryBalance(
+      selectedChannel,
+      val,
+      adjustReason,
+      (selectedChannel === 'vodafoneCash' || selectedChannel === 'instapay') ? (adjustSubAccountId || null) : null
+    );
     if (success) handleClose();
   };
 
@@ -132,18 +173,22 @@ export default function AdjustCapitalModal() {
       return;
     }
 
+    const subId = (dwChannel === 'vodafoneCash' || dwChannel === 'instapay') ? (dwSubAccountId || null) : null;
     let success = false;
     if (dwType === 'deposit') {
-      success = depositToTreasury(dwChannel, amt, dwNotes);
+      success = depositToTreasury(dwChannel, amt, dwNotes, subId);
     } else {
-      success = withdrawFromTreasury(dwChannel, amt, dwNotes);
+      success = withdrawFromTreasury(dwChannel, amt, dwNotes, subId);
     }
     if (success) handleClose();
   };
 
-  const currentBal = Number(treasury?.[selectedChannel]) || 0;
+  const currentBal = adjustSubAccountId
+    ? getSubAccountBalance(selectedChannel, adjustSubAccountId)
+    : (Number(treasury?.[selectedChannel]) || 0);
   const newBalNum = Number(newBalance) || 0;
   const adjustDiff = newBalNum - currentBal;
+  const maxTransferAvailable = getSubAccountBalance(fromChannel, fromSubAccountId);
 
   return (
     <dialog
@@ -232,13 +277,17 @@ export default function AdjustCapitalModal() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* From Channel */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                     التحويل من (خزينة المصدر):
                   </label>
                   <select
                     value={fromChannel}
-                    onChange={(e) => setFromChannel(e.target.value)}
+                    onChange={(e) => {
+                      const ch = e.target.value;
+                      setFromChannel(ch);
+                      setFromSubAccountId(getDefaultSubId(ch));
+                    }}
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold focus:outline-none"
                   >
                     {CHANNELS.map(ch => (
@@ -247,24 +296,88 @@ export default function AdjustCapitalModal() {
                       </option>
                     ))}
                   </select>
+
+                  {fromChannel === 'vodafoneCash' && shopWallets.length > 0 && (
+                    <select
+                      value={fromSubAccountId}
+                      onChange={(e) => setFromSubAccountId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl font-bold text-rose-900 dark:text-rose-200"
+                    >
+                      <option value="">-- الإجمالي العام لخزينة فودافون كاش --</option>
+                      {shopWallets.map(w => (
+                        <option key={w.id} value={w.id}>
+                          {w.label} ({w.phoneNumber}) - المتاح: {formatCurrency(w.balance || 0)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {fromChannel === 'instapay' && instapayAccounts.length > 0 && (
+                    <select
+                      value={fromSubAccountId}
+                      onChange={(e) => setFromSubAccountId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl font-bold text-amber-900 dark:text-amber-200"
+                    >
+                      <option value="">-- الإجمالي العام لخزينة إنستاباي --</option>
+                      {instapayAccounts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.accountName} - المتاح: {formatCurrency(a.balance || 0)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* To Channel */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                     التحويل إلى (خزينة الوجهة):
                   </label>
                   <select
                     value={toChannel}
-                    onChange={(e) => setToChannel(e.target.value)}
+                    onChange={(e) => {
+                      const ch = e.target.value;
+                      setToChannel(ch);
+                      setToSubAccountId(getDefaultSubId(ch));
+                    }}
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold focus:outline-none"
                   >
-                    {CHANNELS.filter(c => c.id !== fromChannel).map(ch => (
+                    {CHANNELS.filter(c => c.id !== fromChannel || c.id === 'vodafoneCash' || c.id === 'instapay').map(ch => (
                       <option key={ch.id} value={ch.id}>
                         {ch.label} ({formatCurrency(treasury?.[ch.id] || 0)})
                       </option>
                     ))}
                   </select>
+
+                  {toChannel === 'vodafoneCash' && shopWallets.length > 0 && (
+                    <select
+                      value={toSubAccountId}
+                      onChange={(e) => setToSubAccountId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl font-bold text-rose-900 dark:text-rose-200"
+                    >
+                      <option value="">-- الإجمالي العام لخزينة فودافون كاش --</option>
+                      {shopWallets.map(w => (
+                        <option key={w.id} value={w.id}>
+                          {w.label} ({w.phoneNumber}) - الحالي: {formatCurrency(w.balance || 0)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {toChannel === 'instapay' && instapayAccounts.length > 0 && (
+                    <select
+                      value={toSubAccountId}
+                      onChange={(e) => setToSubAccountId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl font-bold text-amber-900 dark:text-amber-200"
+                    >
+                      <option value="">-- الإجمالي العام لخزينة إنستاباي --</option>
+                      {instapayAccounts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.accountName} - الحالي: {formatCurrency(a.balance || 0)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -275,13 +388,13 @@ export default function AdjustCapitalModal() {
                     مبلغ التحويل (ج.م) *
                   </label>
                   <span className="text-[11px] text-slate-400">
-                    المتاح للتحويل: <span className="font-bold text-slate-700 dark:text-slate-200">{formatCurrency(treasury?.[fromChannel] || 0)}</span>
+                    المتاح للتحويل: <span className="font-bold text-slate-700 dark:text-slate-200">{formatCurrency(maxTransferAvailable)}</span>
                   </span>
                 </div>
                 <input
                   type="number"
                   min="1"
-                  max={treasury?.[fromChannel] || 0}
+                  max={maxTransferAvailable}
                   step="any"
                   value={transferAmount}
                   onChange={(e) => setTransferAmount(e.target.value)}
@@ -333,15 +446,17 @@ export default function AdjustCapitalModal() {
               </div>
 
               {/* Channel Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                   اختر الخزينة المراد جردها وتسويتها:
                 </label>
                 <select
                   value={selectedChannel}
                   onChange={(e) => {
-                    setSelectedChannel(e.target.value);
-                    setNewBalance(treasury?.[e.target.value] || 0);
+                    const ch = e.target.value;
+                    setSelectedChannel(ch);
+                    setAdjustSubAccountId('');
+                    setNewBalance(treasury?.[ch] || 0);
                   }}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold focus:outline-none"
                 >
@@ -351,6 +466,44 @@ export default function AdjustCapitalModal() {
                     </option>
                   ))}
                 </select>
+
+                {selectedChannel === 'vodafoneCash' && shopWallets.length > 0 && (
+                  <select
+                    value={adjustSubAccountId}
+                    onChange={(e) => {
+                      const subId = e.target.value;
+                      setAdjustSubAccountId(subId);
+                      setNewBalance(getSubAccountBalance('vodafoneCash', subId));
+                    }}
+                    className="w-full px-3 py-2 text-xs bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl font-bold text-rose-900 dark:text-rose-200"
+                  >
+                    <option value="">-- تعديل الإجمالي العام لفودافون كاش --</option>
+                    {shopWallets.map(w => (
+                      <option key={w.id} value={w.id}>
+                        خط محدد: {w.label} ({w.phoneNumber}) - الحالي: {formatCurrency(w.balance || 0)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {selectedChannel === 'instapay' && instapayAccounts.length > 0 && (
+                  <select
+                    value={adjustSubAccountId}
+                    onChange={(e) => {
+                      const subId = e.target.value;
+                      setAdjustSubAccountId(subId);
+                      setNewBalance(getSubAccountBalance('instapay', subId));
+                    }}
+                    className="w-full px-3 py-2 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl font-bold text-amber-900 dark:text-amber-200"
+                  >
+                    <option value="">-- تعديل الإجمالي العام لإنستاباي --</option>
+                    {instapayAccounts.map(a => (
+                      <option key={a.id} value={a.id}>
+                        حساب محدد: {a.accountName} - الحالي: {formatCurrency(a.balance || 0)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* New Actual Balance */}
@@ -448,13 +601,17 @@ export default function AdjustCapitalModal() {
               </div>
 
               {/* Channel */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                   الخزينة المستهدفة:
                 </label>
                 <select
                   value={dwChannel}
-                  onChange={(e) => setDwChannel(e.target.value)}
+                  onChange={(e) => {
+                    const ch = e.target.value;
+                    setDwChannel(ch);
+                    setDwSubAccountId(getDefaultSubId(ch));
+                  }}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold focus:outline-none"
                 >
                   {CHANNELS.map(ch => (
@@ -463,6 +620,36 @@ export default function AdjustCapitalModal() {
                     </option>
                   ))}
                 </select>
+
+                {dwChannel === 'vodafoneCash' && shopWallets.length > 0 && (
+                  <select
+                    value={dwSubAccountId}
+                    onChange={(e) => setDwSubAccountId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl font-bold text-rose-900 dark:text-rose-200"
+                  >
+                    <option value="">-- الإجمالي العام لخزينة فودافون كاش --</option>
+                    {shopWallets.map(w => (
+                      <option key={w.id} value={w.id}>
+                        {w.label} ({w.phoneNumber}) - المتاح: {formatCurrency(w.balance || 0)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {dwChannel === 'instapay' && instapayAccounts.length > 0 && (
+                  <select
+                    value={dwSubAccountId}
+                    onChange={(e) => setDwSubAccountId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl font-bold text-amber-900 dark:text-amber-200"
+                  >
+                    <option value="">-- الإجمالي العام لخزينة إنستاباي --</option>
+                    {instapayAccounts.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.accountName} - المتاح: {formatCurrency(a.balance || 0)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Amount */}

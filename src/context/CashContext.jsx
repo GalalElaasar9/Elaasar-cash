@@ -586,29 +586,52 @@ export function CashProvider({ children }) {
   // ==========================================
   // SHOP WALLETS MANAGEMENT (أرقام وخطوط المحل الشخصية)
   // ==========================================
-  const addShopWallet = ({ phoneNumber, label = 'خط المحل', totalLimit = 200000 }) => {
+  const addShopWallet = ({ phoneNumber, label = 'خط المحل', totalLimit = 200000, initialBalance = 0 }) => {
     const cleanPhone = cleanEgyptianPhone(phoneNumber);
     if (!isValidEgyptianPhone(cleanPhone)) {
       showToast(getEgyptianPhoneError(cleanPhone) || 'رقم الخط غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً', 'error');
       return null;
     }
     const cleanLimit = Number(totalLimit) || 200000;
+    const initBal = Math.max(0, Number(initialBalance) || 0);
 
     const newWallet = {
       id: `shop-wallet-${Date.now()}`,
       phoneNumber: cleanPhone,
       label: label.trim() || 'خط المحل',
       totalLimit: cleanLimit,
+      balance: initBal,
       isShopWallet: true,
       createdAt: new Date().toISOString()
     };
 
     setShopWallets(prev => [newWallet, ...prev]);
+
+    if (initBal > 0) {
+      setTreasury(prev => ({
+        ...prev,
+        vodafoneCash: (Number(prev.vodafoneCash) || 0) + initBal,
+        lastUpdated: new Date().toISOString(),
+        history: [
+          {
+            id: `mov-${Date.now()}-init-vf`,
+            date: new Date().toISOString(),
+            type: 'deposit',
+            channel: 'vodafoneCash',
+            amount: initBal,
+            notes: `رصيد افتتاحي عند إضافة خط المحل: ${newWallet.label} (${cleanPhone})`
+          },
+          ...(prev.history || [])
+        ]
+      }));
+    }
+
     showToast(`تمت إضافة خط المحل (${cleanPhone}) بليميت ${formatCurrency(cleanLimit)}`);
     return newWallet;
   };
 
   const updateShopWallet = (walletId, updatedFields) => {
+    const existingWallet = shopWallets.find(w => w.id === walletId);
     const fieldsToUpdate = { ...updatedFields };
     if (fieldsToUpdate.phoneNumber) {
       const cleanPhone = cleanEgyptianPhone(fieldsToUpdate.phoneNumber);
@@ -617,6 +640,33 @@ export function CashProvider({ children }) {
         return;
       }
       fieldsToUpdate.phoneNumber = cleanPhone;
+    }
+
+    if (fieldsToUpdate.balance !== undefined && existingWallet) {
+      const newBal = Math.max(0, Number(fieldsToUpdate.balance) || 0);
+      const oldBal = Number(existingWallet.balance) || 0;
+      const diff = newBal - oldBal;
+      fieldsToUpdate.balance = newBal;
+
+      if (diff !== 0) {
+        setTreasury(prev => ({
+          ...prev,
+          vodafoneCash: Math.max(0, (Number(prev.vodafoneCash) || 0) + diff),
+          lastUpdated: new Date().toISOString(),
+          history: [
+            {
+              id: `mov-${Date.now()}-adj-vf`,
+              date: new Date().toISOString(),
+              type: 'adjustment',
+              channel: 'vodafoneCash',
+              amount: Math.abs(diff),
+              isIncrease: diff >= 0,
+              notes: `تعديل رصيد خط فودافون كاش (${fieldsToUpdate.label || existingWallet.label}): الفرق ${diff >= 0 ? '+' : ''}${formatCurrency(diff)}`
+            },
+            ...(prev.history || [])
+          ]
+        }));
+      }
     }
 
     setShopWallets(prev => prev.map(w =>
@@ -640,6 +690,26 @@ export function CashProvider({ children }) {
       ...prev,
       wallets: [trashedWallet, ...(prev.wallets || []).filter(w => w.id !== walletId)]
     }));
+
+    const bal = Number(wallet.balance) || 0;
+    if (bal > 0) {
+      setTreasury(prev => ({
+        ...prev,
+        vodafoneCash: Math.max(0, (Number(prev.vodafoneCash) || 0) - bal),
+        lastUpdated: new Date().toISOString(),
+        history: [
+          {
+            id: `mov-${Date.now()}-del-vf`,
+            date: new Date().toISOString(),
+            type: 'withdraw',
+            channel: 'vodafoneCash',
+            amount: bal,
+            notes: `خصم رصيد خط المحل المحذوف: ${wallet.label} (${wallet.phoneNumber})`
+          },
+          ...(prev.history || [])
+        ]
+      }));
+    }
 
     setShopWallets(prev => prev.filter(w => w.id !== walletId));
     showToast(`تم نقل خط المحل (${wallet.phoneNumber}) إلى سلة المحذوفات`, 'info');
@@ -709,12 +779,42 @@ export function CashProvider({ children }) {
   };
 
   const updateInstapayAccount = (id, updatedFields) => {
+    const existingAcc = instapayAccounts.find(a => a.id === id);
+    const fieldsToUpdate = { ...updatedFields };
+
+    if (fieldsToUpdate.balance !== undefined && existingAcc) {
+      const newBal = Math.max(0, Number(fieldsToUpdate.balance) || 0);
+      const oldBal = Number(existingAcc.balance) || 0;
+      const diff = newBal - oldBal;
+      fieldsToUpdate.balance = newBal;
+
+      if (diff !== 0) {
+        setTreasury(prev => ({
+          ...prev,
+          instapay: Math.max(0, (Number(prev.instapay) || 0) + diff),
+          lastUpdated: new Date().toISOString(),
+          history: [
+            {
+              id: `mov-${Date.now()}-adj-insta`,
+              date: new Date().toISOString(),
+              type: 'adjustment',
+              channel: 'instapay',
+              amount: Math.abs(diff),
+              isIncrease: diff >= 0,
+              notes: `تعديل رصيد حساب إنستاباي (${fieldsToUpdate.accountName || existingAcc.accountName}): الفرق ${diff >= 0 ? '+' : ''}${formatCurrency(diff)}`
+            },
+            ...(prev.history || [])
+          ]
+        }));
+      }
+    }
+
     setInstapayAccounts(prev => {
       return prev.map(a => {
         if (a.id === id) {
-          return { ...a, ...updatedFields };
+          return { ...a, ...fieldsToUpdate };
         }
-        if (updatedFields.isDefault && a.id !== id) {
+        if (fieldsToUpdate.isDefault && a.id !== id) {
           return { ...a, isDefault: false };
         }
         return a;
@@ -726,6 +826,26 @@ export function CashProvider({ children }) {
   const deleteInstapayAccount = (id) => {
     const acc = instapayAccounts.find(a => a.id === id);
     if (!acc) return;
+
+    const bal = Number(acc.balance) || 0;
+    if (bal > 0) {
+      setTreasury(prev => ({
+        ...prev,
+        instapay: Math.max(0, (Number(prev.instapay) || 0) - bal),
+        lastUpdated: new Date().toISOString(),
+        history: [
+          {
+            id: `mov-${Date.now()}-del-insta`,
+            date: new Date().toISOString(),
+            type: 'withdraw',
+            channel: 'instapay',
+            amount: bal,
+            notes: `خصم رصيد حساب إنستاباي المحذوف: ${acc.accountName}`
+          },
+          ...(prev.history || [])
+        ]
+      }));
+    }
 
     setInstapayAccounts(prev => prev.filter(a => a.id !== id));
     showToast(`تم حذف حساب إنستاباي (${acc.accountName})`, 'info');
@@ -853,14 +973,17 @@ export function CashProvider({ children }) {
   const addTransaction = ({
     walletId,
     amount,
-    recipientPhone,
+    recipientPhone = '',
     recipientClientId = null,
     recipientClientName = null,
     recipientWalletId = null,
     transactionCode,
     fee = 0,
     notes = '',
-    date = null
+    date = null,
+    type = 'transfer_out',
+    allowEmptyRecipient = false,
+    skipBalanceSync = false
   }) => {
     const { client, wallet, isShopWallet } = findWalletAndClient(walletId);
     if (!wallet) {
@@ -893,13 +1016,15 @@ export function CashProvider({ children }) {
     }
 
     const cleanRecipient = recipientPhone ? cleanEgyptianPhone(recipientPhone) : '';
-    if (!cleanRecipient) {
-      showToast('يرجى إدخال رقم المحول إليه (المستلم)', 'error');
-      return null;
-    }
-    if (!isValidEgyptianPhone(cleanRecipient)) {
-      showToast('رقم المحول إليه غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً', 'error');
-      return null;
+    if (!allowEmptyRecipient) {
+      if (!cleanRecipient) {
+        showToast('يرجى إدخال رقم المحول إليه (المستلم)', 'error');
+        return null;
+      }
+      if (!isValidEgyptianPhone(cleanRecipient)) {
+        showToast('رقم المحول إليه غير صحيح! يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً', 'error');
+        return null;
+      }
     }
 
     const dateObj = date ? new Date(date) : new Date();
@@ -913,7 +1038,8 @@ export function CashProvider({ children }) {
       walletLabel: wallet.label,
       customerId: client?.id,
       customerName: client?.name,
-      type: 'transfer_out',
+      type,
+      isShopWallet,
       amount: numAmount,
       limitAfter,
       recipientPhone: cleanRecipient,
@@ -927,6 +1053,34 @@ export function CashProvider({ children }) {
       dateOnly
     };
 
+    // Sync shop wallet balance & treasury.vodafoneCash on outgoing transfer from a shop line
+    if (isShopWallet && !skipBalanceSync && numAmount > 0) {
+      setShopWallets(prev => prev.map(w =>
+        w.id === walletId
+          ? { ...w, balance: Math.max(0, (Number(w.balance) || 0) - numAmount) }
+          : w
+      ));
+
+      setTreasury(prev => ({
+        ...prev,
+        vodafoneCash: Math.max(0, (Number(prev.vodafoneCash) || 0) - numAmount),
+        lastUpdated: new Date().toISOString(),
+        history: [
+          {
+            id: `mov-${Date.now()}-vf-out`,
+            date: dateObj.toISOString(),
+            type: 'withdraw',
+            channel: 'vodafoneCash',
+            amount: numAmount,
+            notes: notes.trim()
+              ? `تحويل فودافون كاش من (${wallet.label}): ${notes.trim()}`
+              : `تحويل فودافون كاش من خط المحل (${wallet.label} - ${wallet.phoneNumber}) إلى ${cleanRecipient || 'مستلم'}`
+          },
+          ...(prev.history || [])
+        ]
+      }));
+    }
+
     setTransactions(prev => [newTx, ...prev]);
     realtime.addTransaction(newTx);
     if (currentUser && shopId) {
@@ -936,17 +1090,19 @@ export function CashProvider({ children }) {
     }
 
     // Celebrate and notify
-    triggerConfetti();
-    showToast(
-      `تم تسجيل التحويل بنجاح بقيمة ${formatCurrency(numAmount)} - المتبقي: ${formatCurrency(limitAfter)}`,
-      'success'
-    );
+    if (!skipBalanceSync) {
+      triggerConfetti();
+      showToast(
+        `تم تسجيل التحويل بنجاح بقيمة ${formatCurrency(numAmount)} - المتبقي: ${formatCurrency(limitAfter)}`,
+        'success'
+      );
+    }
 
     return newTx;
   };
 
   // Recharge / Add balance to wallet (Open receiving, no daily limit)
-  const addRecharge = ({ walletId, amount, notes = '', date = null }) => {
+  const addRecharge = ({ walletId, amount, notes = '', date = null, skipBalanceSync = false }) => {
     const { client, wallet, isShopWallet } = findWalletAndClient(walletId);
     if (!wallet) {
       showToast('المحفظة غير موجودة', 'error');
@@ -985,6 +1141,7 @@ export function CashProvider({ children }) {
       customerId: client?.id,
       customerName: client?.name,
       type: 'recharge',
+      isShopWallet,
       amount: numAmount,
       limitAfter,
       transactionCode: `RC-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -994,6 +1151,33 @@ export function CashProvider({ children }) {
       time: formatTimeArabic(dateObj),
       isSettled: false
     };
+
+    if (isShopWallet && !skipBalanceSync && numAmount > 0) {
+      setShopWallets(prev => prev.map(w =>
+        w.id === walletId
+          ? { ...w, balance: (Number(w.balance) || 0) + numAmount }
+          : w
+      ));
+
+      setTreasury(prev => ({
+        ...prev,
+        vodafoneCash: (Number(prev.vodafoneCash) || 0) + numAmount,
+        lastUpdated: new Date().toISOString(),
+        history: [
+          {
+            id: `mov-${Date.now()}-vf-in`,
+            date: dateObj.toISOString(),
+            type: 'deposit',
+            channel: 'vodafoneCash',
+            amount: numAmount,
+            notes: notes.trim()
+              ? `شحن رصيد خط المحل (${wallet.label}): ${notes.trim()}`
+              : `شحن وإيداع رصيد لخط المحل (${wallet.label} - ${wallet.phoneNumber})`
+          },
+          ...(prev.history || [])
+        ]
+      }));
+    }
 
     setTransactions(prev => [newTx, ...prev]);
     realtime.addTransaction(newTx);
@@ -1298,6 +1482,8 @@ export function CashProvider({ children }) {
     creditBefore = null,
     notes = '',
     paymentMethod = 'cash',
+    shopWalletId = null,
+    instapayAccountId = null,
     isCreditorPayout = false,
     date = null,
     time = null
@@ -1314,6 +1500,31 @@ export function CashProvider({ children }) {
       return null;
     }
 
+    const treasuryAmt = Number(rawAmount) || numAmount;
+    const channelMap = {
+      cash: 'drawerCash',
+      vodafone_cash: 'vodafoneCash',
+      wallet: 'vodafoneCash',
+      instapay: 'instapay',
+      bank: 'bankAccounts'
+    };
+    const targetChannel = channelMap[paymentMethod] || 'drawerCash';
+
+    const selectedShopWallet = shopWalletId ? shopWallets.find(w => w.id === shopWalletId) : null;
+    const selectedInstapayAcc = instapayAccountId ? instapayAccounts.find(a => a.id === instapayAccountId) : null;
+
+    const paymentSourceLabel = selectedInstapayAcc
+      ? `إنستاباي (${selectedInstapayAcc.accountName})`
+      : selectedShopWallet
+      ? `فودافون كاش (${selectedShopWallet.label || selectedShopWallet.phoneNumber})`
+      : targetChannel === 'vodafoneCash'
+      ? 'فودافون كاش'
+      : targetChannel === 'instapay'
+      ? 'إنستاباي'
+      : targetChannel === 'bankAccounts'
+      ? 'تحويل بنكي'
+      : 'كاش بالدرج';
+
     const dateObj = date ? new Date(date) : new Date();
     const dateOnly = getLocalDateString(dateObj);
     const timeStr = time ? formatTimeArabic(time) : formatTimeArabic(dateObj);
@@ -1326,16 +1537,64 @@ export function CashProvider({ children }) {
       type: 'client_payment',
       isCreditorPayout: Boolean(isCreditorPayout),
       amount: numAmount,
-      rawAmount: Number(rawAmount) || numAmount,
+      rawAmount: treasuryAmt,
       excessDebt: Number(excessDebt) || 0,
       creditBefore: Number(creditBefore) || 0,
       paymentMethod: paymentMethod || 'cash',
+      paidChannel: targetChannel,
+      shopWalletId: selectedShopWallet?.id || null,
+      instapayAccountId: selectedInstapayAcc?.id || null,
+      paymentSourceLabel,
       notes: notes.trim() || (isCreditorPayout ? 'صرف وسداد مستحقات للعميل الدائن' : 'سداد دفعة من الحساب'),
       date: dateObj.toISOString(),
       dateOnly,
       time: timeStr,
       transactionCode: `PAY-${Math.floor(100000 + Math.random() * 900000)}`
     };
+
+    // Update linked Shop Wallet or InstaPay Account balance
+    if (targetChannel === 'vodafoneCash' && selectedShopWallet) {
+      setShopWallets(prev => prev.map(w => {
+        if (w.id !== selectedShopWallet.id) return w;
+        const curBal = Number(w.balance) || 0;
+        const nextBal = isCreditorPayout ? Math.max(0, curBal - treasuryAmt) : curBal + treasuryAmt;
+        return { ...w, balance: nextBal };
+      }));
+    }
+
+    if (targetChannel === 'instapay' && selectedInstapayAcc) {
+      setInstapayAccounts(prev => prev.map(acc => {
+        if (acc.id !== selectedInstapayAcc.id) return acc;
+        const curBal = Number(acc.balance) || 0;
+        const nextBal = isCreditorPayout ? Math.max(0, curBal - treasuryAmt) : curBal + treasuryAmt;
+        return { ...acc, balance: nextBal };
+      }));
+    }
+
+    // Sync with Treasury (رأس المال والخزينة)
+    setTreasury(prev => {
+      const curBal = Number(prev[targetChannel]) || 0;
+      const nextBal = isCreditorPayout ? Math.max(0, curBal - treasuryAmt) : curBal + treasuryAmt;
+
+      const historyEntry = {
+        id: `mov-${Date.now()}-clpay`,
+        date: dateObj.toISOString(),
+        type: isCreditorPayout ? 'client_payout' : 'client_collection',
+        channel: targetChannel,
+        amount: treasuryAmt,
+        isIncrease: !isCreditorPayout,
+        notes: isCreditorPayout
+          ? `صرف مستحقات للعميل الدائن (${client.name}) عبر ${paymentSourceLabel}`
+          : `تحصيل سداد من العميل (${client.name}) إلى ${paymentSourceLabel}`
+      };
+
+      return {
+        ...prev,
+        [targetChannel]: nextBal,
+        lastUpdated: new Date().toISOString(),
+        history: [historyEntry, ...(prev.history || [])]
+      };
+    });
 
     setTransactions(prev => [newTx, ...prev]);
     realtime.addTransaction(newTx);
@@ -1479,7 +1738,7 @@ export function CashProvider({ children }) {
     showToast('تم مسح أرشيف العميل بنجاح دون التأثير على المبيعات أو حركات الخط', 'success');
   };
 
-  // Delete transaction (reverts the deduction from limit)
+  // Delete transaction (reverts the deduction from limit & synced treasury/accounts)
   const deleteTransaction = (txId) => {
     const tx = transactions.find(t => t.id === txId);
     if (!tx) return;
@@ -1487,7 +1746,41 @@ export function CashProvider({ children }) {
     setTransactions(prev => prev.filter(t => t.id !== txId));
     realtime.deleteTransaction(txId);
     if (currentUser && shopId) deleteTransactionFromCloud(shopId, txId);
+
     if (tx.type === 'client_payment') {
+      const treasuryAmt = Number(tx.rawAmount) || Number(tx.amount) || 0;
+      const channelMap = {
+        cash: 'drawerCash',
+        vodafone_cash: 'vodafoneCash',
+        wallet: 'vodafoneCash',
+        instapay: 'instapay',
+        bank: 'bankAccounts'
+      };
+      const ch = tx.paidChannel || channelMap[tx.paymentMethod] || 'drawerCash';
+
+      if (treasuryAmt > 0) {
+        if (ch === 'vodafoneCash' && tx.shopWalletId) {
+          setShopWallets(prev => prev.map(w => {
+            if (w.id !== tx.shopWalletId) return w;
+            const cur = Number(w.balance) || 0;
+            return { ...w, balance: tx.isCreditorPayout ? cur + treasuryAmt : Math.max(0, cur - treasuryAmt) };
+          }));
+        }
+        if (ch === 'instapay' && tx.instapayAccountId) {
+          setInstapayAccounts(prev => prev.map(acc => {
+            if (acc.id !== tx.instapayAccountId) return acc;
+            const cur = Number(acc.balance) || 0;
+            return { ...acc, balance: tx.isCreditorPayout ? cur + treasuryAmt : Math.max(0, cur - treasuryAmt) };
+          }));
+        }
+        setTreasury(prev => ({
+          ...prev,
+          [ch]: tx.isCreditorPayout
+            ? (Number(prev[ch]) || 0) + treasuryAmt
+            : Math.max(0, (Number(prev[ch]) || 0) - treasuryAmt),
+          lastUpdated: new Date().toISOString()
+        }));
+      }
       showToast(`تم حذف حركة السداد بقيمة ${formatCurrency(tx.amount)}`, 'info');
     } else if (tx.type === 'product_sale') {
       if (tx.productId && tx.variantColor) {
@@ -1512,6 +1805,31 @@ export function CashProvider({ children }) {
         });
       }
       showToast(`تم حذف حركة البيع وإعادة (${tx.quantity || 1}) قطعة إلى مخزون "${tx.productName || 'المنتج'}"`, 'info');
+    } else if (tx.type === 'transfer_out' && tx.paymentMethod === 'instapay' && tx.instapayAccountId) {
+      const amt = Number(tx.amount) || 0;
+      setInstapayAccounts(prev => prev.map(a =>
+        a.id === tx.instapayAccountId ? { ...a, balance: (Number(a.balance) || 0) + amt } : a
+      ));
+      setTreasury(prev => ({
+        ...prev,
+        instapay: (Number(prev.instapay) || 0) + amt,
+        lastUpdated: new Date().toISOString()
+      }));
+      showToast(`تم حذف تحويل إنستاباي وإعادة ${formatCurrency(amt)} إلى رصيد الحساب`, 'info');
+    } else if ((tx.type === 'transfer_out' || tx.type === 'recharge') && (tx.isShopWallet || shopWallets.some(w => w.id === tx.walletId))) {
+      const amt = Number(tx.amount) || 0;
+      const isOut = tx.type === 'transfer_out';
+      setShopWallets(prev => prev.map(w =>
+        w.id === tx.walletId
+          ? { ...w, balance: isOut ? (Number(w.balance) || 0) + amt : Math.max(0, (Number(w.balance) || 0) - amt) }
+          : w
+      ));
+      setTreasury(prev => ({
+        ...prev,
+        vodafoneCash: isOut ? (Number(prev.vodafoneCash) || 0) + amt : Math.max(0, (Number(prev.vodafoneCash) || 0) - amt),
+        lastUpdated: new Date().toISOString()
+      }));
+      showToast(`تم حذف العملية وإعادة ضبط رصيد خط المحل بمقدار ${formatCurrency(amt)}`, 'info');
     } else {
       showToast(`تم حذف التحويل وإعادة ${formatCurrency(tx.amount)} إلى ليميت المحفظة`, 'info');
     }
@@ -1785,6 +2103,13 @@ export function CashProvider({ children }) {
       ? (Number(purchaseData.purchasedCashAmount) || totalAmount) 
       : 0;
 
+    const paidWalletObj = purchaseData.paidFromWalletId
+      ? shopWallets.find(w => w.id === purchaseData.paidFromWalletId)
+      : null;
+    const paidInstapayObj = purchaseData.paidFromInstapayAccountId
+      ? instapayAccounts.find(a => a.id === purchaseData.paidFromInstapayAccountId)
+      : null;
+
     const initialPayments = [];
     if (paidAmount > 0) {
       initialPayments.push({
@@ -1793,7 +2118,10 @@ export function CashProvider({ children }) {
         amount: paidAmount,
         method: purchaseData.paymentMethod || 'cash',
         channel: paidChannel,
-        walletId: purchaseData.paidFromWalletId || null,
+        walletId: paidWalletObj?.id || null,
+        walletLabel: paidWalletObj ? `${paidWalletObj.label} (${paidWalletObj.phoneNumber})` : null,
+        instapayAccountId: paidInstapayObj?.id || null,
+        instapayAccountName: paidInstapayObj?.accountName || null,
         notes: isLiquidity 
           ? 'سداد قيمة شراء رصيد كاش' 
           : (isGoods ? 'دفعة أولى عند استلام فاتورة الشراء' : 'سداد قيمة المصروف')
@@ -1818,7 +2146,10 @@ export function CashProvider({ children }) {
       paymentMethod: purchaseData.paymentMethod || 'cash',
       paidChannel,
       paymentStatus,
-      paidFromWalletId: purchaseData.paidFromWalletId || null,
+      paidFromWalletId: paidWalletObj?.id || null,
+      paidFromWalletLabel: paidWalletObj ? `${paidWalletObj.label} (${paidWalletObj.phoneNumber})` : null,
+      paidFromInstapayAccountId: paidInstapayObj?.id || null,
+      paidFromInstapayAccountName: paidInstapayObj?.accountName || null,
       notes: (purchaseData.notes || '').trim(),
       updateInventory: !!purchaseData.updateInventory,
       payments: initialPayments,
@@ -1886,30 +2217,47 @@ export function CashProvider({ children }) {
       });
     }
 
-    // 2. If paid via shop wallet, deduct from wallet and log transfer
-    if (paidAmount > 0 && purchaseData.paidFromWalletId) {
+    // 2A. If paid via shop Vodafone Cash wallet, deduct balance & log limit usage
+    if (paidAmount > 0 && paidChannel === 'vodafoneCash' && paidWalletObj) {
+      setShopWallets(prev => prev.map(w =>
+        w.id === paidWalletObj.id
+          ? { ...w, balance: Math.max(0, (Number(w.balance) || 0) - paidAmount) }
+          : w
+      ));
+
       addTransaction({
-        walletId: purchaseData.paidFromWalletId,
+        walletId: paidWalletObj.id,
         amount: paidAmount,
-        type: 'transfer_out',
+        recipientPhone: newPurchase.supplierPhone || '',
+        type: 'purchase_payment',
+        allowEmptyRecipient: true,
+        skipBalanceSync: true,
         notes: `سداد ${isLiquidity ? 'شراء رصيد كاش' : (isGoods ? 'فاتورة مشتريات' : 'مصروف')}: ${invoiceNumber} (${newPurchase.supplierName})`,
         date: purchaseData.date || new Date().toISOString()
       });
     }
 
+    // 2B. If paid via specific InstaPay account, deduct from that InstaPay account's balance
+    if (paidAmount > 0 && paidChannel === 'instapay' && paidInstapayObj) {
+      setInstapayAccounts(prev => prev.map(acc =>
+        acc.id === paidInstapayObj.id
+          ? { ...acc, balance: Math.max(0, (Number(acc.balance) || 0) - paidAmount) }
+          : acc
+      ));
+    }
+
     // 3. If cash_liquidity, recharge target shop wallet so limit & balance increase
     if (isLiquidity && purchasedCashAmount > 0 && purchaseData.targetWalletId) {
-      // Direct recharge into target shop wallet balance
       setShopWallets(prev => prev.map(w => 
         w.id === purchaseData.targetWalletId 
           ? { ...w, balance: (Number(w.balance) || 0) + purchasedCashAmount }
           : w
       ));
 
-      addTransaction({
+      addRecharge({
         walletId: purchaseData.targetWalletId,
         amount: purchasedCashAmount,
-        type: 'recharge',
+        skipBalanceSync: true,
         notes: `تغذية وتوريد رصيد كاش من المورد: ${newPurchase.supplierName} (فاتورة ${invoiceNumber})`,
         date: purchaseData.date || new Date().toISOString()
       });
@@ -1926,6 +2274,12 @@ export function CashProvider({ children }) {
         bankAccounts: 'الحسابات البنكية'
       };
 
+      const sourceDetail = paidInstapayObj
+        ? `حساب إنستاباي (${paidInstapayObj.accountName})`
+        : paidWalletObj
+        ? `خط فودافون كاش (${paidWalletObj.label})`
+        : (channelNames[paidChannel] || paidChannel);
+
       if (paidAmount > 0 && paidChannel && nextTreasury[paidChannel] !== undefined) {
         const curBal = Number(nextTreasury[paidChannel]) || 0;
         nextTreasury[paidChannel] = Math.max(0, curBal - paidAmount);
@@ -1937,7 +2291,7 @@ export function CashProvider({ children }) {
           channel: paidChannel,
           amount: paidAmount,
           isIncrease: false,
-          notes: `خصم سداد فاتورة ${isLiquidity ? 'شراء رصيد كاش' : (isGoods ? 'مشتريات بضاعة' : 'مصروف')}: ${invoiceNumber} من ${channelNames[paidChannel] || paidChannel} (${newPurchase.supplierName})`
+          notes: `خصم سداد فاتورة ${isLiquidity ? 'شراء رصيد كاش' : (isGoods ? 'مشتريات بضاعة' : 'مصروف')}: ${invoiceNumber} من ${sourceDetail} (${newPurchase.supplierName})`
         });
       }
 
@@ -2004,23 +2358,69 @@ export function CashProvider({ children }) {
         bank: 'bankAccounts'
       };
       const channel = purchase.paidChannel || channelMap[purchase.paymentMethod] || 'drawerCash';
+
+      // Revert paid amounts to linked sub-accounts (per payment history if available, else initial channel)
+      const paymentsList = Array.isArray(purchase.payments) && purchase.payments.length > 0
+        ? purchase.payments
+        : (purchase.paidAmount > 0
+            ? [{
+                amount: purchase.paidAmount,
+                channel,
+                walletId: purchase.paidFromWalletId || null,
+                instapayAccountId: purchase.paidFromInstapayAccountId || null
+              }]
+            : []);
+
+      paymentsList.forEach(pay => {
+        const amt = Number(pay.amount) || 0;
+        const payCh = pay.channel || channelMap[pay.method] || channel;
+        if (amt <= 0) return;
+
+        if (payCh === 'instapay' && pay.instapayAccountId) {
+          setInstapayAccounts(prev => prev.map(acc =>
+            acc.id === pay.instapayAccountId
+              ? { ...acc, balance: (Number(acc.balance) || 0) + amt }
+              : acc
+          ));
+        }
+
+        if (payCh === 'vodafoneCash' && pay.walletId) {
+          setShopWallets(prev => prev.map(w =>
+            w.id === pay.walletId
+              ? { ...w, balance: (Number(w.balance) || 0) + amt }
+              : w
+          ));
+        }
+      });
+
+      if (purchase.type === 'cash_liquidity' && purchase.purchasedCashAmount > 0 && purchase.targetWalletId) {
+        setShopWallets(prev => prev.map(w =>
+          w.id === purchase.targetWalletId
+            ? { ...w, balance: Math.max(0, (Number(w.balance) || 0) - purchase.purchasedCashAmount) }
+            : w
+        ));
+      }
       
       setTreasury(prev => {
         const nextTreasury = { ...prev };
         const newHistory = [...(prev.history || [])];
 
-        if (purchase.paidAmount > 0 && nextTreasury[channel] !== undefined) {
-          const curBal = Number(nextTreasury[channel]) || 0;
-          nextTreasury[channel] = curBal + purchase.paidAmount;
-
-          newHistory.unshift({
-            id: `mov-${Date.now()}-ref`,
-            date: new Date().toISOString(),
-            type: 'purchase_reversal',
-            channel,
-            amount: purchase.paidAmount,
-            isIncrease: true,
-            notes: `استرداد مبالغ فاتورة محذوفة (${purchase.invoiceNumber}) لحساب الخزينة`
+        if (purchase.paidAmount > 0) {
+          paymentsList.forEach((pay, idx) => {
+            const amt = Number(pay.amount) || 0;
+            const payCh = pay.channel || channelMap[pay.method] || channel;
+            if (amt > 0 && nextTreasury[payCh] !== undefined) {
+              nextTreasury[payCh] = (Number(nextTreasury[payCh]) || 0) + amt;
+              newHistory.unshift({
+                id: `mov-${Date.now()}-ref-${idx}`,
+                date: new Date().toISOString(),
+                type: 'purchase_reversal',
+                channel: payCh,
+                amount: amt,
+                isIncrease: true,
+                notes: `استرداد مبالغ فاتورة محذوفة (${purchase.invoiceNumber}) لحساب الخزينة`
+              });
+            }
           });
         }
 
@@ -2049,7 +2449,14 @@ export function CashProvider({ children }) {
     showToast('تم حذف الفاتورة واسترجاع أرصدة الخزينة بنجاح', 'info');
   };
 
-  const recordSupplierPayment = (purchaseId, { amount, paymentMethod = 'cash', paidChannel = null, walletId = null, notes = '' }) => {
+  const recordSupplierPayment = (purchaseId, {
+    amount,
+    paymentMethod = 'cash',
+    paidChannel = null,
+    walletId = null,
+    instapayAccountId = null,
+    notes = ''
+  }) => {
     const payAmt = Number(amount) || 0;
     if (payAmt <= 0) {
       showToast('يرجى إدخال مبلغ سداد صحيح أكبر من صفر', 'error');
@@ -2063,6 +2470,9 @@ export function CashProvider({ children }) {
       bank: 'bankAccounts'
     };
     const targetChannel = paidChannel || channelMap[paymentMethod] || 'drawerCash';
+
+    const selectedWalletObj = walletId ? shopWallets.find(w => w.id === walletId) : null;
+    const selectedInstapayObj = instapayAccountId ? instapayAccounts.find(a => a.id === instapayAccountId) : null;
 
     let foundPurchase = null;
     setPurchases(prev => prev.map(p => {
@@ -2078,7 +2488,10 @@ export function CashProvider({ children }) {
         amount: payAmt,
         method: paymentMethod,
         channel: targetChannel,
-        walletId: walletId || null,
+        walletId: selectedWalletObj?.id || null,
+        walletLabel: selectedWalletObj ? `${selectedWalletObj.label} (${selectedWalletObj.phoneNumber})` : null,
+        instapayAccountId: selectedInstapayObj?.id || null,
+        instapayAccountName: selectedInstapayObj?.accountName || null,
         notes: notes || 'سداد دفعة من الحساب الآجل للمورد'
       };
 
@@ -2093,20 +2506,31 @@ export function CashProvider({ children }) {
 
     if (!foundPurchase) return false;
 
-    if (paymentMethod === 'wallet' && walletId) {
+    if (targetChannel === 'vodafoneCash' && selectedWalletObj) {
       setShopWallets(prev => prev.map(w => 
-        w.id === walletId 
+        w.id === selectedWalletObj.id 
           ? { ...w, balance: Math.max(0, (Number(w.balance) || 0) - payAmt) }
           : w
       ));
 
       addTransaction({
-        walletId,
+        walletId: selectedWalletObj.id,
         amount: payAmt,
-        type: 'transfer_out',
+        recipientPhone: foundPurchase.supplierPhone || '',
+        type: 'purchase_payment',
+        allowEmptyRecipient: true,
+        skipBalanceSync: true,
         notes: `سداد دفعة آجل للمورد: ${foundPurchase.supplierName} (فاتورة ${foundPurchase.invoiceNumber})`,
         date: new Date().toISOString()
       });
+    }
+
+    if (targetChannel === 'instapay' && selectedInstapayObj) {
+      setInstapayAccounts(prev => prev.map(acc =>
+        acc.id === selectedInstapayObj.id
+          ? { ...acc, balance: Math.max(0, (Number(acc.balance) || 0) - payAmt) }
+          : acc
+      ));
     }
 
     setTreasury(prev => {
@@ -2118,6 +2542,12 @@ export function CashProvider({ children }) {
         bankAccounts: 'الحسابات البنكية'
       };
 
+      const sourceDetail = selectedInstapayObj
+        ? `حساب إنستاباي (${selectedInstapayObj.accountName})`
+        : selectedWalletObj
+        ? `خط فودافون كاش (${selectedWalletObj.label})`
+        : (channelNames[targetChannel] || targetChannel);
+
       const newHistoryRecord = {
         id: `mov-${Date.now()}`,
         date: new Date().toISOString(),
@@ -2125,7 +2555,7 @@ export function CashProvider({ children }) {
         channel: targetChannel,
         amount: payAmt,
         isIncrease: false,
-        notes: `سداد دفعة آجل للمورد: ${foundPurchase.supplierName} (فاتورة ${foundPurchase.invoiceNumber}) من ${channelNames[targetChannel] || targetChannel}`
+        notes: `سداد دفعة آجل للمورد: ${foundPurchase.supplierName} (فاتورة ${foundPurchase.invoiceNumber}) من ${sourceDetail}`
       };
 
       return {
@@ -2144,8 +2574,25 @@ export function CashProvider({ children }) {
   // CAPITAL & TREASURY MANAGEMENT (رأس المال والسيولة والخزينة)
   // ==========================================
 
-  const updateTreasuryBalance = (channel, newBalance, reason = '') => {
+  const updateTreasuryBalance = (channel, newBalance, reason = '', subAccountId = null) => {
     const num = Math.max(0, Number(newBalance) || 0);
+
+    // If a specific Vodafone Cash line or InstaPay account is being adjusted
+    if (channel === 'vodafoneCash' && subAccountId) {
+      const wallet = shopWallets.find(w => w.id === subAccountId);
+      if (wallet) {
+        updateShopWallet(subAccountId, { balance: num });
+        return true;
+      }
+    }
+    if (channel === 'instapay' && subAccountId) {
+      const acc = instapayAccounts.find(a => a.id === subAccountId);
+      if (acc) {
+        updateInstapayAccount(subAccountId, { balance: num });
+        return true;
+      }
+    }
+
     const oldBal = Number(treasury[channel]) || 0;
     const diff = num - oldBal;
 
@@ -2179,17 +2626,57 @@ export function CashProvider({ children }) {
     return true;
   };
 
-  const transferBetweenTreasury = (fromChannel, toChannel, amount, notes = '') => {
+  const transferBetweenTreasury = (fromChannel, toChannel, amount, notes = '', options = {}) => {
+    const { fromSubAccountId = null, toSubAccountId = null } = options || {};
     const num = Number(amount) || 0;
     if (num <= 0) {
       showToast('يرجى إدخال مبلغ تحويل صحيح أكبر من صفر', 'error');
       return false;
     }
 
-    const fromBal = Number(treasury[fromChannel]) || 0;
-    if (num > fromBal) {
-      showToast(`الرصيد المتاح في جهة التحويل (${formatCurrency(fromBal)}) غير كافٍ لتحويل (${formatCurrency(num)})!`, 'error');
-      return false;
+    const fromWallet = fromChannel === 'vodafoneCash' && fromSubAccountId ? shopWallets.find(w => w.id === fromSubAccountId) : null;
+    const fromInsta = fromChannel === 'instapay' && fromSubAccountId ? instapayAccounts.find(a => a.id === fromSubAccountId) : null;
+    const toWallet = toChannel === 'vodafoneCash' && toSubAccountId ? shopWallets.find(w => w.id === toSubAccountId) : null;
+    const toInsta = toChannel === 'instapay' && toSubAccountId ? instapayAccounts.find(a => a.id === toSubAccountId) : null;
+
+    // Validate available balance (per selected sub-account if specified, or total channel)
+    if (fromWallet) {
+      const wBal = Number(fromWallet.balance) || 0;
+      if (num > wBal) {
+        showToast(`الرصيد المتاح في خط (${fromWallet.label}) هو (${formatCurrency(wBal)}) وهو أقل من المبلغ المطلوب!`, 'error');
+        return false;
+      }
+    } else if (fromInsta) {
+      const aBal = Number(fromInsta.balance) || 0;
+      if (num > aBal) {
+        showToast(`الرصيد المتاح في حساب (${fromInsta.accountName}) هو (${formatCurrency(aBal)}) وهو أقل من المبلغ المطلوب!`, 'error');
+        return false;
+      }
+    } else {
+      const fromBal = Number(treasury[fromChannel]) || 0;
+      if (num > fromBal) {
+        showToast(`الرصيد المتاح في جهة التحويل (${formatCurrency(fromBal)}) غير كافٍ لتحويل (${formatCurrency(num)})!`, 'error');
+        return false;
+      }
+    }
+
+    // Update sub-accounts (works both across channels AND between two accounts of the same channel!)
+    if (fromWallet || toWallet) {
+      setShopWallets(prev => prev.map(w => {
+        let bal = Number(w.balance) || 0;
+        if (fromWallet && w.id === fromWallet.id) bal = Math.max(0, bal - num);
+        if (toWallet && w.id === toWallet.id) bal = bal + num;
+        return (fromWallet?.id === w.id || toWallet?.id === w.id) ? { ...w, balance: bal } : w;
+      }));
+    }
+
+    if (fromInsta || toInsta) {
+      setInstapayAccounts(prev => prev.map(acc => {
+        let bal = Number(acc.balance) || 0;
+        if (fromInsta && acc.id === fromInsta.id) bal = Math.max(0, bal - num);
+        if (toInsta && acc.id === toInsta.id) bal = bal + num;
+        return (fromInsta?.id === acc.id || toInsta?.id === acc.id) ? { ...acc, balance: bal } : acc;
+      }));
     }
 
     const channelNames = {
@@ -2198,6 +2685,18 @@ export function CashProvider({ children }) {
       instapay: 'إنستاباي',
       bankAccounts: 'الحسابات البنكية'
     };
+
+    const fromDesc = fromInsta
+      ? `${channelNames[fromChannel]} (${fromInsta.accountName})`
+      : fromWallet
+      ? `${channelNames[fromChannel]} (${fromWallet.label})`
+      : channelNames[fromChannel];
+
+    const toDesc = toInsta
+      ? `${channelNames[toChannel]} (${toInsta.accountName})`
+      : toWallet
+      ? `${channelNames[toChannel]} (${toWallet.label})`
+      : channelNames[toChannel];
 
     const newHistoryRecord = {
       id: `mov-${Date.now()}`,
@@ -2206,24 +2705,43 @@ export function CashProvider({ children }) {
       from: fromChannel,
       to: toChannel,
       amount: num,
-      notes: notes.trim() || `تحويل من ${channelNames[fromChannel]} إلى ${channelNames[toChannel]}`
+      notes: notes.trim() || `تحويل من ${fromDesc} إلى ${toDesc}`
     };
 
-    setTreasury(prev => ({
-      ...prev,
-      [fromChannel]: Math.max(0, (Number(prev[fromChannel]) || 0) - num),
-      [toChannel]: (Number(prev[toChannel]) || 0) + num,
-      lastUpdated: new Date().toISOString(),
-      history: [newHistoryRecord, ...(prev.history || [])]
-    }));
+    setTreasury(prev => {
+      const next = {
+        ...prev,
+        lastUpdated: new Date().toISOString(),
+        history: [newHistoryRecord, ...(prev.history || [])]
+      };
+      if (fromChannel !== toChannel) {
+        next[fromChannel] = Math.max(0, (Number(prev[fromChannel]) || 0) - num);
+        next[toChannel] = (Number(prev[toChannel]) || 0) + num;
+      }
+      return next;
+    });
 
-    showToast(`تم تحويل ${formatCurrency(num)} من ${channelNames[fromChannel]} إلى ${channelNames[toChannel]} بنجاح!`, 'success');
+    showToast(`تم تحويل ${formatCurrency(num)} من ${fromDesc} إلى ${toDesc} بنجاح!`, 'success');
     return true;
   };
 
-  const depositToTreasury = (channel, amount, notes = '') => {
+  const depositToTreasury = (channel, amount, notes = '', subAccountId = null) => {
     const num = Number(amount) || 0;
     if (num <= 0) return false;
+
+    const targetWallet = channel === 'vodafoneCash' && subAccountId ? shopWallets.find(w => w.id === subAccountId) : null;
+    const targetInsta = channel === 'instapay' && subAccountId ? instapayAccounts.find(a => a.id === subAccountId) : null;
+
+    if (targetWallet) {
+      setShopWallets(prev => prev.map(w =>
+        w.id === targetWallet.id ? { ...w, balance: (Number(w.balance) || 0) + num } : w
+      ));
+    }
+    if (targetInsta) {
+      setInstapayAccounts(prev => prev.map(a =>
+        a.id === targetInsta.id ? { ...a, balance: (Number(a.balance) || 0) + num } : a
+      ));
+    }
 
     const channelNames = {
       drawerCash: 'كاش الدرج',
@@ -2232,13 +2750,19 @@ export function CashProvider({ children }) {
       bankAccounts: 'الحسابات البنكية'
     };
 
+    const destLabel = targetInsta
+      ? `${channelNames[channel]} (${targetInsta.accountName})`
+      : targetWallet
+      ? `${channelNames[channel]} (${targetWallet.label})`
+      : (channelNames[channel] || channel);
+
     const newHistoryRecord = {
       id: `mov-${Date.now()}`,
       date: new Date().toISOString(),
       type: 'deposit',
       channel,
       amount: num,
-      notes: notes.trim() || `إيداع وضخ سيولة إضافية في ${channelNames[channel] || channel}`
+      notes: notes.trim() || `إيداع وضخ سيولة إضافية في ${destLabel}`
     };
 
     setTreasury(prev => ({
@@ -2248,18 +2772,46 @@ export function CashProvider({ children }) {
       history: [newHistoryRecord, ...(prev.history || [])]
     }));
 
-    showToast(`تم إيداع ${formatCurrency(num)} في ${channelNames[channel]} بنجاح!`, 'success');
+    showToast(`تم إيداع ${formatCurrency(num)} في ${destLabel} بنجاح!`, 'success');
     return true;
   };
 
-  const withdrawFromTreasury = (channel, amount, notes = '') => {
+  const withdrawFromTreasury = (channel, amount, notes = '', subAccountId = null) => {
     const num = Number(amount) || 0;
     if (num <= 0) return false;
 
-    const curBal = Number(treasury[channel]) || 0;
-    if (num > curBal) {
-      showToast(`الرصيد المتاح (${formatCurrency(curBal)}) أقل من المبلغ المطلوب سحبه`, 'error');
-      return false;
+    const targetWallet = channel === 'vodafoneCash' && subAccountId ? shopWallets.find(w => w.id === subAccountId) : null;
+    const targetInsta = channel === 'instapay' && subAccountId ? instapayAccounts.find(a => a.id === subAccountId) : null;
+
+    if (targetWallet) {
+      const wBal = Number(targetWallet.balance) || 0;
+      if (num > wBal) {
+        showToast(`الرصيد المتاح في (${targetWallet.label}) هو (${formatCurrency(wBal)}) أقل من المبلغ المطلوب سحبه`, 'error');
+        return false;
+      }
+    } else if (targetInsta) {
+      const aBal = Number(targetInsta.balance) || 0;
+      if (num > aBal) {
+        showToast(`الرصيد المتاح في (${targetInsta.accountName}) هو (${formatCurrency(aBal)}) أقل من المبلغ المطلوب سحبه`, 'error');
+        return false;
+      }
+    } else {
+      const curBal = Number(treasury[channel]) || 0;
+      if (num > curBal) {
+        showToast(`الرصيد المتاح (${formatCurrency(curBal)}) أقل من المبلغ المطلوب سحبه`, 'error');
+        return false;
+      }
+    }
+
+    if (targetWallet) {
+      setShopWallets(prev => prev.map(w =>
+        w.id === targetWallet.id ? { ...w, balance: Math.max(0, (Number(w.balance) || 0) - num) } : w
+      ));
+    }
+    if (targetInsta) {
+      setInstapayAccounts(prev => prev.map(a =>
+        a.id === targetInsta.id ? { ...a, balance: Math.max(0, (Number(a.balance) || 0) - num) } : a
+      ));
     }
 
     const channelNames = {
@@ -2269,24 +2821,43 @@ export function CashProvider({ children }) {
       bankAccounts: 'الحسابات البنكية'
     };
 
+    const srcLabel = targetInsta
+      ? `${channelNames[channel]} (${targetInsta.accountName})`
+      : targetWallet
+      ? `${channelNames[channel]} (${targetWallet.label})`
+      : (channelNames[channel] || channel);
+
     const newHistoryRecord = {
       id: `mov-${Date.now()}`,
       date: new Date().toISOString(),
       type: 'withdraw',
       channel,
       amount: num,
-      notes: notes.trim() || `سحب مسحوبات خاصة من ${channelNames[channel] || channel}`
+      notes: notes.trim() || `سحب مسحوبات خاصة من ${srcLabel}`
     };
 
     setTreasury(prev => ({
       ...prev,
-      [channel]: Math.max(0, curBal - num),
+      [channel]: Math.max(0, (Number(prev[channel]) || 0) - num),
       lastUpdated: new Date().toISOString(),
       history: [newHistoryRecord, ...(prev.history || [])]
     }));
 
-    showToast(`تم سحب ${formatCurrency(num)} من ${channelNames[channel]} بنجاح`, 'info');
+    showToast(`تم سحب ${formatCurrency(num)} من ${srcLabel} بنجاح`, 'info');
     return true;
+  };
+
+  // Reconcile treasury total with sum of linked sub-accounts (خطوط فودافون كاش / حسابات إنستاباي)
+  const syncTreasuryWithSubAccounts = (channel) => {
+    if (channel === 'vodafoneCash') {
+      const sum = shopWallets.reduce((acc, w) => acc + (Number(w.balance) || 0), 0);
+      return updateTreasuryBalance('vodafoneCash', sum, 'مزامنة إجمالي فودافون كاش مع أرصدة الخطوط الفعلية');
+    }
+    if (channel === 'instapay') {
+      const sum = instapayAccounts.reduce((acc, a) => acc + (Number(a.balance) || 0), 0);
+      return updateTreasuryBalance('instapay', sum, 'مزامنة إجمالي إنستاباي مع أرصدة الحسابات الفعلية');
+    }
+    return false;
   };
 
   // ==========================================
@@ -2638,6 +3209,14 @@ export function CashProvider({ children }) {
     // If it's a shop line, restore back to shopWallets!
     if (wallet.isShopWallet) {
       setShopWallets(prev => [cleanWallet, ...prev]);
+      const bal = Number(cleanWallet.balance) || 0;
+      if (bal > 0) {
+        setTreasury(prev => ({
+          ...prev,
+          vodafoneCash: (Number(prev.vodafoneCash) || 0) + bal,
+          lastUpdated: new Date().toISOString()
+        }));
+      }
       triggerConfetti();
       showToast(`تمت استعادة خط المحل ${wallet.phoneNumber} بنجاح!`, 'success');
       return true;
@@ -2932,6 +3511,7 @@ export function CashProvider({ children }) {
         transferBetweenTreasury,
         depositToTreasury,
         withdrawFromTreasury,
+        syncTreasuryWithSubAccounts,
         totalLiquidCash,
         clientsTotalReceivables,
         totalCapitalNetWorth,

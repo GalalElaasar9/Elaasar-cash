@@ -15,6 +15,7 @@ export default function EditLimitModal() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [label, setLabel] = useState('');
   const [totalLimit, setTotalLimit] = useState(200000);
+  const [balance, setBalance] = useState('0');
 
   const isShopWallet = modalData?.isShopWallet || modalData?.wallet?.isShopWallet || modalData?.clientId === 'shop';
 
@@ -27,6 +28,7 @@ export default function EditLimitModal() {
       setPhoneNumber(modalData.wallet.phoneNumber || '');
       setLabel(modalData.wallet.label || '');
       setTotalLimit(modalData.wallet.totalLimit || 200000);
+      setBalance(String(modalData.wallet.balance !== undefined ? modalData.wallet.balance : 0));
     } else {
       if (dialog.open) dialog.close();
     }
@@ -54,7 +56,8 @@ export default function EditLimitModal() {
       updateShopWallet(modalData.wallet.id, {
         phoneNumber: clean,
         label,
-        totalLimit: Number(totalLimit) || 200000
+        totalLimit: Number(totalLimit) || 200000,
+        balance: Math.max(0, Number(balance) || 0)
       });
       handleClose();
       return;
@@ -187,6 +190,25 @@ export default function EditLimitModal() {
             className="w-full px-3.5 py-2 text-lg font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
         </div>
+
+        {isShopWallet && (
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              رصيد السيولة الحالي بالخط (ج.م)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={balance}
+              onChange={(e) => setBalance(e.target.value)}
+              className="w-full px-3.5 py-2 text-lg font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-rose-600 dark:text-rose-400"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              أي تعديل هنا يُحدّث إجمالي فودافون كاش في رأس المال تلقائياً.
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
           <button

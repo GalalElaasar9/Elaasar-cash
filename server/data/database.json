@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastUpdated": "2026-11-24T14:10:32.959Z",
+  "lastUpdated": "2026-11-27T15:36:23.270Z",
   "shopInfo": {
     "name": "الأعصر لخدمات المحمول",
     "syncId": "elaasar_main"
@@ -11,83 +11,272 @@
   },
   "clients": [
     {
-      "id": "client-1",
-      "name": "الحاج إبراهيم الأعصر",
-      "notes": "عميل مميز - تاجر تجزئة وجملة",
+      "id": "client-13",
+      "name": "صيدلية الدكتور وليد الشناوي",
+      "clientType": "دائن",
+      "excessCredit": 500,
+      "excessCreditDate": "2026-11-24T14:00:00.000Z",
+      "notes": "صيدلية الشناوي - له رصيد دائن 500 ج.م",
+      "createdAt": "2026-11-16T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-13-1",
+          "phoneNumber": "01011335577",
+          "label": "محفظة حسابات الصيدلية",
+          "totalLimit": 200000,
+          "createdAt": "2026-11-16T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-12",
+      "name": "شركة الفتح للشحن السريع",
+      "clientType": "عادي",
+      "notes": "شركة شحن لوجستي - حساب خالص مسدد",
       "createdAt": "2026-11-05T08:30:00.000Z",
       "wallets": [
         {
-          "id": "wallet-1-2",
-          "phoneNumber": "01011223344",
-          "label": "محفظة فرع المحطة",
+          "id": "wallet-12-1",
+          "phoneNumber": "01099112233",
+          "label": "محفظة المناديب الرئيسية",
+          "totalLimit": 250000,
+          "createdAt": "2026-11-05T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-11",
+      "name": "محطة القدس للخدمات البترولية",
+      "clientType": "مدين",
+      "notes": "محطة وقود وخدمات - مديونية شحن 2,200 ج.م",
+      "createdAt": "2026-11-18T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-11-1",
+          "phoneNumber": "01055443322",
+          "label": "محفظة إدارة المحطة",
           "totalLimit": 200000,
-          "createdAt": "2026-11-10T08:30:00.000Z"
+          "createdAt": "2026-11-18T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-10",
+      "name": "الأستاذ ياسر جلال",
+      "clientType": "عادي",
+      "notes": "حساب شخصي عادي خالص",
+      "createdAt": "2026-11-11T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-10-1",
+          "phoneNumber": "01022334455",
+          "label": "محفظة شخصية",
+          "totalLimit": 200000,
+          "createdAt": "2026-11-11T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-9",
+      "name": "معرض الإيمان للأجهزة الكهربائية",
+      "clientType": "مدين",
+      "notes": "معرض أجهزة - عليه مديونية 6,800 ج.م",
+      "createdAt": "2026-11-17T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-9-1",
+          "phoneNumber": "01088990011",
+          "label": "محفظة مبيعات المعرض",
+          "totalLimit": 200000,
+          "createdAt": "2026-11-17T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-8",
+      "name": "سوبر ماركت الفيروز",
+      "clientType": "دائن",
+      "excessCredit": 750,
+      "excessCreditDate": "2026-11-25T09:00:00.000Z",
+      "notes": "حساب توريد كاش - له رصيد دائن 750 ج.م",
+      "createdAt": "2026-11-09T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-8-1",
+          "phoneNumber": "01044556677",
+          "label": "محفظة الكاشير",
+          "totalLimit": 200000,
+          "createdAt": "2026-11-09T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-7",
+      "name": "مؤسسة البركة للتجارة والتوريدات",
+      "clientType": "عادي",
+      "notes": "شركة توريدات كبرى - لديها سجل تسويات وأرشيف مكثف",
+      "createdAt": "2026-10-28T07:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-7-1",
+          "phoneNumber": "01012345670",
+          "label": "محفظة التحويلات البنكية",
+          "totalLimit": 300000,
+          "createdAt": "2026-10-28T07:30:00.000Z"
         },
         {
-          "id": "wallet-1-3",
-          "phoneNumber": "01055667788",
-          "label": "محفظة كبار العملاء (ليميت مخصص)",
+          "id": "wallet-7-2",
+          "phoneNumber": "01012345671",
+          "label": "محفظة التوريد الميداني",
+          "totalLimit": 200000,
+          "createdAt": "2026-11-02T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-6",
+      "name": "سنتر النور للخدمات المتكاملة",
+      "clientType": "عادي",
+      "notes": "حساب خدمات سريعة - حساب مسدد خالص",
+      "createdAt": "2026-11-13T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-6-1",
+          "phoneNumber": "01077889900",
+          "label": "محفظة الكاش المباشر",
+          "totalLimit": 200000,
+          "createdAt": "2026-11-13T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-5",
+      "name": "كابتن حسام حسن",
+      "clientType": "مدين",
+      "notes": "عميل آجل - سدد دفعة جزئية (4,000 ج.م) ومتبقي 3,000 ج.م",
+      "createdAt": "2026-11-20T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-5-1",
+          "phoneNumber": "01033445566",
+          "label": "محفظة العمليات الشخصية",
+          "totalLimit": 200000,
+          "createdAt": "2026-11-20T08:30:00.000Z"
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-4",
+      "name": "م / طارق عبد الرحمن (مركز اتصالات)",
+      "clientType": "مدين",
+      "notes": "مركز اتصالات - مديونية شحن نشطة",
+      "createdAt": "2026-11-15T08:30:00.000Z",
+      "wallets": [
+        {
+          "id": "wallet-4-1",
+          "phoneNumber": "01066778899",
+          "label": "محفظة السنترال الرئيسية",
           "totalLimit": 200000,
           "createdAt": "2026-11-15T08:30:00.000Z"
-        },
+        }
+      ],
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995
+    },
+    {
+      "id": "client-1",
+      "name": "الحاج إبراهيم الأعصر",
+      "notes": "عميل مميز - تاجر تجزئة وجملة",
+      "createdAt": "2026-11-12T08:30:00.000Z",
+      "wallets": [
         {
           "id": "wallet-1-1",
           "phoneNumber": "01098765432",
           "label": "محفظة المبيعات المركزية",
           "totalLimit": 200000,
-          "createdAt": "2026-11-05T08:30:00.000Z"
+          "createdAt": "2026-11-12T08:30:00.000Z"
         },
         {
-          "id": "wallet-1795180618122",
-          "phoneNumber": "01099909123",
-          "label": "محفظة جديدة",
+          "id": "wallet-1-2",
+          "phoneNumber": "01011223344",
+          "label": "محفظة فرع المحطة",
           "totalLimit": 200000,
-          "createdAt": "2026-11-20T13:16:58.122Z"
+          "createdAt": "2026-11-17T08:30:00.000Z"
+        },
+        {
+          "id": "wallet-1-3",
+          "phoneNumber": "01055667788",
+          "label": "محفظة كبار العملاء (ليميت مخصص)",
+          "totalLimit": 250000,
+          "createdAt": "2026-11-22T08:30:00.000Z"
         }
       ],
-      "commissionMode": "none",
-      "commissionPercent": 0.995
+      "commissionMode": "deduct",
+      "commissionPercent": 0.995,
+      "clientType": "مدين"
     },
     {
       "id": "client-2",
       "name": "شركة الأمل للتوزيع والتجارة",
-      "notes": "حساب توريدات يومية",
-      "createdAt": "2026-10-31T08:30:00.000Z",
+      "notes": "حساب توريدات يومية (خالص مسدد)",
+      "createdAt": "2026-11-07T08:30:00.000Z",
       "wallets": [
         {
           "id": "wallet-2-1",
           "phoneNumber": "01023456789",
           "label": "محفظة إدارة الحسابات",
           "totalLimit": 200000,
-          "createdAt": "2026-10-31T08:30:00.000Z"
+          "createdAt": "2026-11-07T08:30:00.000Z"
         },
         {
           "id": "wallet-2-2",
           "phoneNumber": "01034567890",
           "label": "محفظة المشتريات الخارجية",
-          "totalLimit": 45000,
-          "createdAt": "2026-11-08T08:30:00.000Z"
+          "totalLimit": 150000,
+          "createdAt": "2026-11-15T08:30:00.000Z"
         }
       ],
       "commissionMode": "deduct",
-      "commissionPercent": 0.995
+      "commissionPercent": 0.995,
+      "clientType": "عادي"
     },
     {
       "id": "client-3",
       "name": "أحمد محمود الصاوي",
-      "notes": "مكتب خدمات شحن ودفع إلكتروني",
-      "createdAt": "2026-11-12T08:30:00.000Z",
+      "notes": "مكتب خدمات شحن - سدد بزيادة وله رصيد دائن 1,200 ج.م",
+      "createdAt": "2026-11-19T08:30:00.000Z",
       "wallets": [
         {
           "id": "wallet-3-1",
           "phoneNumber": "01099887766",
           "label": "محفظة التحويلات الفورية",
           "totalLimit": 200000,
-          "createdAt": "2026-11-12T08:30:00.000Z"
+          "createdAt": "2026-11-19T08:30:00.000Z"
         }
       ],
       "commissionMode": "deduct",
-      "commissionPercent": 0.995
+      "commissionPercent": 0.995,
+      "clientType": "دائن",
+      "excessCredit": 1200,
+      "excessCreditDate": "2026-11-26T12:00:00.000Z"
     }
   ],
   "transactions": [

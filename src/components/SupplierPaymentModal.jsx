@@ -23,7 +23,9 @@ export default function SupplierPaymentModal() {
     activeModal, 
     setActiveModal, 
     modalData, 
-    shopWallets, 
+    shopWallets = [], 
+    instapayAccounts = [],
+    treasury = {},
     transactions, 
     recordSupplierPayment, 
     showToast 
@@ -35,6 +37,7 @@ export default function SupplierPaymentModal() {
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash'); // 'cash' | 'instapay' | 'bank' | 'wallet'
   const [selectedWalletId, setSelectedWalletId] = useState('');
+  const [selectedInstapayAccountId, setSelectedInstapayAccountId] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -48,12 +51,13 @@ export default function SupplierPaymentModal() {
         setAmount(purchase.remainingAmount || '');
         setPaymentMethod('cash');
         setSelectedWalletId(shopWallets?.[0]?.id || '');
+        setSelectedInstapayAccountId(instapayAccounts?.find(a => a.isDefault)?.id || instapayAccounts?.[0]?.id || '');
         setNotes('');
       }
     } else {
       if (dialog.open) dialog.close();
     }
-  }, [activeModal, modalData, purchase, shopWallets]);
+  }, [activeModal, modalData, purchase, shopWallets, instapayAccounts]);
 
   const handleClose = () => {
     setActiveModal(null);
@@ -82,11 +86,28 @@ export default function SupplierPaymentModal() {
       }
       const walletObj = shopWallets.find(w => w.id === selectedWalletId);
       if (walletObj) {
-        const stats = calculateWalletStats(walletObj, transactions);
-        if (payAmt > stats.remainingLimit) {
-          showToast(`رصيد محفظة ${walletObj.label} المتبقي (${formatCurrency(stats.remainingLimit)}) لا يكفي لسداد ${formatCurrency(payAmt)}!`, 'error');
+        const wBal = Number(walletObj.balance) || 0;
+        if (payAmt > wBal) {
+          showToast(`رصيد السيولة في خط ${walletObj.label} (${formatCurrency(wBal)}) لا يكفي لسداد ${formatCurrency(payAmt)}!`, 'error');
           return;
         }
+        const stats = calculateWalletStats(walletObj, transactions);
+        if (payAmt > stats.remainingLimit) {
+          showToast(`ليميت محفظة ${walletObj.label} المتبقي (${formatCurrency(stats.remainingLimit)}) لا يكفي لسداد ${formatCurrency(payAmt)}!`, 'error');
+          return;
+        }
+      }
+    }
+
+    if (paymentMethod === 'instapay' && instapayAccounts.length > 0) {
+      if (!selectedInstapayAccountId) {
+        showToast('يرجى اختيار حساب إنستاباي للتحويل منه', 'error');
+        return;
+      }
+      const accObj = instapayAccounts.find(a => a.id === selectedInstapayAccountId);
+      if (accObj && payAmt > (Number(accObj.balance) || 0)) {
+        showToast(`الرصيد المتاح في حساب (${accObj.accountName}) هو (${formatCurrency(accObj.balance || 0)}) وهو أقل من المبلغ المطلوب سداده!`, 'error');
+        return;
       }
     }
 
@@ -102,6 +123,7 @@ export default function SupplierPaymentModal() {
       paymentMethod,
       paidChannel: channelMap[paymentMethod] || 'drawerCash',
       walletId: paymentMethod === 'wallet' ? selectedWalletId : null,
+      instapayAccountId: paymentMethod === 'instapay' ? selectedInstapayAccountId : null,
       notes: notes.trim()
     });
 
@@ -230,6 +252,7 @@ export default function SupplierPaymentModal() {
               >
                 <DollarSign className="w-4 h-4 mx-auto mb-1 text-emerald-600" />
                 <span className="text-xs block font-bold">كاش الدرج</span>
+                <span className="text-[10px] font-mono text-slate-400 block mt-0.5">{formatCurrency(treasury?.drawerCash || 0)}</span>
               </button>
 
               <button
@@ -243,6 +266,7 @@ export default function SupplierPaymentModal() {
               >
                 <Smartphone className="w-4 h-4 mx-auto mb-1 text-purple-600" />
                 <span className="text-xs block font-bold">إنستاباي</span>
+                <span className="text-[10px] font-mono text-slate-400 block mt-0.5">{formatCurrency(treasury?.instapay || 0)}</span>
               </button>
 
               <button
@@ -256,6 +280,7 @@ export default function SupplierPaymentModal() {
               >
                 <Landmark className="w-4 h-4 mx-auto mb-1 text-cyan-600" />
                 <span className="text-xs block font-bold">حساب بنكي</span>
+                <span className="text-[10px] font-mono text-slate-400 block mt-0.5">{formatCurrency(treasury?.bankAccounts || 0)}</span>
               </button>
 
               <button
@@ -268,32 +293,70 @@ export default function SupplierPaymentModal() {
                 }`}
               >
                 <Wallet className="w-4 h-4 mx-auto mb-1 text-rose-600" />
-                <span className="text-xs block font-bold">محفظة كاش</span>
+                <span className="text-xs block font-bold">فودافون كاش</span>
+                <span className="text-[10px] font-mono text-slate-400 block mt-0.5">{formatCurrency(treasury?.vodafoneCash || 0)}</span>
               </button>
             </div>
           </div>
 
           {/* Wallet selection if wallet method selected */}
           {paymentMethod === 'wallet' && (
-            <div className="p-3 bg-rose-50/50 dark:bg-rose-950/30 rounded-xl border border-rose-200/80 dark:border-rose-900/50 space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                اختر خط المحل للتحويل منه:
-              </label>
+            <div className="p-3 bg-rose-50/50 dark:bg-rose-950/30 rounded-xl border border-rose-200/80 dark:border-rose-900/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-rose-900 dark:text-rose-200">
+                  اختر خط فودافون كاش المحول منه (يخصم من الخط ومن إجمالي فودافون كاش):
+                </label>
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                  {shopWallets.length} خط
+                </span>
+              </div>
               <select
                 value={selectedWalletId}
                 onChange={(e) => setSelectedWalletId(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none font-bold"
+                className="w-full px-2.5 py-2 text-xs bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 rounded-xl focus:outline-none font-bold"
                 required
               >
                 {shopWallets.map(w => {
                   const stats = calculateWalletStats(w, transactions);
                   return (
                     <option key={w.id} value={w.id}>
-                      {w.label} ({formatPhone(w.phoneNumber)}) - متاح {formatCurrency(stats.remainingLimit)}
+                      {w.label} ({formatPhone(w.phoneNumber)}) - رصيد الخط: {formatCurrency(w.balance || 0)} | متبقي ليميت: {formatCurrency(stats.remainingLimit)}
                     </option>
                   );
                 })}
               </select>
+            </div>
+          )}
+
+          {/* InstaPay Account selection if instapay method selected */}
+          {paymentMethod === 'instapay' && (
+            <div className="p-3 bg-purple-50/50 dark:bg-purple-950/30 rounded-xl border border-purple-200/80 dark:border-purple-900/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-purple-900 dark:text-purple-200">
+                  اختر حساب إنستاباي المحول منه (يخصم من الحساب ومن إجمالي إنستاباي):
+                </label>
+                <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                  {instapayAccounts.length} حساب
+                </span>
+              </div>
+              {instapayAccounts.length === 0 ? (
+                <div className="text-xs text-amber-600 font-bold py-2">
+                  لا توجد حسابات إنستاباي مسجلة حالياً — سيتم الخصم من إجمالي رصيد إنستاباي العام فقط.
+                </div>
+              ) : (
+                <select
+                  value={selectedInstapayAccountId}
+                  onChange={(e) => setSelectedInstapayAccountId(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 rounded-xl focus:outline-none font-bold"
+                  required
+                >
+                  {instapayAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.accountName} ({acc.bankName}) - المتاح: {formatCurrency(acc.balance || 0)} {acc.isDefault ? '★ افتراضي' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 

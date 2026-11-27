@@ -64,7 +64,9 @@ export default function AddPurchaseModal() {
     setActiveModal, 
     modalData, 
     inventory, 
-    shopWallets, 
+    shopWallets = [], 
+    instapayAccounts = [],
+    treasury = {},
     transactions,
     addPurchase, 
     uniqueSuppliers,
@@ -121,6 +123,7 @@ export default function AddPurchaseModal() {
   // 'cash' (كاش الدرج) | 'instapay' (إنستاباي) | 'bank' (حساب بنكي) | 'wallet' (محفظة كاش للمحل) | 'credit' (آجل بالكامل) | 'partial' (سداد جزئي)
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [selectedWalletId, setSelectedWalletId] = useState('');
+  const [selectedInstapayAccountId, setSelectedInstapayAccountId] = useState('');
   const [selectedPaidChannel, setSelectedPaidChannel] = useState('drawerCash');
   const [customPaidAmount, setCustomPaidAmount] = useState('');
 
@@ -182,11 +185,12 @@ export default function AddPurchaseModal() {
       setPaymentMethod('cash');
       setSelectedPaidChannel('drawerCash');
       setSelectedWalletId(shopWallets?.[0]?.id || '');
+      setSelectedInstapayAccountId(instapayAccounts?.find(a => a.isDefault)?.id || instapayAccounts?.[0]?.id || '');
       setCustomPaidAmount('');
     } else {
       if (dialog.open) dialog.close();
     }
-  }, [activeModal, modalData, shopWallets]);
+  }, [activeModal, modalData, shopWallets, instapayAccounts]);
 
   // Update invoice number prefix on tab switch if it wasn't manually customized
   const handleSwitchTab = (newType) => {
@@ -238,6 +242,9 @@ export default function AddPurchaseModal() {
   const effectivePaidChannel = paymentMethod === 'partial' 
     ? selectedPaidChannel 
     : (channelMap[paymentMethod] || 'drawerCash');
+
+  const isPayingViaWallet = (paymentMethod === 'wallet' || (paymentMethod === 'partial' && selectedPaidChannel === 'vodafoneCash')) && purchaseType !== 'cash_liquidity';
+  const isPayingViaInstapay = paymentMethod === 'instapay' || (paymentMethod === 'partial' && selectedPaidChannel === 'instapay');
 
   // Handle adding an item to the invoice
   const handleAddItem = () => {
@@ -351,17 +358,38 @@ export default function AddPurchaseModal() {
       }
     }
 
-    // Check wallet limit if paid via shop wallet
-    if (paymentMethod === 'wallet' && finalPaidAmount > 0) {
+    // Check wallet balance & limit if paid via shop wallet (full or partial)
+    if (isPayingViaWallet && finalPaidAmount > 0) {
       if (!selectedWalletId) {
         showToast('يرجى اختيار خط المحل المحول منه المبلغ', 'error');
         return;
       }
       const walletObj = shopWallets.find(w => w.id === selectedWalletId);
       if (walletObj) {
+        const wBal = Number(walletObj.balance) || 0;
+        if (finalPaidAmount > wBal) {
+          showToast(`رصيد السيولة في خط ${walletObj.label} (${formatCurrency(wBal)}) لا يكفي لسداد المبلغ المطلوب (${formatCurrency(finalPaidAmount)})!`, 'error');
+          return;
+        }
         const stats = calculateWalletStats(walletObj, transactions);
         if (finalPaidAmount > stats.remainingLimit) {
-          showToast(`رصيد محفظة ${walletObj.label} المتبقي (${formatCurrency(stats.remainingLimit)}) لا يكفي لسداد المبلغ المطلوب (${formatCurrency(finalPaidAmount)})!`, 'error');
+          showToast(`ليميت محفظة ${walletObj.label} المتبقي (${formatCurrency(stats.remainingLimit)}) لا يكفي لسداد المبلغ المطلوب (${formatCurrency(finalPaidAmount)})!`, 'error');
+          return;
+        }
+      }
+    }
+
+    // Check InstaPay account balance if paid via instapay (full or partial)
+    if (isPayingViaInstapay && finalPaidAmount > 0 && instapayAccounts.length > 0) {
+      if (!selectedInstapayAccountId) {
+        showToast('يرجى اختيار حساب إنستاباي المراد التحويل منه', 'error');
+        return;
+      }
+      const accObj = instapayAccounts.find(a => a.id === selectedInstapayAccountId);
+      if (accObj) {
+        const aBal = Number(accObj.balance) || 0;
+        if (finalPaidAmount > aBal) {
+          showToast(`الرصيد المتاح في حساب إنستاباي (${accObj.accountName}) هو (${formatCurrency(aBal)}) ولا يكفي لسداد (${formatCurrency(finalPaidAmount)})!`, 'error');
           return;
         }
       }
@@ -424,7 +452,8 @@ export default function AddPurchaseModal() {
       remainingAmount: remainingDebt,
       paymentMethod,
       paidChannel: effectivePaidChannel,
-      paidFromWalletId: paymentMethod === 'wallet' ? selectedWalletId : null,
+      paidFromWalletId: isPayingViaWallet ? selectedWalletId : null,
+      paidFromInstapayAccountId: isPayingViaInstapay ? selectedInstapayAccountId : null,
       updateInventory: purchaseType === 'inventory_goods' ? updateInventory : false,
       notes: notes.trim()
     };
@@ -1053,7 +1082,7 @@ export default function AddPurchaseModal() {
               >
                 <DollarSign className="w-4 h-4 mx-auto mb-1 text-emerald-600" />
                 <span className="text-xs block">كاش الدرج</span>
-                <span className="text-[10px] opacity-75">خصم فوري</span>
+                <span className="text-[10px] font-mono opacity-80">{formatCurrency(treasury?.drawerCash || 0)}</span>
               </button>
 
               <button
@@ -1067,7 +1096,7 @@ export default function AddPurchaseModal() {
               >
                 <Smartphone className="w-4 h-4 mx-auto mb-1 text-purple-600" />
                 <span className="text-xs block">إنستاباي</span>
-                <span className="text-[10px] opacity-75">تحويل لحظي</span>
+                <span className="text-[10px] font-mono opacity-80">{formatCurrency(treasury?.instapay || 0)}</span>
               </button>
 
               <button
@@ -1081,7 +1110,7 @@ export default function AddPurchaseModal() {
               >
                 <Landmark className="w-4 h-4 mx-auto mb-1 text-cyan-600" />
                 <span className="text-xs block">حساب بنكي</span>
-                <span className="text-[10px] opacity-75">تحويل بنكي</span>
+                <span className="text-[10px] font-mono opacity-80">{formatCurrency(treasury?.bankAccounts || 0)}</span>
               </button>
 
               {purchaseType !== 'cash_liquidity' && (
@@ -1095,8 +1124,8 @@ export default function AddPurchaseModal() {
                   }`}
                 >
                   <Wallet className="w-4 h-4 mx-auto mb-1 text-rose-600" />
-                  <span className="text-xs block">محفظة كاش</span>
-                  <span className="text-[10px] opacity-75">خصم ليميت</span>
+                  <span className="text-xs block">فودافون كاش</span>
+                  <span className="text-[10px] font-mono opacity-80">{formatCurrency(treasury?.vodafoneCash || 0)}</span>
                 </button>
               )}
 
@@ -1128,30 +1157,6 @@ export default function AddPurchaseModal() {
                 <span className="text-[10px] opacity-75">دين على المحل</span>
               </button>
             </div>
-
-            {/* Wallet Selection if paying via Shop Wallet */}
-            {paymentMethod === 'wallet' && purchaseType !== 'cash_liquidity' && (
-              <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-rose-200/70 dark:border-rose-900/40 space-y-2">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  اختر خط المحل المراد التحويل منه (يتم خصم المبلغ من الليميت):
-                </label>
-                <select
-                  value={selectedWalletId}
-                  onChange={(e) => setSelectedWalletId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none font-bold"
-                  required
-                >
-                  {shopWallets.map(w => {
-                    const stats = calculateWalletStats(w, transactions);
-                    return (
-                      <option key={w.id} value={w.id}>
-                        {w.label} - ({formatPhone(w.phoneNumber)}) [الليميت المتاح: {formatCurrency(stats.remainingLimit)}]
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
 
             {/* Partial Payment Amount and Channel Input */}
             {paymentMethod === 'partial' && (
@@ -1192,13 +1197,117 @@ export default function AddPurchaseModal() {
                       onChange={(e) => setSelectedPaidChannel(e.target.value)}
                       className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none font-bold"
                     >
-                      <option value="drawerCash">كاش الدرج والخزينة</option>
-                      <option value="instapay">حساب إنستاباي</option>
-                      <option value="bankAccounts">حساب بنكي</option>
-                      {purchaseType !== 'cash_liquidity' && <option value="vodafoneCash">فودافون كاش ومحافظ المحمول</option>}
+                      <option value="drawerCash">كاش الدرج والخزينة ({formatCurrency(treasury?.drawerCash || 0)})</option>
+                      <option value="instapay">حساب إنستاباي ({formatCurrency(treasury?.instapay || 0)})</option>
+                      <option value="bankAccounts">حساب بنكي ({formatCurrency(treasury?.bankAccounts || 0)})</option>
+                      {purchaseType !== 'cash_liquidity' && (
+                        <option value="vodafoneCash">فودافون كاش ومحافظ المحمول ({formatCurrency(treasury?.vodafoneCash || 0)})</option>
+                      )}
                     </select>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* InstaPay Account Selection (Full or Partial via InstaPay) */}
+            {isPayingViaInstapay && (
+              <div className="p-3.5 bg-purple-50/70 dark:bg-purple-950/30 rounded-2xl border border-purple-200 dark:border-purple-900/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-purple-600" />
+                    <span>اختر حساب إنستاباي المحول منه (يخصم من الحساب ومن إجمالي إنستاباي):</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal('addInstapayAccount')}
+                    className="text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:underline shrink-0"
+                  >
+                    + إضافة حساب
+                  </button>
+                </div>
+
+                {instapayAccounts.length === 0 ? (
+                  <div className="text-xs font-bold text-amber-600 dark:text-amber-400 py-1.5">
+                    لا توجد حسابات إنستاباي مسجلة حالياً — سيتم الخصم من إجمالي إنستاباي العام.
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={selectedInstapayAccountId}
+                      onChange={(e) => setSelectedInstapayAccountId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 rounded-xl focus:outline-none font-bold"
+                      required
+                    >
+                      {instapayAccounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.accountName} ({acc.bankName}) - {acc.handle} [المتاح: {formatCurrency(acc.balance || 0)}] {acc.isDefault ? '★ افتراضي' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {(() => {
+                      const chosenAcc = instapayAccounts.find(a => a.id === selectedInstapayAccountId);
+                      if (!chosenAcc) return null;
+                      const bal = Number(chosenAcc.balance) || 0;
+                      const after = bal - finalPaidAmount;
+                      return (
+                        <div className="flex items-center justify-between text-[11px] px-2 pt-1 text-purple-800 dark:text-purple-300">
+                          <span>
+                            رصيد الحساب: <strong className="font-mono">{formatCurrency(bal)}</strong>
+                          </span>
+                          <span className={after < 0 ? 'text-rose-600 font-black' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>
+                            المتبقي بالحساب بعد السداد: <strong className="font-mono">{formatCurrency(after)}</strong>
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Wallet Selection if paying via Shop Wallet (Full or Partial) */}
+            {isPayingViaWallet && (
+              <div className="p-3.5 bg-rose-50/70 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-900/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                    <Wallet className="w-4 h-4 text-rose-600" />
+                    <span>اختر خط فودافون كاش المحول منه (يخصم من الخط ومن إجمالي فودافون كاش):</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                    {shopWallets.length} خط متاح
+                  </span>
+                </div>
+                <select
+                  value={selectedWalletId}
+                  onChange={(e) => setSelectedWalletId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 rounded-xl focus:outline-none font-bold"
+                  required
+                >
+                  {shopWallets.map(w => {
+                    const stats = calculateWalletStats(w, transactions);
+                    return (
+                      <option key={w.id} value={w.id}>
+                        {w.label} - ({formatPhone(w.phoneNumber)}) [الرصيد: {formatCurrency(w.balance || 0)} | الليميت المتاح: {formatCurrency(stats.remainingLimit)}]
+                      </option>
+                    );
+                  })}
+                </select>
+                {(() => {
+                  const chosenWallet = shopWallets.find(w => w.id === selectedWalletId);
+                  if (!chosenWallet) return null;
+                  const bal = Number(chosenWallet.balance) || 0;
+                  const after = bal - finalPaidAmount;
+                  return (
+                    <div className="flex items-center justify-between text-[11px] px-2 pt-1 text-rose-800 dark:text-rose-300">
+                      <span>
+                        الرصيد الحالي بالخط: <strong className="font-mono">{formatCurrency(bal)}</strong>
+                      </span>
+                      <span className={after < 0 ? 'text-rose-600 font-black' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>
+                        المتبقي بالخط بعد السداد: <strong className="font-mono">{formatCurrency(after)}</strong>
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

@@ -15,6 +15,7 @@ export default function AddWalletModal() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [label, setLabel] = useState('');
   const [totalLimit, setTotalLimit] = useState(200000);
+  const [initialBalance, setInitialBalance] = useState('0');
 
   const isShopWallet = modalData?.isShopWallet;
 
@@ -27,6 +28,7 @@ export default function AddWalletModal() {
       setPhoneNumber('');
       setLabel(isShopWallet ? 'خط مبيعات المحل' : '');
       setTotalLimit(200000);
+      setInitialBalance('0');
     } else {
       if (dialog.open) dialog.close();
     }
@@ -52,7 +54,8 @@ export default function AddWalletModal() {
       addShopWallet({
         phoneNumber: clean,
         label: label || 'خط المحل',
-        totalLimit: Number(totalLimit) || 200000
+        totalLimit: Number(totalLimit) || 200000,
+        initialBalance: Math.max(0, Number(initialBalance) || 0)
       });
       handleClose();
       return;
@@ -181,6 +184,26 @@ export default function AddWalletModal() {
             الليميت القياسي الافتراضي هو 200,000 ج.م شهرياً مع إمكانية تحويل حتى 60,000 ج.م يومياً.
           </p>
         </div>
+
+        {isShopWallet && (
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              رصيد السيولة الافتتاحي بالخط (ج.م)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={initialBalance}
+              onChange={(e) => setInitialBalance(e.target.value)}
+              placeholder="0"
+              className="w-full px-3.5 py-2 text-base font-black bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-rose-600 dark:text-rose-400"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              يُضاف تلقائياً إلى إجمالي فودافون كاش في خزينة رأس المال.
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
           <button
