@@ -1590,7 +1590,7 @@ const SCOPED_DATA_KEYS = [
 ];
 
 export const storage = {
-  setActiveUserScope(uid) {
+  setActiveUserScope(uid, _email) {
     activeUserId = uid ? String(uid) : null;
   },
 

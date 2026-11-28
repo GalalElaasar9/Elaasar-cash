@@ -33,7 +33,9 @@ import {
   deleteTransactionFromCloud,
   syncProductToCloud,
   deleteProductFromCloud,
-  uploadAllLocalDataToCloud
+  uploadAllLocalDataToCloud,
+  subscribeToUserStore,
+  uploadAllUserStoreData
 } from '../firebase/firestoreService';
 
 const CashContext = createContext();
@@ -158,46 +160,53 @@ export function CashProvider({ children }) {
     };
   }, []);
 
-  // Real-time Firestore Subscriptions
+  // Real-time Firestore Subscriptions (per-user, not per-shopId)
   useEffect(() => {
-    if (!currentUser || !shopId) return;
+    if (!currentUser?.uid) return;
 
     setSyncStatus('syncing');
+    const uid = currentUser.uid;
 
-    const unsubClients = subscribeToClients(shopId, (cloudClients) => {
-      if (cloudClients && cloudClients.length > 0) {
-        setClients(cloudClients);
-      }
+    const unsub = subscribeToUserStore(uid, (storeMap) => {
+      if (Array.isArray(storeMap.clients) && storeMap.clients.length > 0)
+        setClients(storeMap.clients);
+      if (Array.isArray(storeMap.transactions))
+        setTransactions(storeMap.transactions);
+      if (Array.isArray(storeMap.inventory) && storeMap.inventory.length > 0)
+        setInventory(storeMap.inventory);
+      if (Array.isArray(storeMap.shopWallets) && storeMap.shopWallets.length > 0)
+        setShopWallets(storeMap.shopWallets);
+      if (Array.isArray(storeMap.purchases))
+        setPurchases(storeMap.purchases);
+      if (Array.isArray(storeMap.instapayAccounts))
+        setInstapayAccounts(storeMap.instapayAccounts);
+      if (Array.isArray(storeMap.dailyAudits))
+        setDailyAudits(storeMap.dailyAudits);
+      if (Array.isArray(storeMap.dailyOpeningBalances))
+        setDailyOpeningBalances(storeMap.dailyOpeningBalances);
+      if (storeMap.treasury && typeof storeMap.treasury === 'object')
+        setTreasury(storeMap.treasury);
+      if (Array.isArray(storeMap.clientArchives))
+        setClientArchives(storeMap.clientArchives);
       setSyncStatus('live');
     });
 
-    const unsubTransactions = subscribeToTransactions(shopId, (cloudTransactions) => {
-      if (cloudTransactions) {
-        setTransactions(cloudTransactions);
-      }
-      setSyncStatus('live');
-    });
-
-    const unsubInventory = subscribeToInventory(shopId, (cloudInventory) => {
-      if (cloudInventory && cloudInventory.length > 0) {
-        setInventory(cloudInventory);
-      }
-      setSyncStatus('live');
-    });
-
-    return () => {
-      unsubClients();
-      unsubTransactions();
-      unsubInventory();
-    };
-  }, [currentUser?.uid, shopId]);
+    return () => unsub();
+  }, [currentUser?.uid]);
 
   const uploadToCloud = async () => {
-    if (!shopId) throw new Error('رمز المحل غير محدد');
-    await uploadAllLocalDataToCloud(shopId, {
+    if (!currentUser?.uid) throw new Error('لم يتم تسجيل الدخول');
+    await uploadAllUserStoreData(currentUser.uid, {
       clients,
       transactions,
       inventory,
+      shopWallets,
+      purchases,
+      treasury,
+      instapayAccounts,
+      dailyAudits,
+      dailyOpeningBalances,
+      clientArchives,
       inboundLedger: storage.getLedger()
     });
   };
